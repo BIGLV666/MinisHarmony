@@ -24,6 +24,7 @@ pages/Index.ets
         │     LocalToolRuntime 应用工作区工具
         │     RemoteToolRuntime 远程 HTTP 工具服务
         │     LocalStore       preferences 读写与旧数据迁移
+        │     AppLogger        事件日志落盘、轮转、清理
         │     Format           时间 / 标题 / token 估算
         │
         └── core/              纯逻辑（Node 可测）
@@ -31,6 +32,7 @@ pages/Index.ets
               ToolTypes         ToolRuntime / ToolDefinition / ToolResult
               ToolCatalog       内置工具定义
               ToolProtocol      内部 parts ↔ OpenAI tool_calls
+              EventLog          日志事件、脱敏、JSONL 文件名
               Workspace         相对路径规范化、路径 jail、截断
               OpenCodeRules     域名 / 草稿键 / URL
               SseParser         SSE 与 OpenAI chunk（含 tool_calls）
@@ -108,9 +110,14 @@ start(userText)
         │     ├─ 依次执行 ToolRuntime.execute(name, arguments)
         │     ├─ 把结果写回对应 part（done / error）
         │     ├─ push 新的 assistant placeholder
-        │     └─ runStep()（最多 12 轮）
+        │     └─ runStep()（最多 maxAgentTurns 轮，默认 200）
         └─ 无 tool_calls: finish()
 ```
+
+`maxAgentTurns` 与 OpenMinis 的 `MAX_AGENT_TURNS = 200` 对齐，可在设置中改到
+1–1000。达到上限后本轮结束，但历史、工具结果和 part 状态全部保留；末尾写入
+「继续发送即可接着执行」的提示，下一轮用户可以无缝续跑。这是有意的 resumable
+语义，不是失败。
 
 细节：
 
@@ -185,7 +192,9 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
     "allowWriteTools": false,
     "sandboxMode": "local",
     "sandboxUrl": "",
-    "sandboxToken": ""
+    "sandboxToken": "",
+    "maxAgentTurns": 200,
+    "loggingEnabled": false
   },
   "sessions": [
     {
@@ -219,6 +228,30 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
 > 版本化：当前库名带 `_v1`。字段结构再次变更时应迁移到新库名或增加
 > `schemaVersion`，不要原地改变消息结构。
 
+## 事件日志
+
+`core/EventLog.ets` 只负责事件形状、脱敏与文件名；`service/AppLogger.ets` 负责
+文件 I/O。两者分开后，格式与脱敏可以在 Node 下测试，文件 API 只在真机路径上运行。
+
+```text
+AgentRuntime / Settings
+        │  LogEvent（元数据）
+        ▼
+    AppLogger.log()
+        ├─ loggingEnabled ? 继续 : 丢弃
+        ├─ 每天一个 events-YYYY-MM-DD.jsonl
+        ├─ 启动时清理 14 天前的文件
+        └─ 单日 8 MB 后停止写入
+```
+
+不变量：
+
+- 默认关闭；`loggingEnabled` 与设置一起持久化；
+- **绝不写入** prompt、消息正文、工具参数、API Key、沙箱 Token；
+- `detail` 只允许短状态串，序列化前经过 `redactSecrets()` 与 300 字符截断；
+- 会话 ID 只出现前 8 位（`sessionTag()`）；
+- 日志 I/O 失败会把 logger 置为 broken 并静默降级，不打断对话。
+
 ## 平板布局
 
 - 根节点 `onAreaChange` 读取宽度，`>= 840vp` 进入双栏；
@@ -239,9 +272,10 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
 | 停止生成 | 保留已收内容；未完成工具标记 error |
 | 200 但空内容 | 显示“模型没有返回内容” |
 | `finish_reason=length` | 追加“已达到最大输出长度”提示 |
+| 达到 `maxAgentTurns` | 本轮结束并提示可继续；历史与工具结果保留 |
 
 ## 可测试性
 
-`core/` 八个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 九个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

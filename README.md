@@ -40,10 +40,11 @@ x-opencode-session`，或者缓存永远不命中。
 | **OpenCode Go 预设** | 一键填入当前基址，自动注入 `x-opencode-session` |
 | **OpenAI 兼容** | 任意兼容 `/chat/completions` 的服务，可自定义基址与模型 |
 | **流式输出** | SSE 增量解析，思考过程（`reasoning_content` / `reasoning`）折叠展示 |
-| **工具调用循环** | 解析流式 `tool_calls`，最多 12 轮模型/工具往返，工具卡片可展开 |
+| **工具调用循环** | 解析流式 `tool_calls`，默认最多 200 轮模型/工具往返（可在设置中调整），工具卡片可展开 |
 | **本机工具** | 工作区内的 `list_dir` / `read_file` / `write_file` / `search_text`，以及 `fetch_url` / `now` |
 | **可插拔沙箱** | 本机工作区或远程 HTTP 工具服务，共用同一套工具定义与设置页 |
 | **本地会话** | 会话、消息、模型、设置持久化在本机，重启可恢复；旧版纯文本消息自动迁移为 parts |
+| **本地事件日志** | 可关闭（默认关闭）的结构化 JSONL：请求耗时、模型、轮次、工具状态、错误；脱敏、按天轮转、保留 14 天 |
 | **Markdown** | 标题、列表、引用、分割线、行内样式、代码块复制 |
 | **交互细节** | 停止生成、切换模型、搜索对话、长按删除、API Key 显示切换、拉取模型列表 |
 | **深色模式** | 跟随系统，使用 HarmonyOS 资源限定词 |
@@ -179,6 +180,48 @@ node scripts/sandbox-server.mjs --root ~/minis-workspace --host 0.0.0.0 \
 
 ---
 
+## 轮次上限与事件日志
+
+### 为什么默认是 200 轮
+
+OpenMinis 的 Agent 循环使用 `MAX_AGENT_TURNS = 200`（`ChatViewModel.kt` 与
+`HelperRunner.kt` 同值）。这个上限不是模型输出长度，而是**一次用户消息内
+「模型请求 → 工具执行 → 再请求」的往返次数**。复杂任务（多文件阅读、搜索、
+反复修正）需要几十到上百轮，12 轮会在正常任务中途截断。
+
+本项目的对应实现：
+
+- `AppSettings.maxAgentTurns`，默认 200，设置页可改为 1–1000；
+- 达到上限时本轮结束，末尾写入可继续的提示，**不丢弃历史与工具结果**；
+- 下次发送消息会带着完整上下文继续，等价于 OpenMinis 的 resumable 行为；
+- 停止生成仍会立刻中断请求，并把未完成的工具标记为 error。
+
+### 事件日志（埋点）
+
+设置 → **Agent 与日志** 可以打开「记录本地事件日志」，默认关闭。日志写入
+`filesDir/logs/events-YYYY-MM-DD.jsonl`，一行一个 JSON，只记录元数据：
+
+```jsonc
+{"ts":1762531200000,"event":"model_done","level":"info","session":"12345678",
+ "model":"kimi-k3","step":3,"tool":"","ok":true,"durationMs":4210,
+ "detail":"finish=stop chars=812 calls=2"}
+```
+
+覆盖事件：`agent_start` / `agent_finish` / `model_start` / `model_done` /
+`model_error` / `tool_start` / `tool_done` / `turn_cap` / `cancelled`。
+
+隐私与容量：
+
+- **不记录**对话内容、系统提示词、工具参数、API Key 或沙箱 Token；
+- 错误详情会经过 `redactSecrets()`（`sk-*`、`Bearer *`、`token=` 等）；
+- 会话 ID 只保留前 8 位，用于把同一次运行的事件串起来；
+- 按本地日期每天一个文件，保留 14 天，单日上限 8 MB；
+- 设置页提供「清空事件日志」；日志写失败不会影响对话。
+
+日志是**纯本地**的，没有远端上报，也不包含任何自动遥测。
+
+---
+
 ## 工程结构
 
 ```text
@@ -191,8 +234,8 @@ MinisHarmony/
 │       │   ├── entryability/         # UIAbility
 │       │   ├── pages/Index.ets       # 状态编排、会话、Agent 生命周期
 │       │   ├── components/           # 侧栏、对话、气泡、工具卡片、Markdown、设置
-│       │   ├── core/                 # 纯逻辑：类型、parts、工具协议、路径规则、SSE、Markdown
-│       │   └── service/              # HTTP 流、Agent 循环、本机/远程工具、持久化
+│       │   ├── core/                 # 纯逻辑：类型、parts、工具协议、事件日志、路径规则、SSE、Markdown
+│       │   └── service/              # HTTP 流、Agent 循环、本机/远程工具、持久化、日志落盘
 │       └── resources/                # 颜色（含 dark）、字符串、图标
 ├── scripts/test-core.mjs             # Node 下的纯逻辑测试
 ├── scripts/sandbox-server.mjs        # 远程工具服务参考实现（Node 22）
@@ -223,23 +266,29 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - parts 消息模型：文本/思考分离、追加顺序、`messageKey`；
 - 工具协议：`assistant.tool_calls` + `tool` 消息展开、中断调用补结果；
 - 工作区路径规则：绝对路径、`..`、反斜杠与截断；
+- Agent 轮次上限：默认 200、边界钳制、旧设置缺字段；
+- 事件日志：密钥脱敏、单行化、JSONL、会话短标签、按天文件名；
 - Markdown 块级与行内解析。
 
-当前结果：**20 项全部通过**。
+当前结果：**23 项全部通过**。
 
-另外做了静态检查：
+另外做了静态与编译检查：
 
-- `python3 scripts/check-brackets.py`：全部 22 个 `.ets` 文件括号配平；
-- TypeScript 5.8 对 `core/` 与 `service/` 的 14 个非 UI 文件做语法/类型检查：
-  除本机缺少 `@kit.*` 类型声明这一预期诊断外，0 条错误。
+- `python3 scripts/check-brackets.py`：全部 `.ets` 文件括号配平；
+- 使用 OpenHarmony 6.0.0.49 公共 SDK（API 20）与 hvigor 6.20 实际执行了
+  `assembleHap`，产出 `entry-default-unsigned.hap`。这验证了 ArkTS 语法、
+  ArkUI 声明、资源引用和完整打包链路。
 
-`tree-sitter-arkts` / `ohos-typescript` 不在当前环境中，因此没有用它们跑 ArkUI
-声明式语法的诊断。
+```bash
+# 使用仓库里单独声明的 OpenHarmony 编译产物（不改变默认的 HarmonyOS 目标）
+OHOS_BASE_SDK_HOME=<sdk 根目录> \
+  hvigorw assembleHap --mode module -p product=ohos -p buildMode=debug --no-daemon
+```
 
-> 说明：本机没有 DevEco Studio / HarmonyOS SDK，因此**没有执行 hvigor 编译、单元测试或
-> 真机运行**。上述检查只覆盖语法与纯逻辑，不覆盖 ArkUI API 签名、资源引用和签名配置。
-> 工程按 API 20 的 Stage 模型编写，首次在 DevEco 中打开时如遇 API 名称差异，请在
-> DevEco 的 API 提示下调整。
+> 说明：编译验证用的是公共 OpenHarmony SDK，不是华为 HarmonyOS SDK；产物**未签名**，
+> 不能直接安装到平板。正式安装仍需 DevEco Studio + 华为 AGC 调试证书 + 设备 UDID
+> 的签名配置。默认 product 仍声明 `runtimeOS: "HarmonyOS"`，面向 DevEco。
+> 当前设备类型为 `tablet` / `2in1`（公共 SDK 不含 `phone` 的 syscap 定义）。
 
 ---
 
@@ -251,6 +300,7 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
   **Asset Store Kit**（`@kit.AssetStoreKit`）保存密钥，见路线图。
 - 建议只使用 `https://` 基址；自定义 `http://` 明文地址能否使用取决于系统网络策略。
 - 本机工具只能访问 `filesDir/workspace`，拒绝绝对路径、`..` 和符号链接；写入默认关闭。
+- 事件日志默认关闭，只保存脱敏后的元数据，不含对话内容与密钥；可随时清空。
 - 远程工具会把工具名与参数发送到你填写的服务，远程端必须自行限制工作目录并校验
   Token；不要把无鉴权的工具服务暴露到公网。
 - 卸载应用会清除全部本地对话、工作区与密钥。

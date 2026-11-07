@@ -9,6 +9,19 @@ import glob
 import sys
 
 
+REGEX_PRECEDERS = set('([{=,:;!&|?+-*%<>~^')
+
+
+def _is_regex_start(source, index):
+    """Heuristic: a '/' starts a regex when the previous token cannot end an expression."""
+    cursor = index - 1
+    while cursor >= 0 and source[cursor] in ' \t\r\n':
+        cursor -= 1
+    if cursor < 0:
+        return True
+    return source[cursor] in REGEX_PRECEDERS
+
+
 def scan(path):
     source = open(path, encoding='utf-8').read()
     index = 0
@@ -16,6 +29,7 @@ def scan(path):
     stack = []
     line = 1
     state = 'normal'
+    in_class = False
     while index < length:
         char = source[index]
         nxt = source[index + 1] if index + 1 < length else ''
@@ -30,6 +44,11 @@ def scan(path):
                 state = 'block'
                 index += 2
                 continue
+            if char == '/' and _is_regex_start(source, index):
+                state = 'regex'
+                in_class = False
+                index += 1
+                continue
             if char == "'":
                 state = 'single'
             elif char == '"':
@@ -43,6 +62,16 @@ def scan(path):
                 if not stack or stack[-1][0] != pair:
                     return f'mismatch {char} at line {line}, stack={stack[-3:]}'
                 stack.pop()
+        elif state == 'regex':
+            if char == '\\':
+                index += 2
+                continue
+            if char == '[':
+                in_class = True
+            elif char == ']':
+                in_class = False
+            elif char == '/' and not in_class:
+                state = 'normal'
         elif state == 'line':
             if char == '\n':
                 state = 'normal'

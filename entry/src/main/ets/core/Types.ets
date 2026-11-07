@@ -44,6 +44,29 @@ export interface AppSettings {
   sandboxMode: SandboxMode;
   sandboxUrl: string;
   sandboxToken: string;
+  /** Upper bound for model/tool round trips in one user turn. */
+  maxAgentTurns: number;
+  /** Write structured, redacted event logs to the app sandbox. */
+  loggingEnabled: boolean;
+}
+
+export const DEFAULT_MAX_AGENT_TURNS: number = 200;
+export const MIN_MAX_AGENT_TURNS: number = 1;
+export const MAX_MAX_AGENT_TURNS: number = 1000;
+
+/** Clamp a user-entered turn budget; non-finite values fall back to the default. */
+export function clampMaxTurns(value: number): number {
+  if (Number.isNaN(value) || !Number.isFinite(value)) {
+    return DEFAULT_MAX_AGENT_TURNS;
+  }
+  const rounded: number = Math.floor(value);
+  if (rounded < MIN_MAX_AGENT_TURNS) {
+    return MIN_MAX_AGENT_TURNS;
+  }
+  if (rounded > MAX_MAX_AGENT_TURNS) {
+    return MAX_MAX_AGENT_TURNS;
+  }
+  return rounded;
 }
 
 export interface MessagePart {
@@ -137,7 +160,9 @@ export function defaultSettings(): AppSettings {
     allowWriteTools: false,
     sandboxMode: 'local',
     sandboxUrl: '',
-    sandboxToken: ''
+    sandboxToken: '',
+    maxAgentTurns: DEFAULT_MAX_AGENT_TURNS,
+    loggingEnabled: false
   };
 }
 
@@ -154,7 +179,9 @@ export function cloneSettings(source: AppSettings): AppSettings {
     allowWriteTools: source.allowWriteTools,
     sandboxMode: source.sandboxMode,
     sandboxUrl: source.sandboxUrl,
-    sandboxToken: source.sandboxToken
+    sandboxToken: source.sandboxToken,
+    maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
+    loggingEnabled: source.loggingEnabled === true
   };
 }
 

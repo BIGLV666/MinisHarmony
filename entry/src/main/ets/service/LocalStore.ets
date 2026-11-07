@@ -14,6 +14,7 @@ import {
   TOOL_ERROR,
   TOOL_PENDING,
   TOOL_RUNNING,
+  clampMaxTurns,
   defaultSettings,
   reasoningPart,
   textPart
@@ -76,7 +77,9 @@ function normalizeSettings(source: AppSettings): AppSettings {
     allowWriteTools: source.allowWriteTools === true,
     sandboxMode: sandboxMode,
     sandboxUrl: source.sandboxUrl !== undefined ? source.sandboxUrl : '',
-    sandboxToken: source.sandboxToken !== undefined ? source.sandboxToken : ''
+    sandboxToken: source.sandboxToken !== undefined ? source.sandboxToken : '',
+    maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
+    loggingEnabled: source.loggingEnabled === true
   };
 }
 

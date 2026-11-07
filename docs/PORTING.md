@@ -18,7 +18,8 @@
 | Kotlin `ChatViewModel.ensureSession()` | `pages/Index.ets#createChat()` | 先持久化会话再发首个请求 |
 | Compose / Flutter 平板断点 | `onAreaChange` + 840vp | 双栏 / 单栏切换 |
 | SSE 流式 provider | `core/SseParser.ets` | 增量、CRLF、多 data 行、错误体 |
-| OpenAI tool calling | `core/ToolProtocol.ets` + `service/AgentRuntime.ets` | 流式 tool_calls、结果回填、最多 12 轮 |
+| OpenAI tool calling | `core/ToolProtocol.ets` + `service/AgentRuntime.ets` | 流式 tool_calls、结果回填、默认 200 轮（与 OpenMinis 对齐，可配置） |
+| Android 日志 / 埋点 | `core/EventLog.ets` + `service/AppLogger.ets` | 默认关闭、脱敏、按天轮转；不上报远端 |
 | 本地文件 / shell 工具 | `service/LocalToolRuntime.ets`、`RemoteToolRuntime.ets` | 应用工作区或远程 HTTP 服务，共用 `ToolRuntime` |
 | OpenCode Go 模型发现 | `ChatApi.fetchModelIds()` | 规范基址 `/zen/go/v1/models`；旧基址自动换算 |
 | Android `preferences` / DB | `service/LocalStore.ets` | 单库 JSON；后续可换 RDB |
@@ -32,7 +33,9 @@
 2. 实现 OpenAI 流式 `tool_calls` 解析与 Agent 循环；
 3. 本机工作区工具，带路径 jail、只读默认、写入开关；
 4. 远程工具转发协议，让平板可以把真实文件系统留在 PC / NAS；
-5. 设置页增加工具开关、沙箱模式、远程地址与 Token。
+5. 设置页增加工具开关、沙箱模式、远程地址与 Token；
+6. Agent 轮次上限改为可配置（默认 200，对齐 OpenMinis）并支持续跑；
+7. 增加可关闭的本地事件日志：耗时、轮次、工具状态、错误，脱敏且不记录正文。
 
 这样即使平板端暂时没有本地 shell，产品也已经具备“给模型工具”的完整链路，
 后续换后端不需要重写循环和 UI。
@@ -140,8 +143,9 @@ QemuToolRuntime    → guest 内命令与文件操作（预留）
 
 ## 已知风险
 
-1. **未在本机编译**：当前环境没有 DevEco Studio / HarmonyOS SDK，代码按 API 20
-   文档编写，首次 Sync 可能出现少量 API 签名差异，需要按 IDE 提示微调。
+1. **编译验证范围**：已用公共 OpenHarmony 6.0.0.49 SDK（API 20）跑通
+   `assembleHap`，但产物未签名；华为 HarmonyOS SDK 与 AGC 签名仍需 DevEco Studio。
+   真机安装前请在 DevEco 中完成自动签名配置。
 2. **`@kit.CoreFileKit` 文件 API**：`statSync`、`lstatSync`、`mkdirSync(path, true)`、
    `writeSync` 按 API 20 声明使用，尚未在真机验证权限与行为。
 3. **`requestInStream` 回调时序**：不同 API 版本对 `dataEnd` 与完成回调的顺序可能

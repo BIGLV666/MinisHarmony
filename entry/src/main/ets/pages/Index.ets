@@ -10,6 +10,7 @@ import {
 } from '../core/Types';
 import { ToolRuntime } from '../core/ToolTypes';
 import { AgentRuntime } from '../service/AgentRuntime';
+import { AppLogger } from '../service/AppLogger';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
@@ -66,6 +67,7 @@ struct Index {
       this.toast('本地存储初始化失败，本次会话不会保存');
     }
     this.settings = await LocalStore.loadSettings();
+    AppLogger.init(context, this.settings.loggingEnabled);
     const loaded: StoredSession[] = await LocalStore.loadSessions();
     this.store = loaded;
     this.sessions = this.buildMetaList();
@@ -250,6 +252,7 @@ struct Index {
 
   private applySettings(next: AppSettings): void {
     this.settings = next;
+    AppLogger.setEnabled(next.loggingEnabled);
     this.showSettings = false;
     LocalStore.saveSettings(next).catch((error: Error) => {
       this.toast('设置保存失败');

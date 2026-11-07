@@ -18,9 +18,27 @@ import {
 import { ToolCallDelta } from '../core/SseParser';
 import { ToolResult, ToolRuntime } from '../core/ToolTypes';
 import { truncateText } from '../core/Workspace';
+import {
+  EVENT_AGENT_FINISH,
+  EVENT_AGENT_START,
+  EVENT_CANCELLED,
+  EVENT_MODEL_DONE,
+  EVENT_MODEL_ERROR,
+  EVENT_MODEL_START,
+  EVENT_TOOL_DONE,
+  EVENT_TOOL_START,
+  EVENT_TURN_CAP,
+  LOG_ERROR,
+  LOG_INFO,
+  LOG_WARN,
+  LogEvent,
+  newLogEvent,
+  sessionTag
+} from '../core/EventLog';
+import { clampMaxTurns } from '../core/Types';
+import { AppLogger } from './AppLogger';
 import { ChatStreamHandle, startChatStream } from './ChatApi';
 
-const MAX_STEPS: number = 12;
 const MAX_TOOL_RESULT: number = 20000;
 const FLUSH_MS: number = 50;
 
@@ -54,9 +72,13 @@ export class AgentRuntime {
   private accumulators: Map<number, ToolAccumulator> = new Map<number, ToolAccumulator>();
   private flushTimer: number = -1;
   private step: number = 0;
+  private maxTurns: number = 200;
   private running: boolean = false;
   private finished: boolean = false;
   private cancelled: boolean = false;
+  private agentStartedAt: number = 0;
+  private requestStartedAt: number = 0;
+  private toolCount: number = 0;
 
   constructor(
     settings: AppSettings,
@@ -68,6 +90,7 @@ export class AgentRuntime {
     this.tools = tools;
     this.session = session;
     this.callbacks = callbacks;
+    this.maxTurns = clampMaxTurns(settings.maxAgentTurns);
   }
 
   isRunning(): boolean {
@@ -79,10 +102,16 @@ export class AgentRuntime {
       return;
     }
     this.running = true;
+    this.agentStartedAt = Date.now();
     this.session.messages.push(
       newChatMessage(util.generateRandomUUID(true), 'user', userText)
     );
     this.beginAssistant();
+    this.log(
+      EVENT_AGENT_START, LOG_INFO, 0, '', true, 0,
+      'maxTurns=' + this.maxTurns.toString() +
+        ' tools=' + (this.settings.toolsEnabled ? 'on' : 'off')
+    );
     this.emit();
     this.runStep();
   }
@@ -92,6 +121,7 @@ export class AgentRuntime {
       return;
     }
     this.cancelled = true;
+    this.log(EVENT_CANCELLED, LOG_WARN, this.step, '', false, 0, '用户停止生成');
     if (this.handle !== null) {
       this.handle.cancel();
       this.handle = null;
@@ -135,13 +165,18 @@ export class AgentRuntime {
       this.finish();
       return;
     }
-    if (this.step >= MAX_STEPS) {
+    if (this.step >= this.maxTurns) {
       if (this.lastAssistant !== null) {
         appendText(
           this.lastAssistant,
-          '\n\n> 已达到 ' + MAX_STEPS.toString() + ' 轮工具调用上限，请继续发送消息。'
+          '\n\n> 已达到 ' + this.maxTurns.toString() +
+            ' 轮工具调用上限。已完成的上下文与工具结果都保留在本对话中，继续发送消息即可接着执行。'
         );
       }
+      this.log(
+        EVENT_TURN_CAP, LOG_WARN, this.step, '', false, 0,
+        'limit=' + this.maxTurns.toString()
+      );
       this.finish();
       return;
     }
@@ -159,6 +194,12 @@ export class AgentRuntime {
     );
     this.accumulators.clear();
     const definitions = this.settings.toolsEnabled ? this.tools.definitions() : [];
+    this.requestStartedAt = Date.now();
+    this.log(
+      EVENT_MODEL_START, LOG_INFO, this.step, '', true, 0,
+      'messages=' + history.length.toString() +
+        ' tools=' + definitions.length.toString()
+    );
 
     const handle: ChatStreamHandle = startChatStream(
       this.settings,
@@ -206,6 +247,13 @@ export class AgentRuntime {
     this.handle = null;
     this.clearFlush();
     assistant.streaming = false;
+    this.log(
+      EVENT_MODEL_DONE, LOG_INFO, this.step, '', true,
+      Date.now() - this.requestStartedAt,
+      'finish=' + finishReason +
+        ' chars=' + textOf(assistant).length.toString() +
+        ' calls=' + this.accumulators.size.toString()
+    );
 
     if (finishReason === 'length') {
       const prefix: string = textOf(assistant).length > 0 ? '\n\n' : '';
@@ -243,6 +291,11 @@ export class AgentRuntime {
     this.handle = null;
     this.clearFlush();
     assistant.streaming = false;
+    this.log(
+      EVENT_MODEL_ERROR, LOG_ERROR, this.step, '', false,
+      Date.now() - this.requestStartedAt,
+      message
+    );
     if (textOf(assistant).length > 0) {
       appendText(assistant, '\n\n');
     }
@@ -272,6 +325,8 @@ export class AgentRuntime {
     call.status = TOOL_RUNNING;
     this.emit();
 
+    const toolStartedAt: number = Date.now();
+    this.log(EVENT_TOOL_START, LOG_INFO, this.step, call.toolName, true, 0, '');
     const args: string = call.argumentsText.length > 0 ? call.argumentsText : '{}';
     this.tools.execute(call.toolName, args).then((result: ToolResult) => {
       if (!this.running || this.cancelled) {
@@ -280,6 +335,12 @@ export class AgentRuntime {
       call.resultText = truncateText(result.content, MAX_TOOL_RESULT);
       call.status = result.ok ? TOOL_DONE : TOOL_ERROR;
       call.isError = !result.ok;
+      this.toolCount++;
+      this.log(
+        EVENT_TOOL_DONE, result.ok ? LOG_INFO : LOG_WARN, this.step,
+        call.toolName, result.ok, Date.now() - toolStartedAt,
+        'resultChars=' + call.resultText.length.toString()
+      );
       this.emit();
       this.executeTool(assistant, calls, index + 1);
     }).catch((error: Error) => {
@@ -289,6 +350,11 @@ export class AgentRuntime {
       call.resultText = '工具执行异常：' + error.message;
       call.status = TOOL_ERROR;
       call.isError = true;
+      this.toolCount++;
+      this.log(
+        EVENT_TOOL_DONE, LOG_ERROR, this.step, call.toolName, false,
+        Date.now() - toolStartedAt, error.message
+      );
       this.emit();
       this.executeTool(assistant, calls, index + 1);
     });
@@ -354,6 +420,29 @@ export class AgentRuntime {
     }
   }
 
+  private log(
+    event: string,
+    level: string,
+    step: number,
+    tool: string,
+    ok: boolean,
+    durationMs: number,
+    detail: string
+  ): void {
+    if (!this.settings.loggingEnabled) {
+      return;
+    }
+    const record: LogEvent = newLogEvent(event, level);
+    record.session = sessionTag(this.session.meta.id);
+    record.model = this.settings.modelId;
+    record.step = step;
+    record.tool = tool;
+    record.ok = ok;
+    record.durationMs = durationMs;
+    record.detail = detail;
+    AppLogger.log(record);
+  }
+
   private emit(): void {
     this.session.meta.updatedAt = Date.now();
     this.session.meta.messageCount = this.session.messages.length;
@@ -371,6 +460,11 @@ export class AgentRuntime {
       this.lastAssistant.streaming = false;
     }
     this.handle = null;
+    this.log(
+      EVENT_AGENT_FINISH, this.cancelled ? LOG_WARN : LOG_INFO, this.step,
+      '', !this.cancelled, Date.now() - this.agentStartedAt,
+      'steps=' + this.step.toString() + ' tools=' + this.toolCount.toString()
+    );
     this.session.meta.updatedAt = Date.now();
     this.session.meta.messageCount = this.session.messages.length;
     this.callbacks.onUpdate(this.session.messages.slice(), false);

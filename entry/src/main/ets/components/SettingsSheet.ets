@@ -4,11 +4,13 @@ import {
   OPENCODE_GO_BASE,
   ProviderPreset,
   SandboxMode,
+  clampMaxTurns,
   cloneSettings,
   defaultSettings
 } from '../core/Types';
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
+import { AppLogger } from '../service/AppLogger';
 
 @Component
 export struct SettingsSheet {
@@ -36,6 +38,8 @@ export struct SettingsSheet {
   @State sandboxMode: SandboxMode = 'local';
   @State sandboxUrl: string = '';
   @State sandboxToken: string = '';
+  @State maxTurnsText: string = '200';
+  @State loggingEnabled: boolean = false;
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -51,6 +55,8 @@ export struct SettingsSheet {
     this.sandboxMode = copy.sandboxMode;
     this.sandboxUrl = copy.sandboxUrl;
     this.sandboxToken = copy.sandboxToken;
+    this.maxTurnsText = copy.maxAgentTurns.toString();
+    this.loggingEnabled = copy.loggingEnabled;
   }
 
   private selectPreset(value: ProviderPreset): void {
@@ -84,9 +90,16 @@ export struct SettingsSheet {
       allowWriteTools: this.allowWriteTools,
       sandboxMode: this.sandboxMode,
       sandboxUrl: this.sandboxUrl.trim(),
-      sandboxToken: this.sandboxToken.trim()
+      sandboxToken: this.sandboxToken.trim(),
+      maxAgentTurns: clampMaxTurns(Number(this.maxTurnsText)),
+      loggingEnabled: this.loggingEnabled
     };
     return next;
+  }
+
+  private clearLogs(): void {
+    const removed: number = AppLogger.clear();
+    this.onToast(removed > 0 ? '已删除 ' + removed.toString() + ' 个日志文件' : '没有可删除的日志文件');
   }
 
   private async probe(): Promise<void> {
@@ -430,6 +443,68 @@ export struct SettingsSheet {
               }
               .width('100%')
               .margin({ top: 8 })
+            }
+            .width('100%')
+
+            this.sectionTitle('Agent 与日志', '工具往返上限与 OpenMinis 一致；日志只记录元数据')
+            Column({ space: 8 }) {
+              Row({ space: 10 }) {
+                Text('每轮最多往返')
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width(84)
+                TextInput({ text: this.maxTurnsText })
+                  .layoutWeight(1)
+                  .height(38)
+                  .fontSize(12)
+                  .type(InputType.Number)
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                  .onChange((value: string) => {
+                    this.maxTurnsText = value;
+                  })
+                Text('轮')
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_tertiary'))
+              }
+              .width('100%')
+
+              Text('默认 200。达到上限后本轮结束，已完成的上下文与工具结果会保留，继续发送消息即可接着执行。')
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+                .lineHeight(14)
+                .width('100%')
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text('记录本地事件日志')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text('记录请求耗时、模型、工具状态与错误；不记录对话内容、API Key 或沙箱 Token。按天轮转，保留 14 天。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.loggingEnabled })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.loggingEnabled = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Button('清空事件日志')
+                .height(34)
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(9)
+                .onClick(() => this.clearLogs())
             }
             .width('100%')
 

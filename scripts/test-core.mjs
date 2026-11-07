@@ -39,6 +39,31 @@ copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
 copyCore('ToolProtocol', ['Types']);
 copyCore('Workspace');
+copyCore('EventLog');
+
+// ArkTS needs runtime imports for interface types; Node's type stripping
+// needs them marked `type` (interfaces have no runtime binding).
+function markTypeOnly(name, from, names) {
+  const file = join(tmp, `${name}.mts`);
+  const source = readFileSync(file, 'utf8');
+  const plain = `import { ${names.join(', ')} } from './${from}.mts';`;
+  const typed = `import type { ${names.join(', ')} } from './${from}.mts';`;
+  writeFileSync(file, source.split(plain).join(typed));
+}
+
+markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'ToolProperty']);
+
+{
+  const file = join(tmp, 'ToolProtocol.mts');
+  const source = readFileSync(file, 'utf8');
+  writeFileSync(
+    file,
+    source.replace(
+      "import {\n  ChatMessage,\n  PART_REASONING,",
+      "import type { ChatMessage } from './Types.mts';\nimport {\n  PART_REASONING,"
+    )
+  );
+}
 
 const sse = await import(pathToFileURL(join(tmp, 'SseParser.mts')).href);
 const rules = await import(pathToFileURL(join(tmp, 'OpenCodeRules.mts')).href);
@@ -46,6 +71,7 @@ const md = await import(pathToFileURL(join(tmp, 'Markdown.mts')).href);
 const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
+const log = await import(pathToFileURL(join(tmp, 'EventLog.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -301,4 +327,55 @@ test('SSE parser streams tool call fragments', () => {
 
   const plain = sse.parseOpenAiData('{"choices":[{"delta":{"content":"hi"}}]}');
   assert.deepEqual(plain.toolCalls, []);
+});
+
+test('agent turn budget is clamped to a safe range', () => {
+  assert.equal(types.DEFAULT_MAX_AGENT_TURNS, 200);
+  assert.equal(types.clampMaxTurns(200), 200);
+  assert.equal(types.clampMaxTurns(0), 1);
+  assert.equal(types.clampMaxTurns(-5), 1);
+  assert.equal(types.clampMaxTurns(5000), 1000);
+  assert.equal(types.clampMaxTurns(12.9), 12);
+  assert.equal(types.clampMaxTurns(Number.NaN), 200);
+  assert.equal(types.clampMaxTurns(Number.POSITIVE_INFINITY), 200);
+  assert.equal(types.clampMaxTurns(undefined), 200);
+  const settings = types.defaultSettings();
+  assert.equal(settings.maxAgentTurns, 200);
+  assert.equal(settings.loggingEnabled, false);
+});
+
+test('event log redacts credentials and stays single-line', () => {
+  const raw = 'auth Bearer abc.def-123 sk-live_ABCDEFG token=secret123\nnext line';
+  const redacted = log.redactSecrets(raw);
+  assert.equal(redacted.includes('abc.def-123'), false);
+  assert.equal(redacted.includes('sk-live_ABCDEFG'), false);
+  assert.equal(redacted.includes('secret123'), false);
+  assert.match(redacted, /Bearer \*\*\*/);
+  assert.match(redacted, /sk-\*\*\*/);
+
+  const detail = log.sanitizeDetail('line1\nline2\t' + 'x'.repeat(400));
+  assert.equal(detail.includes('\n'), false);
+  assert.equal(detail.length <= 301, true);
+});
+
+test('event log serializes JSONL with a short session tag', () => {
+  const event = log.newLogEvent(log.EVENT_MODEL_DONE, log.LOG_INFO);
+  event.session = log.sessionTag('1234567890abcdef');
+  event.model = 'kimi-k3';
+  event.step = 3;
+  event.ok = true;
+  event.durationMs = 42;
+  event.detail = 'finish=stop token=abc';
+  const line = log.serializeEvent(event);
+  assert.equal(line.endsWith('\n'), true);
+  assert.equal(line.trim().split('\n').length, 1);
+  const parsed = JSON.parse(line);
+  assert.equal(parsed.event, 'model_done');
+  assert.equal(parsed.session, '12345678');
+  assert.equal(parsed.durationMs, 42);
+  assert.equal(parsed.detail.includes('abc'), false);
+  assert.equal(parsed.detail.includes('***'), true);
+
+  const date = new Date(2026, 10, 7);
+  assert.equal(log.logFileName(date), 'events-2026-11-07.jsonl');
 });

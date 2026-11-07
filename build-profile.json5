@@ -13,6 +13,19 @@
             "useNormalizedOHMUrl": true
           }
         }
+      },
+      {
+        "name": "ohos",
+        "compileSdkVersion": "6.0.0(20)",
+        "compatibleSdkVersion": "6.0.0(20)",
+        "targetSdkVersion": "6.0.0(20)",
+        "runtimeOS": "OpenHarmony",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
       }
     ],
     "buildModeSet": [
@@ -32,7 +45,8 @@
         {
           "name": "default",
           "applyToProducts": [
-            "default"
+            "default",
+            "ohos"
           ]
         }
       ]

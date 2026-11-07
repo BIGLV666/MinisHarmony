@@ -5,8 +5,8 @@
  * expects.
  */
 
-import type { ChatMessage } from './Types';
 import {
+  ChatMessage,
   PART_REASONING,
   PART_TEXT,
   PART_TOOL_CALL,

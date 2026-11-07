@@ -104,10 +104,10 @@ function originOf(raw: string): string {
 
 /**
  * OpenCode serves model discovery from a different path than inference:
- *   base   https://opencode.ai/inference/go/openai/v1
- *   models https://opencode.ai/inference/go/v1/models
- * The legacy /zen/go/v1 deployment has the same shape. Everything else uses
- * the conventional `<base>/models`.
+ *   canonical base  https://opencode.ai/zen/go/v1
+ *   models          https://opencode.ai/zen/go/v1/models
+ * The older /inference/go/openai/v1 base keeps a separate models path.
+ * Everything else uses the conventional `<base>/models`.
  */
 export function modelsUrl(raw: string): string {
   const base: string = normalizeBaseUrl(raw);

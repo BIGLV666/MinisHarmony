@@ -2,10 +2,13 @@ import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { AppSettings, ChatMessage } from '../core/Types';
+import { ApiMessage, toApiMessages } from '../core/ToolProtocol';
+import { ToolDefinition, ToolParameters } from '../core/ToolTypes';
 import {
   SseParser,
   SseEvent,
   DeltaResult,
+  ToolCallDelta,
   parseOpenAiData,
   parseErrorMessage,
   OpenAiErrorDetail
@@ -21,22 +24,30 @@ import {
 const USER_AGENT: string = 'MinisHarmony/1.0 (HarmonyOS tablet)';
 
 export interface ChatCallbacks {
-  onDelta: (content: string, reasoning: string) => void;
+  onDelta: (content: string, reasoning: string, toolCalls: ToolCallDelta[]) => void;
   onDone: (finishReason: string) => void;
   onError: (message: string) => void;
 }
 
-interface RequestMessage {
-  role: string;
-  content: string;
+interface ApiToolFunctionDefinition {
+  name: string;
+  description: string;
+  parameters: ToolParameters;
+}
+
+interface ApiToolDefinition {
+  type: string;
+  function: ApiToolFunctionDefinition;
 }
 
 interface ChatRequestBody {
   model: string;
-  messages: RequestMessage[];
+  messages: ApiMessage[];
   stream: boolean;
   temperature?: number;
   max_tokens?: number;
+  tools?: ApiToolDefinition[];
+  tool_choice?: string;
 }
 
 interface ModelEntry {
@@ -110,23 +121,28 @@ function httpErrorText(code: number, body: string): string {
   return detail.length > 0 ? prefix + '：' + detail : prefix;
 }
 
-function buildMessages(settings: AppSettings, history: ChatMessage[]): RequestMessage[] {
-  const messages: RequestMessage[] = [];
+function buildMessages(settings: AppSettings, history: ChatMessage[]): ApiMessage[] {
+  const messages: ApiMessage[] = toApiMessages(history);
   const systemPrompt: string = settings.systemPrompt.trim();
   if (systemPrompt.length > 0) {
-    messages.push({ role: 'system', content: systemPrompt });
-  }
-  for (let i = 0; i < history.length; i++) {
-    const item: ChatMessage = history[i];
-    if (item.error || item.content.length === 0) {
-      continue;
-    }
-    if (item.role !== 'user' && item.role !== 'assistant') {
-      continue;
-    }
-    messages.push({ role: item.role, content: item.content });
+    messages.unshift({ role: 'system', content: systemPrompt });
   }
   return messages;
+}
+
+function buildToolDefinitions(tools: ToolDefinition[]): ApiToolDefinition[] {
+  const definitions: ApiToolDefinition[] = [];
+  for (let i = 0; i < tools.length; i++) {
+    definitions.push({
+      type: 'function',
+      function: {
+        name: tools[i].name,
+        description: tools[i].description,
+        parameters: tools[i].parameters
+      }
+    });
+  }
+  return definitions;
 }
 
 /**
@@ -140,6 +156,7 @@ export function startChatStream(
   settings: AppSettings,
   sessionId: string,
   history: ChatMessage[],
+  tools: ToolDefinition[],
   callbacks: ChatCallbacks
 ): ChatStreamHandle {
   const handle: ChatStreamHandle = new ChatStreamHandle();
@@ -162,6 +179,10 @@ export function startChatStream(
     temperature: settings.temperature,
     max_tokens: settings.maxTokens
   };
+  if (tools.length > 0) {
+    body.tools = buildToolDefinitions(tools);
+    body.tool_choice = 'auto';
+  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -231,8 +252,9 @@ export function startChatStream(
       streamError = delta.error;
       return;
     }
-    if (delta.content.length > 0 || delta.reasoning.length > 0) {
-      callbacks.onDelta(delta.content, delta.reasoning);
+    if (delta.content.length > 0 || delta.reasoning.length > 0 ||
+      delta.toolCalls.length > 0) {
+      callbacks.onDelta(delta.content, delta.reasoning, delta.toolCalls);
     }
     if (delta.finishReason.length > 0) {
       finishReason = delta.finishReason;
@@ -256,6 +278,9 @@ export function startChatStream(
     const events: SseEvent[] = parser.push(text);
     for (let i = 0; i < events.length; i++) {
       consumeEvent(events[i]);
+      if (streamError.length > 0) {
+        break;
+      }
     }
     if (streamError.length > 0) {
       fail(streamError);
@@ -320,8 +345,9 @@ export function startChatStream(
 }
 
 /**
- * Fetch model ids for the configured endpoint. For OpenCode this hits
- * /inference/go/v1/models rather than the inference base.
+ * Fetch model ids for the configured endpoint. For OpenCode this hits the
+ * gateway's models path (`/zen/go/v1/models` for the canonical base) rather
+ * than the inference path.
  */
 export async function fetchModelIds(settings: AppSettings): Promise<ModelsResult> {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);

@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -18,13 +18,34 @@ const tmp = join(here, '.tmp');
 
 rmSync(tmp, { recursive: true, force: true });
 mkdirSync(tmp, { recursive: true });
-copyFileSync(join(core, 'SseParser.ets'), join(tmp, 'SseParser.mts'));
-copyFileSync(join(core, 'OpenCodeRules.ets'), join(tmp, 'OpenCodeRules.mts'));
-copyFileSync(join(core, 'Markdown.ets'), join(tmp, 'Markdown.mts'));
+
+/**
+ * ArkTS uses extensionless relative imports; Node's ESM loader does not.
+ * Rewrite the few internal imports while copying to .mts.
+ */
+function copyCore(name, deps = []) {
+  let source = readFileSync(join(core, `${name}.ets`), 'utf8');
+  for (const dep of deps) {
+    source = source.split(`from './${dep}'`).join(`from './${dep}.mts'`);
+  }
+  writeFileSync(join(tmp, `${name}.mts`), source);
+}
+
+copyCore('SseParser');
+copyCore('OpenCodeRules');
+copyCore('Markdown');
+copyCore('Types');
+copyCore('ToolTypes');
+copyCore('ToolCatalog', ['ToolTypes']);
+copyCore('ToolProtocol', ['Types']);
+copyCore('Workspace');
 
 const sse = await import(pathToFileURL(join(tmp, 'SseParser.mts')).href);
 const rules = await import(pathToFileURL(join(tmp, 'OpenCodeRules.mts')).href);
 const md = await import(pathToFileURL(join(tmp, 'Markdown.mts')).href);
+const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
+const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
+const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -141,4 +162,143 @@ test('Markdown inline parsing', () => {
   assert.equal(parts.some((p) => p.text === 'b' && p.bold), true);
   assert.equal(parts.some((p) => p.text === 'c' && p.code), true);
   assert.equal(parts.some((p) => p.text === 'd' && p.link === 'https://x.y'), true);
+});
+
+test('defaults target the canonical Go endpoint and enable tools', () => {
+  const settings = types.defaultSettings();
+  assert.equal(types.OPENCODE_GO_BASE, 'https://opencode.ai/zen/go/v1');
+  assert.equal(settings.baseUrl, types.OPENCODE_GO_BASE);
+  assert.equal(settings.toolsEnabled, true);
+  assert.equal(settings.allowWriteTools, false);
+  assert.equal(settings.sandboxMode, 'local');
+  const cloned = types.cloneSettings(settings);
+  cloned.apiKey = 'changed';
+  assert.equal(settings.apiKey, '');
+});
+
+test('message parts keep text and reasoning separate', () => {
+  const message = types.newChatMessage('m1', 'assistant', 'hello');
+  types.appendText(message, ' world');
+  types.appendReasoning(message, 'thinking');
+  types.appendText(message, '!');
+  assert.equal(types.textOf(message), 'hello world!');
+  assert.equal(types.reasoningOf(message), 'thinking');
+  assert.deepEqual(message.parts.map((p) => p.kind), [
+    types.PART_TEXT,
+    types.PART_REASONING,
+    types.PART_TEXT
+  ]);
+  assert.equal(types.messageKey(message).startsWith('m1:0:0'), true);
+});
+
+test('appendText starts a new part after a tool call', () => {
+  const message = types.newChatMessage('m2', 'assistant', 'before');
+  message.parts.push(types.toolCallPart('call_1', 'now', '{}'));
+  types.appendText(message, 'after');
+  assert.equal(message.parts.length, 3);
+  assert.equal(message.parts[2].kind, types.PART_TEXT);
+  assert.equal(types.textOf(message), 'beforeafter');
+});
+
+test('tool protocol expands calls and results into OpenAI messages', () => {
+  const user = types.newChatMessage('u1', 'user', 'read a file');
+  const assistant = types.newChatMessage('a1', 'assistant', 'let me look');
+  const call = types.toolCallPart('call_1', 'read_file', '{"path":"a.txt"}');
+  call.status = types.TOOL_DONE;
+  call.resultText = 'contents';
+  assistant.parts.push(call);
+
+  const api = proto.toApiMessages([user, assistant]);
+  assert.equal(api.length, 3);
+  assert.deepEqual(api[0], { role: 'user', content: 'read a file' });
+  assert.equal(api[1].role, 'assistant');
+  assert.equal(api[1].content, 'let me look');
+  assert.equal(api[1].tool_calls.length, 1);
+  assert.equal(api[1].tool_calls[0].id, 'call_1');
+  assert.equal(api[1].tool_calls[0].type, 'function');
+  assert.equal(api[1].tool_calls[0].function.name, 'read_file');
+  assert.equal(api[1].tool_calls[0].function.arguments, '{"path":"a.txt"}');
+  assert.deepEqual(api[2], {
+    role: 'tool',
+    content: 'contents',
+    tool_call_id: 'call_1'
+  });
+});
+
+test('interrupted tool calls get a synthetic result', () => {
+  const assistant = types.newChatMessage('a2', 'assistant', '');
+  const call = types.toolCallPart('', 'now', '');
+  call.status = types.TOOL_RUNNING;
+  assistant.parts.push(call);
+
+  const api = proto.toApiMessages([assistant]);
+  assert.equal(api.length, 2);
+  assert.equal(api[0].content, '');
+  assert.equal(api[0].tool_calls[0].id, 'call_0_0');
+  assert.equal(api[0].tool_calls[0].function.arguments, '{}');
+  assert.equal(api[1].role, 'tool');
+  assert.equal(api[1].tool_call_id, 'call_0_0');
+  assert.match(api[1].content, /中断/);
+});
+
+test('empty assistant turns are dropped, reasoning is not sent', () => {
+  const empty = types.newChatMessage('a3', 'assistant', '');
+  types.appendReasoning(empty, 'internal monologue');
+  const assistant = types.newChatMessage('a4', 'assistant', 'answer');
+  types.appendReasoning(assistant, 'internal monologue');
+  const api = proto.toApiMessages([empty, assistant]);
+  assert.deepEqual(api, [{ role: 'assistant', content: 'answer' }]);
+});
+
+test('workspace path jail rejects escapes', () => {
+  assert.equal(workspace.normalizeRelativePath('../etc/passwd'), null);
+  assert.equal(workspace.normalizeRelativePath('/etc/passwd'), null);
+  assert.equal(workspace.normalizeRelativePath('a/../b'), null);
+  assert.equal(workspace.normalizeRelativePath('..\\boot.ini'), null);
+  assert.equal(workspace.normalizeRelativePath('  '), '');
+  assert.equal(workspace.normalizeRelativePath('a//b/./c/'), 'a/b/c');
+  assert.equal(workspace.normalizeRelativePath('notes\\todo.md'), 'notes/todo.md');
+  assert.equal(workspace.resolveWorkspacePath('/data/ws/', 'a/b'), '/data/ws/a/b');
+  assert.equal(workspace.resolveWorkspacePath('/data/ws/', ''), '/data/ws');
+});
+
+test('truncateText marks long content', () => {
+  assert.equal(workspace.truncateText('abc', 10), 'abc');
+  const cut = workspace.truncateText('abcdef', 3);
+  assert.equal(cut.startsWith('abc\n…'), true);
+  assert.match(cut, /6/);
+});
+
+test('SSE parser streams tool call fragments', () => {
+  const first = sse.parseOpenAiData(JSON.stringify({
+    choices: [{
+      delta: {
+        tool_calls: [{
+          index: 0,
+          id: 'call_9',
+          type: 'function',
+          function: { name: 'read_file', arguments: '{"path":"a' }
+        }]
+      }
+    }]
+  }));
+  assert.equal(first.toolCalls.length, 1);
+  assert.equal(first.toolCalls[0].index, 0);
+  assert.equal(first.toolCalls[0].id, 'call_9');
+  assert.equal(first.toolCalls[0].name, 'read_file');
+  assert.equal(first.toolCalls[0].arguments, '{"path":"a');
+
+  const second = sse.parseOpenAiData(JSON.stringify({
+    choices: [{
+      delta: { tool_calls: [{ index: 0, function: { arguments: '.txt"}' } }] },
+      finish_reason: 'tool_calls'
+    }]
+  }));
+  assert.equal(second.toolCalls[0].index, 0);
+  assert.equal(second.toolCalls[0].id, '');
+  assert.equal(second.toolCalls[0].arguments, '.txt"}');
+  assert.equal(second.finishReason, 'tool_calls');
+
+  const plain = sse.parseOpenAiData('{"choices":[{"delta":{"content":"hi"}}]}');
+  assert.deepEqual(plain.toolCalls, []);
 });

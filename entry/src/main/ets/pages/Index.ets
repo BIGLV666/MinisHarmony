@@ -6,11 +6,13 @@ import {
   SessionMeta,
   StoredSession,
   cloneSettings,
-  defaultSettings,
-  newChatMessage
+  defaultSettings
 } from '../core/Types';
-import { ChatStreamHandle, startChatStream } from '../service/ChatApi';
+import { ToolRuntime } from '../core/ToolTypes';
+import { AgentRuntime } from '../service/AgentRuntime';
 import { LocalStore } from '../service/LocalStore';
+import { LocalToolRuntime } from '../service/LocalToolRuntime';
+import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { titleFrom } from '../service/Format';
 import { ChatView } from '../components/ChatView';
 import { ModelPicker } from '../components/ModelPicker';
@@ -35,10 +37,8 @@ struct Index {
   @State ready: boolean = false;
 
   private store: StoredSession[] = [];
-  private streamHandle: ChatStreamHandle | null = null;
-  private pendingContent: string = '';
-  private pendingReasoning: string = '';
-  private flushTimer: number = -1;
+  private agent: AgentRuntime | null = null;
+  private workspaceRoot: string = '';
   private saveTimer: number = -1;
 
   aboutToAppear(): void {
@@ -46,23 +46,20 @@ struct Index {
   }
 
   aboutToDisappear(): void {
-    if (this.flushTimer !== -1) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = -1;
-    }
     if (this.saveTimer !== -1) {
       clearTimeout(this.saveTimer);
       this.saveTimer = -1;
     }
     this.persistNow();
-    if (this.streamHandle !== null) {
-      this.streamHandle.cancel();
-      this.streamHandle = null;
+    if (this.agent !== null) {
+      this.agent.cancel();
+      this.agent = null;
     }
   }
 
   private async bootstrap(): Promise<void> {
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    this.workspaceRoot = context.filesDir + '/workspace';
     try {
       await LocalStore.init(context);
     } catch (e) {
@@ -187,6 +184,12 @@ struct Index {
       this.toast('请先填写 API 地址');
       return;
     }
+    if (this.settings.toolsEnabled && this.settings.sandboxMode === 'remote' &&
+      this.settings.sandboxUrl.trim().length === 0) {
+      this.showSettings = true;
+      this.toast('请先填写远程沙箱地址');
+      return;
+    }
 
     let session: StoredSession | null = this.findSession(this.currentId);
     if (session === null) {
@@ -197,147 +200,52 @@ struct Index {
       return;
     }
 
-    const userMessage: ChatMessage = newChatMessage(util.generateRandomUUID(true), 'user', text);
-    const assistantMessage: ChatMessage = newChatMessage(util.generateRandomUUID(true), 'assistant', '');
-    assistantMessage.streaming = true;
-
-    session.messages.push(userMessage);
-    session.messages.push(assistantMessage);
-    if (session.messages.length === 2) {
+    if (session.messages.length === 0) {
       session.meta.title = titleFrom(text);
     }
     session.meta.updatedAt = Date.now();
     session.meta.modelId = this.settings.modelId;
-    session.meta.messageCount = session.messages.length;
 
-    this.messages = session.messages.slice();
-    this.sessions = this.buildMetaList();
-    this.draft = '';
+    const runtime: ToolRuntime = this.makeToolRuntime();
     this.streaming = true;
-    this.pendingContent = '';
-    this.pendingReasoning = '';
-    this.persistSoon();
-
-    const history: ChatMessage[] = session.messages.slice(0, session.messages.length - 1);
-    const handle: ChatStreamHandle = startChatStream(this.settings, session.meta.id, history, {
-      onDelta: (content: string, reasoning: string) => {
-        this.queueDelta(content, reasoning);
-      },
-      onDone: (finishReason: string) => {
-        this.finishStream(finishReason, '');
+    this.draft = '';
+    this.agent = new AgentRuntime(this.settings, runtime, session, {
+      onUpdate: (messages: ChatMessage[], running: boolean) => {
+        this.messages = messages;
+        this.streaming = running;
+        this.sessions = this.buildMetaList();
+        this.persistSoon();
+        if (!running) {
+          this.agent = null;
+        }
       },
       onError: (message: string) => {
-        this.finishStream('', message);
+        this.toast(message);
       }
     });
-    this.streamHandle = handle;
-    if (!this.streaming) {
-      // A synchronous validation failure already finished the turn.
-      handle.cancel();
-      this.streamHandle = null;
-    }
-  }
-
-  private queueDelta(content: string, reasoning: string): void {
-    this.pendingContent += content;
-    this.pendingReasoning += reasoning;
-    if (this.flushTimer !== -1) {
-      return;
-    }
-    this.flushTimer = setTimeout(() => {
-      this.flushTimer = -1;
-      this.applyPending();
-    }, 50);
-  }
-
-  private applyPending(): void {
-    if (this.pendingContent.length === 0 && this.pendingReasoning.length === 0) {
-      return;
-    }
-    const content: string = this.pendingContent;
-    const reasoning: string = this.pendingReasoning;
-    this.pendingContent = '';
-    this.pendingReasoning = '';
-
-    const session: StoredSession | null = this.findSession(this.currentId);
-    if (session === null || session.messages.length === 0) {
-      return;
-    }
-    const index: number = session.messages.length - 1;
-    const previous: ChatMessage = session.messages[index];
-    if (previous.role !== 'assistant') {
-      return;
-    }
-    const updated: ChatMessage = {
-      id: previous.id,
-      role: previous.role,
-      content: previous.content + content,
-      reasoning: previous.reasoning + reasoning,
-      createdAt: previous.createdAt,
-      streaming: previous.streaming,
-      error: previous.error
-    };
-    session.messages[index] = updated;
-    this.messages = session.messages.slice();
-  }
-
-  private finishStream(finishReason: string, error: string): void {
-    if (this.flushTimer !== -1) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = -1;
-    }
-    this.applyPending();
-
-    const session: StoredSession | null = this.findSession(this.currentId);
-    if (session !== null && session.messages.length > 0) {
-      const index: number = session.messages.length - 1;
-      const previous: ChatMessage = session.messages[index];
-      if (previous.role === 'assistant') {
-        let content: string = previous.content;
-        let isError: boolean = previous.error;
-        if (error.length > 0) {
-          isError = true;
-          if (content.length > 0) {
-            content += '\n\n';
-          }
-          content += '> ⚠️ ' + error;
-        } else if (finishReason === 'length') {
-          content += '\n\n> 已达到最大输出长度';
-        }
-        if (content.length === 0 && !isError) {
-          content = finishReason === 'stop' ? '（已停止生成）' : '（模型没有返回内容）';
-        }
-        const updated: ChatMessage = {
-          id: previous.id,
-          role: previous.role,
-          content: content,
-          reasoning: previous.reasoning,
-          createdAt: previous.createdAt,
-          streaming: false,
-          error: isError
-        };
-        session.messages[index] = updated;
-        session.meta.updatedAt = Date.now();
-        session.meta.messageCount = session.messages.length;
-      }
-      this.messages = session.messages.slice();
-    }
-
+    this.agent.start(text);
     this.sessions = this.buildMetaList();
-    this.streaming = false;
-    this.streamHandle = null;
     this.persistSoon();
-    if (error.length > 0) {
-      this.toast(error);
+  }
+
+  private makeToolRuntime(): ToolRuntime {
+    if (this.settings.sandboxMode === 'remote') {
+      return new RemoteToolRuntime(
+        this.settings.sandboxUrl,
+        this.settings.sandboxToken,
+        this.settings.allowWriteTools
+      );
     }
+    return new LocalToolRuntime(this.workspaceRoot, this.settings.allowWriteTools);
   }
 
   private stopStream(): void {
-    if (this.streamHandle !== null) {
-      this.streamHandle.cancel();
-      this.streamHandle = null;
+    if (this.agent !== null) {
+      this.agent.cancel();
+      this.agent = null;
     }
-    this.finishStream('stop', '');
+    this.streaming = false;
+    this.persistSoon();
   }
 
   private applySettings(next: AppSettings): void {

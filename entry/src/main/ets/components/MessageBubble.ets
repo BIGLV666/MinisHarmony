@@ -1,5 +1,14 @@
 import { pasteboard } from '@kit.BasicServicesKit';
-import { ChatMessage } from '../core/Types';
+import {
+  ChatMessage,
+  MessagePart,
+  TOOL_DONE,
+  TOOL_ERROR,
+  TOOL_RUNNING,
+  reasoningOf,
+  textOf,
+  toolCallsOf
+} from '../core/Types';
 import { formatRelative } from '../service/Format';
 import { MarkdownView } from './MarkdownView';
 
@@ -8,22 +17,62 @@ export struct MessageBubble {
   @Prop message: ChatMessage = {
     id: '',
     role: 'assistant',
-    content: '',
-    reasoning: '',
+    parts: [],
     createdAt: 0,
     streaming: false,
     error: false
   };
   @State reasoningOpen: boolean = false;
+  @State openToolId: string = '';
 
   private isUser(): boolean {
     return this.message.role === 'user';
   }
 
+  private content(): string {
+    return textOf(this.message);
+  }
+
+  private reasoning(): string {
+    return reasoningOf(this.message);
+  }
+
+  private calls(): MessagePart[] {
+    return toolCallsOf(this.message);
+  }
+
+  private toolKey(part: MessagePart): string {
+    return part.toolCallId.length > 0
+      ? part.toolCallId
+      : part.toolName + ':' + part.argumentsText;
+  }
+
+  private isToolOpen(part: MessagePart): boolean {
+    return this.openToolId.length > 0 && this.openToolId === this.toolKey(part);
+  }
+
+  private toggleTool(part: MessagePart): void {
+    const key: string = this.toolKey(part);
+    this.openToolId = this.openToolId === key ? '' : key;
+  }
+
+  private toolStatus(status: string): string {
+    if (status === TOOL_RUNNING) {
+      return '执行中…';
+    }
+    if (status === TOOL_DONE) {
+      return '完成';
+    }
+    if (status === TOOL_ERROR) {
+      return '失败';
+    }
+    return '等待执行';
+  }
+
   private copy(): void {
     const data: pasteboard.PasteData = pasteboard.createData(
       pasteboard.MIMETYPE_TEXT_PLAIN,
-      this.message.content
+      this.content()
     );
     pasteboard.getSystemPasteboard().setData(data).then(() => {
       this.getUIContext().getPromptAction().showToast({ message: '已复制' });
@@ -57,7 +106,7 @@ export struct MessageBubble {
           .fontSize(11)
           .fontColor($r('app.color.accent'))
         Blank()
-        if (this.message.streaming && this.message.content.length === 0) {
+        if (this.message.streaming && this.content().length === 0) {
           LoadingProgress()
             .width(14)
             .height(14)
@@ -70,7 +119,7 @@ export struct MessageBubble {
       })
 
       if (this.reasoningOpen) {
-        Text(this.message.reasoning)
+        Text(this.reasoning())
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .lineHeight(19)
@@ -82,6 +131,68 @@ export struct MessageBubble {
     .padding({ left: 10, right: 10, top: 8, bottom: 8 })
     .backgroundColor($r('app.color.surface_alt'))
     .borderRadius(10)
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  toolCard(part: MessagePart) {
+    Column({ space: 6 }) {
+      Row({ space: 8 }) {
+        Text(part.status === TOOL_RUNNING ? '◌' : (part.isError ? '✕' : '✓'))
+          .fontSize(11)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(part.isError ? $r('app.color.danger') : $r('app.color.accent'))
+        Text(part.toolName)
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Blank()
+        Text(this.toolStatus(part.status))
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+      }
+      .width('100%')
+      .onClick(() => this.toggleTool(part))
+
+      if (this.isToolOpen(part)) {
+        Text('参数')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+        Text(part.argumentsText.length > 0 ? part.argumentsText : '{}')
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+          .lineHeight(17)
+          .maxLines(8)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
+          .copyOption(CopyOptions.LocalDevice)
+        if (part.resultText.length > 0) {
+          Text('结果')
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+            .width('100%')
+          Text(part.resultText)
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+            .lineHeight(17)
+            .maxLines(14)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+            .copyOption(CopyOptions.LocalDevice)
+        }
+      }
+    }
+    .width('100%')
+    .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+    .backgroundColor($r('app.color.surface_alt'))
+    .borderRadius(10)
+    .border({
+      width: 1,
+      color: part.isError ? $r('app.color.danger') : $r('app.color.border')
+    })
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -102,7 +213,7 @@ export struct MessageBubble {
   @Builder
   userBubble() {
     Column({ space: 6 }) {
-      Text(this.message.content)
+      Text(this.content())
         .fontSize(15)
         .lineHeight(23)
         .fontColor($r('app.color.on_accent'))
@@ -127,13 +238,20 @@ export struct MessageBubble {
   @Builder
   assistantBubble() {
     Column({ space: 9 }) {
-      if (this.message.reasoning.length > 0) {
+      if (this.reasoning().length > 0) {
         this.reasoningPanel()
       }
 
-      if (this.message.content.length > 0) {
-        MarkdownView({ text: this.message.content })
-      } else if (this.message.streaming) {
+      if (this.calls().length > 0) {
+        ForEach(this.calls(), (part: MessagePart) => {
+          this.toolCard(part)
+        }, (part: MessagePart) => part.toolCallId + ':' + part.status + ':' +
+          part.argumentsText.length + ':' + part.resultText.length)
+      }
+
+      if (this.content().length > 0) {
+        MarkdownView({ text: this.content() })
+      } else if (this.message.streaming && this.calls().length === 0) {
         this.thinking()
       }
 
@@ -147,7 +265,7 @@ export struct MessageBubble {
         Text(formatRelative(this.message.createdAt))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
-        if (this.message.content.length > 0 && !this.message.streaming) {
+        if (this.content().length > 0 && !this.message.streaming) {
           Text('复制')
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))

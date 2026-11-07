@@ -3,6 +3,7 @@ import {
   OPENCODE_DEFAULT_MODEL,
   OPENCODE_GO_BASE,
   ProviderPreset,
+  SandboxMode,
   cloneSettings,
   defaultSettings
 } from '../core/Types';
@@ -30,6 +31,11 @@ export struct SettingsSheet {
   @State probing: boolean = false;
   @State probeMessage: string = '';
   @State probeModels: string[] = [];
+  @State toolsEnabled: boolean = true;
+  @State allowWriteTools: boolean = false;
+  @State sandboxMode: SandboxMode = 'local';
+  @State sandboxUrl: string = '';
+  @State sandboxToken: string = '';
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -40,6 +46,11 @@ export struct SettingsSheet {
     this.systemPrompt = copy.systemPrompt;
     this.temperature = copy.temperature;
     this.maxTokensText = copy.maxTokens.toString();
+    this.toolsEnabled = copy.toolsEnabled;
+    this.allowWriteTools = copy.allowWriteTools;
+    this.sandboxMode = copy.sandboxMode;
+    this.sandboxUrl = copy.sandboxUrl;
+    this.sandboxToken = copy.sandboxToken;
   }
 
   private selectPreset(value: ProviderPreset): void {
@@ -68,7 +79,12 @@ export struct SettingsSheet {
       modelId: this.modelId.trim(),
       systemPrompt: this.systemPrompt,
       temperature: this.temperature,
-      maxTokens: this.maxTokensValue()
+      maxTokens: this.maxTokensValue(),
+      toolsEnabled: this.toolsEnabled,
+      allowWriteTools: this.allowWriteTools,
+      sandboxMode: this.sandboxMode,
+      sandboxUrl: this.sandboxUrl.trim(),
+      sandboxToken: this.sandboxToken.trim()
     };
     return next;
   }
@@ -97,6 +113,17 @@ export struct SettingsSheet {
     if (next.modelId.length === 0) {
       this.probeMessage = '模型 ID 不能为空';
       return;
+    }
+    if (next.toolsEnabled && next.sandboxMode === 'remote') {
+      if (next.sandboxUrl.length === 0) {
+        this.probeMessage = '远程沙箱地址不能为空';
+        return;
+      }
+      if (!next.sandboxUrl.startsWith('http://') &&
+        !next.sandboxUrl.startsWith('https://')) {
+        this.probeMessage = '远程沙箱地址必须以 http:// 或 https:// 开头';
+        return;
+      }
     }
     this.onSave(next);
   }
@@ -144,6 +171,36 @@ export struct SettingsSheet {
     .backgroundColor(this.preset === value ? $r('app.color.accent_soft') : $r('app.color.surface_alt'))
     .border({ width: 1, color: this.preset === value ? $r('app.color.accent') : $r('app.color.border') })
     .onClick(() => this.selectPreset(value))
+  }
+
+  @Builder
+  sandboxCard(name: string, desc: string, value: SandboxMode) {
+    Column({ space: 4 }) {
+      Row({ space: 6 }) {
+        Text(name)
+          .fontSize(13)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+        if (this.sandboxMode === value) {
+          Text('✓')
+            .fontSize(12)
+            .fontColor($r('app.color.accent'))
+        }
+      }
+      Text(desc)
+        .fontSize(10)
+        .fontColor($r('app.color.text_tertiary'))
+        .maxLines(2)
+    }
+    .layoutWeight(1)
+    .alignItems(HorizontalAlign.Start)
+    .padding(11)
+    .borderRadius(11)
+    .backgroundColor(this.sandboxMode === value ? $r('app.color.accent_soft') : $r('app.color.surface_alt'))
+    .border({ width: 1, color: this.sandboxMode === value ? $r('app.color.accent') : $r('app.color.border') })
+    .onClick(() => {
+      this.sandboxMode = value;
+    })
   }
 
   @Builder
@@ -375,6 +432,106 @@ export struct SettingsSheet {
               .margin({ top: 8 })
             }
             .width('100%')
+
+            this.sectionTitle('工具与沙箱', '工具默认在应用私有工作区执行，也可以转发到电脑上的兼容服务')
+            Row({ space: 10 }) {
+              Text('允许模型调用工具')
+                .fontSize(12)
+                .fontColor($r('app.color.text_primary'))
+                .layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.toolsEnabled })
+                .selectedColor($r('app.color.accent'))
+                .onChange((on: boolean) => {
+                  this.toolsEnabled = on;
+                })
+            }
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
+
+            if (this.toolsEnabled) {
+              Row({ space: 10 }) {
+                this.sandboxCard('本机', '应用私有目录，离线可用', 'local')
+                this.sandboxCard('远程', '转发到 PC / NAS 的工具服务', 'remote')
+              }
+              .width('100%')
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text('允许写入工作区文件')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(this.sandboxMode === 'local'
+                    ? '关闭时只读；开启后模型可创建和覆盖文件'
+                    : '关闭时远程端只读；开启后允许远程写入')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.allowWriteTools })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.allowWriteTools = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              if (this.sandboxMode === 'local') {
+                Text('本机工作区位于应用沙箱的 workspace/ 目录。路径必须是相对路径，不能包含 .. 或符号链接。')
+                  .fontSize(9)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .lineHeight(14)
+                  .width('100%')
+              } else {
+                Column() {
+                  this.fieldLabel('远程工具服务地址')
+                  TextInput({
+                    text: this.sandboxUrl,
+                    placeholder: 'https://pc.example.com:8787/tool'
+                  })
+                    .width('100%')
+                    .height(42)
+                    .fontSize(13)
+                    .backgroundColor($r('app.color.surface_alt'))
+                    .borderRadius(10)
+                    .onChange((value: string) => {
+                      this.sandboxUrl = value;
+                    })
+                  Text('协议：POST {name, arguments} → {ok, content}；接受与原工具相同的工具名。')
+                    .fontSize(9)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                    .margin({ top: 4 })
+                    .width('100%')
+                }
+                .width('100%')
+                .alignItems(HorizontalAlign.Start)
+
+                Column() {
+                  this.fieldLabel('远程访问令牌（可选）')
+                  TextInput({
+                    text: this.sandboxToken,
+                    placeholder: 'Bearer token'
+                  })
+                    .width('100%')
+                    .height(42)
+                    .fontSize(13)
+                    .type(InputType.Password)
+                    .backgroundColor($r('app.color.surface_alt'))
+                    .borderRadius(10)
+                    .onChange((value: string) => {
+                      this.sandboxToken = value;
+                    })
+                }
+                .width('100%')
+                .alignItems(HorizontalAlign.Start)
+              }
+            }
 
             Column() {
               this.fieldLabel('系统提示词（可选）')

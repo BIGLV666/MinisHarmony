@@ -1,4 +1,4 @@
-import { ChatMessage, modelName } from '../core/Types';
+import { ChatMessage, messageKey, modelName } from '../core/Types';
 import { MessageBubble } from './MessageBubble';
 
 const SUGGESTIONS: string[] = [
@@ -256,9 +256,7 @@ export struct ChatView {
               ListItem() {
                 MessageBubble({ message: message })
               }
-            }, (message: ChatMessage) => message.id + ':' + message.content.length + ':' +
-              message.reasoning.length + ':' + (message.streaming ? '1' : '0') +
-              ':' + (message.error ? '1' : '0'))
+            }, (message: ChatMessage) => messageKey(message))
           }
           .layoutWeight(1)
           .width('100%')

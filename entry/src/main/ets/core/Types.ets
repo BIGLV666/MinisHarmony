@@ -3,13 +3,30 @@
  *
  * Kept free of HarmonyOS imports so the pure parts can be exercised by the
  * Node test harness in scripts/test-core.mjs.
+ *
+ * Messages are stored as an ordered list of parts instead of a single
+ * `content` string. Text, reasoning, tool calls and their results therefore
+ * survive persistence and can be rendered independently. Tool calls use the
+ * OpenAI `tool_calls` shape when converted back into a request.
  */
 
-export const OPENCODE_GO_BASE: string = 'https://opencode.ai/inference/go/openai/v1';
+export const OPENCODE_GO_BASE: string = 'https://opencode.ai/zen/go/v1';
 export const OPENCODE_DEFAULT_MODEL: string = 'kimi-k3';
 export const APP_VERSION: string = '1.0.0';
 
+export const PART_TEXT: string = 'text';
+export const PART_REASONING: string = 'reasoning';
+export const PART_TOOL_CALL: string = 'tool_call';
+export const PART_IMAGE: string = 'image';
+export const PART_FILE: string = 'file';
+
+export const TOOL_PENDING: string = 'pending';
+export const TOOL_RUNNING: string = 'running';
+export const TOOL_DONE: string = 'done';
+export const TOOL_ERROR: string = 'error';
+
 export type ProviderPreset = 'opencode' | 'custom';
+export type SandboxMode = 'local' | 'remote';
 
 export interface AppSettings {
   preset: ProviderPreset;
@@ -19,6 +36,36 @@ export interface AppSettings {
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
+  /** Let the model call tools at all. */
+  toolsEnabled: boolean;
+  /** Local file writes need an explicit opt-in. */
+  allowWriteTools: boolean;
+  /** Where tool calls execute: in the app sandbox or a remote helper. */
+  sandboxMode: SandboxMode;
+  sandboxUrl: string;
+  sandboxToken: string;
+}
+
+export interface MessagePart {
+  kind: string;
+  text: string;
+  toolCallId: string;
+  toolName: string;
+  argumentsText: string;
+  resultText: string;
+  status: string;
+  isError: boolean;
+  mimeType: string;
+  uri: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: string;
+  parts: MessagePart[];
+  createdAt: number;
+  streaming: boolean;
+  error: boolean;
 }
 
 export interface SessionMeta {
@@ -27,16 +74,6 @@ export interface SessionMeta {
   updatedAt: number;
   modelId: string;
   messageCount: number;
-}
-
-export interface ChatMessage {
-  id: string;
-  role: string;
-  content: string;
-  reasoning: string;
-  createdAt: number;
-  streaming: boolean;
-  error: boolean;
 }
 
 export interface StoredSession {
@@ -95,7 +132,12 @@ export function defaultSettings(): AppSettings {
     modelId: OPENCODE_DEFAULT_MODEL,
     systemPrompt: '',
     temperature: 1.0,
-    maxTokens: 8192
+    maxTokens: 8192,
+    toolsEnabled: true,
+    allowWriteTools: false,
+    sandboxMode: 'local',
+    sandboxUrl: '',
+    sandboxToken: ''
   };
 }
 
@@ -107,7 +149,12 @@ export function cloneSettings(source: AppSettings): AppSettings {
     modelId: source.modelId,
     systemPrompt: source.systemPrompt,
     temperature: source.temperature,
-    maxTokens: source.maxTokens
+    maxTokens: source.maxTokens,
+    toolsEnabled: source.toolsEnabled,
+    allowWriteTools: source.allowWriteTools,
+    sandboxMode: source.sandboxMode,
+    sandboxUrl: source.sandboxUrl,
+    sandboxToken: source.sandboxToken
   };
 }
 
@@ -120,14 +167,135 @@ export function modelName(modelId: string): string {
   return modelId;
 }
 
+/** A fully initialised part. Keeping every field present makes JSON stable. */
+export function makePart(kind: string): MessagePart {
+  return {
+    kind: kind,
+    text: '',
+    toolCallId: '',
+    toolName: '',
+    argumentsText: '',
+    resultText: '',
+    status: '',
+    isError: false,
+    mimeType: '',
+    uri: ''
+  };
+}
+
+export function textPart(text: string): MessagePart {
+  const part: MessagePart = makePart(PART_TEXT);
+  part.text = text;
+  return part;
+}
+
+export function reasoningPart(text: string): MessagePart {
+  const part: MessagePart = makePart(PART_REASONING);
+  part.text = text;
+  return part;
+}
+
+export function toolCallPart(id: string, name: string, argumentsText: string): MessagePart {
+  const part: MessagePart = makePart(PART_TOOL_CALL);
+  part.toolCallId = id;
+  part.toolName = name;
+  part.argumentsText = argumentsText;
+  part.status = TOOL_PENDING;
+  return part;
+}
+
 export function newChatMessage(id: string, role: string, content: string): ChatMessage {
+  const parts: MessagePart[] = [];
+  if (content.length > 0) {
+    parts.push(textPart(content));
+  }
   return {
     id: id,
     role: role,
-    content: content,
-    reasoning: '',
+    parts: parts,
     createdAt: Date.now(),
     streaming: false,
     error: false
   };
+}
+
+/** Concatenated text parts, in order. */
+export function textOf(message: ChatMessage): string {
+  let value: string = '';
+  for (let i = 0; i < message.parts.length; i++) {
+    if (message.parts[i].kind === PART_TEXT) {
+      value += message.parts[i].text;
+    }
+  }
+  return value;
+}
+
+/** Concatenated reasoning parts, in order. */
+export function reasoningOf(message: ChatMessage): string {
+  let value: string = '';
+  for (let i = 0; i < message.parts.length; i++) {
+    if (message.parts[i].kind === PART_REASONING) {
+      value += message.parts[i].text;
+    }
+  }
+  return value;
+}
+
+export function toolCallsOf(message: ChatMessage): MessagePart[] {
+  const calls: MessagePart[] = [];
+  for (let i = 0; i < message.parts.length; i++) {
+    if (message.parts[i].kind === PART_TOOL_CALL) {
+      calls.push(message.parts[i]);
+    }
+  }
+  return calls;
+}
+
+/**
+ * Append streamed text. Only a trailing text part is extended, so the parts
+ * list preserves the order in which the model emitted reasoning, content and
+ * tool calls. A new part starts after reasoning or a tool call.
+ */
+export function appendText(message: ChatMessage, text: string): void {
+  if (text.length === 0) {
+    return;
+  }
+  const last: MessagePart | null = message.parts.length > 0
+    ? message.parts[message.parts.length - 1]
+    : null;
+  if (last !== null && last.kind === PART_TEXT) {
+    last.text += text;
+    return;
+  }
+  message.parts.push(textPart(text));
+}
+
+export function appendReasoning(message: ChatMessage, text: string): void {
+  if (text.length === 0) {
+    return;
+  }
+  const last: MessagePart | null = message.parts.length > 0
+    ? message.parts[message.parts.length - 1]
+    : null;
+  if (last !== null && last.kind === PART_REASONING) {
+    last.text += text;
+    return;
+  }
+  message.parts.push(reasoningPart(text));
+}
+
+/**
+ * Stable-ish key for ForEach. ArkUI does not deeply observe nested part
+ * mutation, so the key must change whenever streamed content or tool state
+ * changes.
+ */
+export function messageKey(message: ChatMessage): string {
+  let key: string = message.id + ':' + (message.streaming ? '1' : '0') +
+    ':' + (message.error ? '1' : '0');
+  for (let i = 0; i < message.parts.length; i++) {
+    const part: MessagePart = message.parts[i];
+    key += ':' + part.kind + ':' + part.text.length + ':' + part.status +
+      ':' + part.resultText.length + ':' + (part.isError ? '1' : '0');
+  }
+  return key;
 }

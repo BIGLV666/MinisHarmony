@@ -1,0 +1,378 @@
+import { util } from '@kit.ArkTS';
+import {
+  AppSettings,
+  ChatMessage,
+  MessagePart,
+  PART_TOOL_CALL,
+  StoredSession,
+  TOOL_DONE,
+  TOOL_ERROR,
+  TOOL_PENDING,
+  TOOL_RUNNING,
+  appendReasoning,
+  appendText,
+  newChatMessage,
+  textOf,
+  toolCallPart
+} from '../core/Types';
+import { ToolCallDelta } from '../core/SseParser';
+import { ToolResult, ToolRuntime } from '../core/ToolTypes';
+import { truncateText } from '../core/Workspace';
+import { ChatStreamHandle, startChatStream } from './ChatApi';
+
+const MAX_STEPS: number = 12;
+const MAX_TOOL_RESULT: number = 20000;
+const FLUSH_MS: number = 50;
+
+export interface AgentCallbacks {
+  /** New snapshot after any visible change. `running` drives the stop button. */
+  onUpdate: (messages: ChatMessage[], running: boolean) => void;
+  onError: (message: string) => void;
+}
+
+interface ToolAccumulator {
+  id: string;
+  name: string;
+  argumentsText: string;
+}
+
+/**
+ * One user turn, including every model/tool round trip it triggers.
+ *
+ * The runtime owns only the transcript mutation and the loop. Network I/O is
+ * in ChatApi, tool execution is behind ToolRuntime, and the UI receives
+ * immutable snapshots through AgentCallbacks.
+ */
+export class AgentRuntime {
+  private settings: AppSettings;
+  private tools: ToolRuntime;
+  private session: StoredSession;
+  private callbacks: AgentCallbacks;
+
+  private handle: ChatStreamHandle | null = null;
+  private lastAssistant: ChatMessage | null = null;
+  private accumulators: Map<number, ToolAccumulator> = new Map<number, ToolAccumulator>();
+  private flushTimer: number = -1;
+  private step: number = 0;
+  private running: boolean = false;
+  private finished: boolean = false;
+  private cancelled: boolean = false;
+
+  constructor(
+    settings: AppSettings,
+    tools: ToolRuntime,
+    session: StoredSession,
+    callbacks: AgentCallbacks
+  ) {
+    this.settings = settings;
+    this.tools = tools;
+    this.session = session;
+    this.callbacks = callbacks;
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  start(userText: string): void {
+    if (this.running) {
+      return;
+    }
+    this.running = true;
+    this.session.messages.push(
+      newChatMessage(util.generateRandomUUID(true), 'user', userText)
+    );
+    this.beginAssistant();
+    this.emit();
+    this.runStep();
+  }
+
+  cancel(): void {
+    if (!this.running || this.finished) {
+      return;
+    }
+    this.cancelled = true;
+    if (this.handle !== null) {
+      this.handle.cancel();
+      this.handle = null;
+    }
+    if (this.lastAssistant !== null) {
+      this.interruptToolCalls(this.lastAssistant);
+      if (this.lastAssistant.parts.length === 0) {
+        appendText(this.lastAssistant, '（已停止生成）');
+      }
+    }
+    this.finish();
+  }
+
+  /** A stopped turn must not leave cards spinning forever or a request waiting for a result. */
+  private interruptToolCalls(message: ChatMessage): void {
+    for (let i = 0; i < message.parts.length; i++) {
+      const part: MessagePart = message.parts[i];
+      if (part.kind === PART_TOOL_CALL &&
+        (part.status === TOOL_PENDING || part.status === TOOL_RUNNING)) {
+        part.status = TOOL_ERROR;
+        part.isError = true;
+        if (part.resultText.length === 0) {
+          part.resultText = '生成已停止，工具未执行。';
+        }
+      }
+    }
+  }
+
+  private beginAssistant(): ChatMessage {
+    const message: ChatMessage = newChatMessage(
+      util.generateRandomUUID(true), 'assistant', ''
+    );
+    message.streaming = true;
+    this.session.messages.push(message);
+    this.lastAssistant = message;
+    return message;
+  }
+
+  private runStep(): void {
+    if (this.cancelled || !this.running) {
+      this.finish();
+      return;
+    }
+    if (this.step >= MAX_STEPS) {
+      if (this.lastAssistant !== null) {
+        appendText(
+          this.lastAssistant,
+          '\n\n> 已达到 ' + MAX_STEPS.toString() + ' 轮工具调用上限，请继续发送消息。'
+        );
+      }
+      this.finish();
+      return;
+    }
+    this.step++;
+
+    const assistant: ChatMessage | null = this.lastAssistant;
+    if (assistant === null) {
+      this.callbacks.onError('内部错误：缺少 assistant 占位消息');
+      this.finish();
+      return;
+    }
+
+    const history: ChatMessage[] = this.session.messages.slice(
+      0, this.session.messages.length - 1
+    );
+    this.accumulators.clear();
+    const definitions = this.settings.toolsEnabled ? this.tools.definitions() : [];
+
+    const handle: ChatStreamHandle = startChatStream(
+      this.settings,
+      this.session.meta.id,
+      history,
+      definitions,
+      {
+        onDelta: (content: string, reasoning: string, toolCalls: ToolCallDelta[]) => {
+          this.onDelta(assistant, content, reasoning, toolCalls);
+        },
+        onDone: (finishReason: string) => {
+          this.onDone(assistant, finishReason);
+        },
+        onError: (message: string) => {
+          this.onModelError(assistant, message);
+        }
+      }
+    );
+    this.handle = handle;
+    if (!this.running || this.cancelled) {
+      handle.cancel();
+      this.handle = null;
+    }
+  }
+
+  private onDelta(
+    assistant: ChatMessage,
+    content: string,
+    reasoning: string,
+    toolCalls: ToolCallDelta[]
+  ): void {
+    if (!this.running || this.cancelled) {
+      return;
+    }
+    appendText(assistant, content);
+    appendReasoning(assistant, reasoning);
+    this.accumulate(toolCalls);
+    this.scheduleFlush();
+  }
+
+  private onDone(assistant: ChatMessage, finishReason: string): void {
+    if (!this.running || this.cancelled) {
+      return;
+    }
+    this.handle = null;
+    this.clearFlush();
+    assistant.streaming = false;
+
+    if (finishReason === 'length') {
+      const prefix: string = textOf(assistant).length > 0 ? '\n\n' : '';
+      appendText(assistant, prefix + '> 已达到最大输出长度，内容可能被截断。');
+    }
+
+    const calls: MessagePart[] = this.settings.toolsEnabled
+      ? this.collectToolCalls()
+      : [];
+    if (calls.length === 0) {
+      if (this.settings.toolsEnabled) {
+        if (textOf(assistant).length === 0) {
+          appendText(assistant, '（模型没有返回内容）');
+        }
+      } else if (this.accumulators.size > 0) {
+        appendText(assistant, '（模型请求了工具，但工具调用已在设置中关闭）');
+      } else if (textOf(assistant).length === 0) {
+        appendText(assistant, '（模型没有返回内容）');
+      }
+      this.finish();
+      return;
+    }
+
+    for (let i = 0; i < calls.length; i++) {
+      assistant.parts.push(calls[i]);
+    }
+    this.emit();
+    this.executeTool(assistant, calls, 0);
+  }
+
+  private onModelError(assistant: ChatMessage, message: string): void {
+    if (!this.running || this.cancelled) {
+      return;
+    }
+    this.handle = null;
+    this.clearFlush();
+    assistant.streaming = false;
+    if (textOf(assistant).length > 0) {
+      appendText(assistant, '\n\n');
+    }
+    appendText(assistant, '> ⚠️ ' + message);
+    assistant.error = true;
+    this.callbacks.onError(message);
+    this.finish();
+  }
+
+  private executeTool(
+    assistant: ChatMessage,
+    calls: MessagePart[],
+    index: number
+  ): void {
+    if (!this.running || this.cancelled) {
+      this.finish();
+      return;
+    }
+    if (index >= calls.length) {
+      this.beginAssistant();
+      this.emit();
+      this.runStep();
+      return;
+    }
+
+    const call: MessagePart = calls[index];
+    call.status = TOOL_RUNNING;
+    this.emit();
+
+    const args: string = call.argumentsText.length > 0 ? call.argumentsText : '{}';
+    this.tools.execute(call.toolName, args).then((result: ToolResult) => {
+      if (!this.running || this.cancelled) {
+        return;
+      }
+      call.resultText = truncateText(result.content, MAX_TOOL_RESULT);
+      call.status = result.ok ? TOOL_DONE : TOOL_ERROR;
+      call.isError = !result.ok;
+      this.emit();
+      this.executeTool(assistant, calls, index + 1);
+    }).catch((error: Error) => {
+      if (!this.running || this.cancelled) {
+        return;
+      }
+      call.resultText = '工具执行异常：' + error.message;
+      call.status = TOOL_ERROR;
+      call.isError = true;
+      this.emit();
+      this.executeTool(assistant, calls, index + 1);
+    });
+  }
+
+  private accumulate(deltas: ToolCallDelta[]): void {
+    for (let i = 0; i < deltas.length; i++) {
+      const delta: ToolCallDelta = deltas[i];
+      let acc: ToolAccumulator | undefined = this.accumulators.get(delta.index);
+      if (acc === undefined) {
+        acc = { id: '', name: '', argumentsText: '' };
+        this.accumulators.set(delta.index, acc);
+      }
+      if (delta.id.length > 0) {
+        acc.id = delta.id;
+      }
+      if (delta.name.length > 0) {
+        acc.name += delta.name;
+      }
+      if (delta.arguments.length > 0) {
+        acc.argumentsText += delta.arguments;
+      }
+    }
+  }
+
+  private collectToolCalls(): MessagePart[] {
+    const indexes: number[] = [];
+    this.accumulators.forEach((value: ToolAccumulator, key: number) => {
+      indexes.push(key);
+    });
+    indexes.sort((a: number, b: number): number => a - b);
+
+    const parts: MessagePart[] = [];
+    for (let i = 0; i < indexes.length; i++) {
+      const acc: ToolAccumulator | undefined = this.accumulators.get(indexes[i]);
+      if (acc === undefined || acc.name.length === 0) {
+        continue;
+      }
+      const id: string = acc.id.length > 0
+        ? acc.id
+        : 'call_' + indexes[i].toString() + '_' + Date.now().toString();
+      parts.push(toolCallPart(id, acc.name, acc.argumentsText));
+    }
+    return parts;
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushTimer !== -1) {
+      return;
+    }
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = -1;
+      if (this.running) {
+        this.emit();
+      }
+    }, FLUSH_MS);
+  }
+
+  private clearFlush(): void {
+    if (this.flushTimer !== -1) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = -1;
+    }
+  }
+
+  private emit(): void {
+    this.session.meta.updatedAt = Date.now();
+    this.session.meta.messageCount = this.session.messages.length;
+    this.callbacks.onUpdate(this.session.messages.slice(), this.running);
+  }
+
+  private finish(): void {
+    if (this.finished) {
+      return;
+    }
+    this.finished = true;
+    this.running = false;
+    this.clearFlush();
+    if (this.lastAssistant !== null) {
+      this.lastAssistant.streaming = false;
+    }
+    this.handle = null;
+    this.session.meta.updatedAt = Date.now();
+    this.session.meta.messageCount = this.session.messages.length;
+    this.callbacks.onUpdate(this.session.messages.slice(), false);
+  }
+}

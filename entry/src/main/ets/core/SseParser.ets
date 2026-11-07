@@ -9,10 +9,31 @@ export interface SseEvent {
   data: string;
 }
 
+export interface OpenAiToolFunctionDelta {
+  name?: string;
+  arguments?: string;
+}
+
+export interface OpenAiToolCallDelta {
+  index?: number;
+  id?: string;
+  type?: string;
+  function?: OpenAiToolFunctionDelta;
+}
+
 export interface OpenAiDelta {
   content?: string;
   reasoning_content?: string;
   reasoning?: string;
+  tool_calls?: OpenAiToolCallDelta[];
+}
+
+/** One streamed fragment of a tool call. */
+export interface ToolCallDelta {
+  index: number;
+  id: string;
+  name: string;
+  arguments: string;
 }
 
 export interface OpenAiChoice {
@@ -37,6 +58,7 @@ export interface DeltaResult {
   done: boolean;
   finishReason: string;
   error: string;
+  toolCalls: ToolCallDelta[];
 }
 
 export interface ErrorEnvelope {
@@ -50,7 +72,8 @@ export function emptyDelta(): DeltaResult {
     reasoning: '',
     done: false,
     finishReason: '',
-    error: ''
+    error: '',
+    toolCalls: []
   };
 }
 
@@ -152,6 +175,35 @@ export function parseOpenAiData(data: string): DeltaResult {
     result.reasoning = delta.reasoning_content;
   } else if (delta.reasoning !== undefined) {
     result.reasoning = delta.reasoning;
+  }
+  if (delta.tool_calls !== undefined) {
+    for (let i = 0; i < delta.tool_calls.length; i++) {
+      const item: OpenAiToolCallDelta = delta.tool_calls[i];
+      let index: number = 0;
+      if (item.index !== undefined) {
+        index = item.index;
+      }
+      let id: string = '';
+      let name: string = '';
+      let args: string = '';
+      if (item.id !== undefined) {
+        id = item.id;
+      }
+      if (item.function !== undefined) {
+        if (item.function.name !== undefined) {
+          name = item.function.name;
+        }
+        if (item.function.arguments !== undefined) {
+          args = item.function.arguments;
+        }
+      }
+      result.toolCalls.push({
+        index: index,
+        id: id,
+        name: name,
+        arguments: args
+      });
+    }
   }
   return result;
 }

@@ -3,6 +3,10 @@
 **纯血鸿蒙 6.0+ 平板优先的 AI 对话客户端。**
 面向 OpenCode Go 订阅用户，原生 ArkTS / ArkUI 实现，无 Android 兼容层。
 
+除了流式对话，它还实现了 OpenAI 工具调用循环：模型可以读取应用工作区、
+搜索文本、写入文件、抓取网页，也可以把同一组工具转发到电脑上的兼容服务。
+沙箱是**可插拔**的——本机与远程共用同一套工具定义，后续可以替换为 QEMU 后端。
+
 这个项目参考了 [OpenMinis](https://github.com/OpenMinis/OpenMinis)（Android / iOS）与
 [dsh-Go](https://github.com/ccch1mneyyy/dsh-Go)（Flutter Android）的产品形态与
 OpenCode Go 接入方式，但代码为面向 HarmonyOS 6.0（API 20）重新编写，不包含上述项目的源码。
@@ -21,8 +25,10 @@ x-opencode-session`，或者缓存永远不命中。
 - 新建对话时立即生成 UUID，并先落库再发请求；
 - 该 UUID 同时是本地会话主键，重启、换模型、重试都不会变；
 - 只在 `opencode.ai`（含子域）发送，绝不把会话标识泄露给自定义中转；
-- 模型发现走 OpenCode 的 `/inference/go/v1/models`，推理走
-  `/inference/go/openai/v1/chat/completions`。
+- 默认基址为 `https://opencode.ai/zen/go/v1`，推理走
+  `/zen/go/v1/chat/completions`，模型发现走 `/zen/go/v1/models`；
+- 旧基址 `/inference/go/openai/v1` 仍可用，模型发现会自动换算到
+  `/inference/go/v1/models`。
 
 ---
 
@@ -34,18 +40,22 @@ x-opencode-session`，或者缓存永远不命中。
 | **OpenCode Go 预设** | 一键填入当前基址，自动注入 `x-opencode-session` |
 | **OpenAI 兼容** | 任意兼容 `/chat/completions` 的服务，可自定义基址与模型 |
 | **流式输出** | SSE 增量解析，思考过程（`reasoning_content` / `reasoning`）折叠展示 |
-| **本地会话** | 会话、消息、模型、设置持久化在本机，重启可恢复 |
+| **工具调用循环** | 解析流式 `tool_calls`，最多 12 轮模型/工具往返，工具卡片可展开 |
+| **本机工具** | 工作区内的 `list_dir` / `read_file` / `write_file` / `search_text`，以及 `fetch_url` / `now` |
+| **可插拔沙箱** | 本机工作区或远程 HTTP 工具服务，共用同一套工具定义与设置页 |
+| **本地会话** | 会话、消息、模型、设置持久化在本机，重启可恢复；旧版纯文本消息自动迁移为 parts |
 | **Markdown** | 标题、列表、引用、分割线、行内样式、代码块复制 |
 | **交互细节** | 停止生成、切换模型、搜索对话、长按删除、API Key 显示切换、拉取模型列表 |
 | **深色模式** | 跟随系统，使用 HarmonyOS 资源限定词 |
 
 ## 尚未实现（明确边界）
 
-这不是 OpenMinis 的完整功能移植。第一阶段聚焦「平板上的高质量 Chat + OpenCode Go」，
-以下能力没有包含：
+这不是 OpenMinis 的完整功能移植。当前阶段聚焦「平板上的高质量 Chat + 工具调用 +
+OpenCode Go」，以下能力没有包含：
 
-- 板载 Linux / Alpine 沙箱（`proot`、`ish`）、shell 工具；
-- 浏览器自动化、Skills、持久记忆、MCP、工具调用循环；
+- 板载 Linux / Alpine 沙箱（`proot`、`ish`）、任意 shell 命令执行；
+  QEMU 后端是后续阶段，接口上已为它保留 `ToolRuntime`；
+- 浏览器自动化、Skills、持久记忆、MCP、后台长时任务；
 - 语音、分享卡、对话回放、端到端加密分享链接；
 - 多模态附件上传（图片 / PDF）、图片生成；
 - 账号登录 / OAuth（当前只支持 API Key）。
@@ -86,7 +96,7 @@ SDK Manager 里实际安装的版本，然后 Sync。
 2. 复制 API Key；
 3. 打开应用右上角 **⚙ 设置**；
 4. 服务商选 **OpenCode Go**（基址会自动填为
-   `https://opencode.ai/inference/go/openai/v1`）；
+   `https://opencode.ai/zen/go/v1`）；
 5. 粘贴 API Key；
 6. 模型可手填，或点 **获取** 拉取账号可用模型；
 7. 保存后回到对话直接发消息。
@@ -104,11 +114,12 @@ SDK Manager 里实际安装的版本，然后 Sync。
   └─ util.generateRandomUUID()  ──►  SessionMeta.id（立即持久化）
                                       │
 发消息                                 │
-  └─ startChatStream(settings, id, …) ─┤
-       └─ shouldAttachSessionHeader(baseUrl, id)
-            ├─ host == opencode.ai / *.opencode.ai ?
-            ├─ id 非空且不是 "__" 开头的草稿键 ?
-            └─ 是 ──► header["x-opencode-session"] = id
+  └─ AgentRuntime.start(…, id, …) ─────┤
+       └─ ChatApi.startChatStream(…, id, …)
+            └─ shouldAttachSessionHeader(baseUrl, id)
+                 ├─ host == opencode.ai / *.opencode.ai ?
+                 ├─ id 非空且不是 "__" 开头的草稿键 ?
+                 └─ 是 ──► header["x-opencode-session"] = id
 ```
 
 对应实现：
@@ -126,6 +137,48 @@ SDK Manager 里实际安装的版本，然后 Sync。
 
 ---
 
+## 工具与沙箱
+
+设置 → **工具与沙箱** 有两个后端，模型看到的工具定义完全相同：
+
+| 工具 | 作用 | 本机实现 |
+|---|---|---|
+| `list_dir` | 列目录 | 工作区内，最多 500 项 |
+| `read_file` | 读文本 | 按行 `offset` / `limit`，单文件上限 1 MB，拒绝二进制 |
+| `write_file` | 写文本 | 默认关闭，需显式允许；自动创建父目录 |
+| `search_text` | 搜索文本 | 最多 2000 个文件 / 512 KB，跳过依赖与二进制 |
+| `fetch_url` | 抓网页 | `http(s)`，30 秒读超时，结果截断 |
+| `now` | 当前时间 | 设备本地时间 |
+
+**本机模式**的工作区是应用私有目录 `context.filesDir/workspace`。模型只能使用
+相对路径；绝对路径、`..` 和符号链接都会被拒绝。写入默认关闭，避免模型未经允许
+覆盖文件。
+
+**远程模式**把 `{name, arguments}` POST 到你填写的工具服务，期望返回
+`{ok, content}`；可选 Bearer Token。这样平板可以保持轻量，把真实文件系统或
+shell 留在电脑 / NAS 上。远程服务必须自己做根目录隔离与鉴权——应用只负责转发，
+不会替远程端校验路径。写入同样受“允许写入工作区文件”开关控制：关闭时
+`write_file` 不会出现在工具列表里。
+
+仓库自带一个只依赖 Node 22 的参考实现：
+
+```bash
+# 在电脑上，工作区限定为 ~/minis-workspace，仅监听本机
+node scripts/sandbox-server.mjs --root ~/minis-workspace --port 8787 --token 换成随机串
+
+# 平板与电脑在同一 Tailscale / 局域网时（务必保留 Token）
+node scripts/sandbox-server.mjs --root ~/minis-workspace --host 0.0.0.0 \
+  --port 8787 --token 换成随机串
+```
+
+然后在设置里填 `http://电脑地址:8787/tool` 与同一个 Token。该实现同样拒绝绝对
+路径、`..`、符号链接，只提供文件 / 搜索 / HTTP / 时间工具，不执行 shell。
+
+`ToolRuntime` 是两个模式共同的接口；后续的 QEMU/Alpine 后端只需实现
+`definitions()` 与 `execute()`，无需改动 AgentRuntime、ChatApi 或 UI。
+
+---
+
 ## 工程结构
 
 ```text
@@ -136,12 +189,13 @@ MinisHarmony/
 │       ├── module.json5              # Stage 模型、tablet/2in1/phone、INTERNET
 │       ├── ets/
 │       │   ├── entryability/         # UIAbility
-│       │   ├── pages/Index.ets       # 状态编排、会话、流式生命周期
-│       │   ├── components/           # 侧栏、对话、气泡、Markdown、设置、模型选择
-│       │   ├── core/                 # 纯逻辑：类型、SSE、URL 规则、Markdown
-│       │   └── service/              # HTTP 流、OpenCode 头、preferences 持久化
+│       │   ├── pages/Index.ets       # 状态编排、会话、Agent 生命周期
+│       │   ├── components/           # 侧栏、对话、气泡、工具卡片、Markdown、设置
+│       │   ├── core/                 # 纯逻辑：类型、parts、工具协议、路径规则、SSE、Markdown
+│       │   └── service/              # HTTP 流、Agent 循环、本机/远程工具、持久化
 │       └── resources/                # 颜色（含 dark）、字符串、图标
 ├── scripts/test-core.mjs             # Node 下的纯逻辑测试
+├── scripts/sandbox-server.mjs        # 远程工具服务参考实现（Node 22）
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   └── PORTING.md
@@ -162,19 +216,25 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 覆盖：
 
 - OpenCode 域名匹配（含 `not-opencode.ai` 等负例）；
-- 基址规范化、chat / models URL；
+- 基址规范化、chat / models URL，默认基址为 `/zen/go/v1`；
 - 会话头注入条件（opencode 域 + 非草稿 ID）；
 - SSE 分块、CRLF、多 data 行、尾部 flush；
-- OpenAI 流式 chunk（content / reasoning / finish / DONE / error）；
+- OpenAI 流式 chunk（content / reasoning / tool_calls / finish / DONE / error）；
+- parts 消息模型：文本/思考分离、追加顺序、`messageKey`；
+- 工具协议：`assistant.tool_calls` + `tool` 消息展开、中断调用补结果；
+- 工作区路径规则：绝对路径、`..`、反斜杠与截断；
 - Markdown 块级与行内解析。
 
-当前结果：**11 项全部通过**。
+当前结果：**20 项全部通过**。
 
-另外做了两项静态检查：
+另外做了静态检查：
 
-- `python3 scripts/check-brackets.py`：全部 ArkTS 文件括号配平；
-- `tree-sitter-arkts`：全部 15 个 `.ets` 文件解析 0 错误（ArkUI 声明式语法）；
-- `ohos-typescript`：`core/` 与 `service/` 的 8 个非 UI 文件语法诊断 0 条。
+- `python3 scripts/check-brackets.py`：全部 22 个 `.ets` 文件括号配平；
+- TypeScript 5.8 对 `core/` 与 `service/` 的 14 个非 UI 文件做语法/类型检查：
+  除本机缺少 `@kit.*` 类型声明这一预期诊断外，0 条错误。
+
+`tree-sitter-arkts` / `ohos-typescript` 不在当前环境中，因此没有用它们跑 ArkUI
+声明式语法的诊断。
 
 > 说明：本机没有 DevEco Studio / HarmonyOS SDK，因此**没有执行 hvigor 编译、单元测试或
 > 真机运行**。上述检查只覆盖语法与纯逻辑，不覆盖 ArkUI API 签名、资源引用和签名配置。
@@ -185,12 +245,15 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 
 ## 安全与隐私
 
-- 对话、设置、API Key 只保存在应用私有 `preferences` 中，不会上传到本机以外，
-  除非你主动请求你配置的服务端。
-- API Key 目前以明文保存在应用沙箱内。对安全要求更高时，可改用
+- 对话、设置、API Key、远程沙箱 Token 只保存在应用私有 `preferences` 中，不会上传到
+  本机以外，除非你主动请求你配置的服务端。
+- API Key 与远程 Token 目前以明文保存在应用沙箱内。对安全要求更高时，可改用
   **Asset Store Kit**（`@kit.AssetStoreKit`）保存密钥，见路线图。
 - 建议只使用 `https://` 基址；自定义 `http://` 明文地址能否使用取决于系统网络策略。
-- 卸载应用会清除全部本地对话与密钥。
+- 本机工具只能访问 `filesDir/workspace`，拒绝绝对路径、`..` 和符号链接；写入默认关闭。
+- 远程工具会把工具名与参数发送到你填写的服务，远程端必须自行限制工作目录并校验
+  Token；不要把无鉴权的工具服务暴露到公网。
+- 卸载应用会清除全部本地对话、工作区与密钥。
 
 ## 许可证
 

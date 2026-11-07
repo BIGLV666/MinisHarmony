@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Minis 鸿蒙平板 AI 客户端"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Minis 鸿蒙平板 AI 客户端"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Minis"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+# DevEco Studio / hvigor
+.hvigor/
+.idea/
+*.iml
+build/
+entry/build/
+entry/.preview/
+entry/oh_modules/
+oh_modules/
+local.properties
+signing/
+*.p12
+*.cer
+*.p7b
+*.key
+.open_health_check/
+
+# Test harness scratch
+scripts/.tmp/
+node_modules/
+
+# Claude Code workspace / local worktrees
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

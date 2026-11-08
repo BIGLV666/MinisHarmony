@@ -177,6 +177,8 @@ export function parseBackupSettings(text: string): AppSettings | null {
   base.webDavUser = stringOr(raw.webDavUser, '');
   // The WebDAV password is a credential and is never part of a backup.
   base.webDavPassword = '';
+  base.webDavAutoSync = boolOr(raw.webDavAutoSync, false);
+  base.webDavLastSyncAt = numberOr(raw.webDavLastSyncAt, 0);
   // cloneSettings normalizes/clamps every field a second time.
   return cloneSettings(base);
 }

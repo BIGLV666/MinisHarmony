@@ -122,6 +122,10 @@ export interface AppSettings {
   webDavUser: string;
   /** Basic-auth password, kept in the Asset Store like the API key. */
   webDavPassword: string;
+  /** Pull-merge-push after changes and at startup; off by default. */
+  webDavAutoSync: boolean;
+  /** Epoch ms of the last successful sync; 0 when never synced. */
+  webDavLastSyncAt: number;
 }
 
 export const DEFAULT_ACCENT_COLOR: string = '#2F6BFF';
@@ -463,7 +467,9 @@ export function defaultSettings(): AppSettings {
     mcpServers: [],
     webDavUrl: '',
     webDavUser: '',
-    webDavPassword: ''
+    webDavPassword: '',
+    webDavAutoSync: false,
+    webDavLastSyncAt: 0
   };
 }
 
@@ -564,7 +570,10 @@ export function cloneSettings(source: AppSettings): AppSettings {
     mcpServers: normalizeMcpServers(source.mcpServers),
     webDavUrl: source.webDavUrl !== undefined ? source.webDavUrl : '',
     webDavUser: source.webDavUser !== undefined ? source.webDavUser : '',
-    webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : ''
+    webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : '',
+    webDavAutoSync: source.webDavAutoSync === true,
+    webDavLastSyncAt: source.webDavLastSyncAt !== undefined &&
+      source.webDavLastSyncAt > 0 ? source.webDavLastSyncAt : 0
   };
 }
 

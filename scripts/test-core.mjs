@@ -38,6 +38,7 @@ copyCore('Markdown', ['Latex']);
 copyCore('SubagentJob');
 copyCore('WebUrl');
 copyCore('Types');
+copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
 copyCore('ToolProtocol', ['Types']);
@@ -102,6 +103,7 @@ function markTypeOnly(name, from, names) {
 markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'ToolProperty']);
 markTypeOnly('ToolProtocol', 'Types', ['ChatMessage']);
 markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'MessagePart', 'StoredSession']);
+markTypeOnly('SyncMerge', 'Types', ['StoredSession']);
 markTypeOnly('SessionParams', 'Types', ['AppSettings', 'SessionMeta', 'ThinkingLevel']);
 markTypeOnly('Types', 'ModelOverride', ['ModelOverride']);
 markTypeOnly('Types', 'McpProtocol', ['McpServerConfig']);
@@ -195,6 +197,7 @@ const diagnostics = await import(pathToFileURL(join(tmp, 'Diagnostics.mts')).hre
 const webDav = await import(pathToFileURL(join(tmp, 'WebDav.mts')).href);
 const scheduled = await import(pathToFileURL(join(tmp, 'ScheduledTask.mts')).href);
 const device = await import(pathToFileURL(join(tmp, 'Device.mts')).href);
+const syncMerge = await import(pathToFileURL(join(tmp, 'SyncMerge.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -2349,4 +2352,82 @@ test('device tool schema advertises the four capabilities', () => {
     assert.notEqual(tool, undefined, name);
     assert.equal(tool.parameters.type, 'object');
   }
+});
+
+function syncSession(id, updatedAt, text) {
+  return {
+    meta: {
+      id: id,
+      title: 'T-' + id,
+      updatedAt: updatedAt,
+      modelId: 'm',
+      messageCount: text.length > 0 ? 1 : 0,
+      pinned: false,
+      archived: false,
+      modelOverride: '',
+      thinkingOverride: '',
+      promptOverride: ''
+    },
+    messages: text.length > 0
+      ? [{ id: 'msg-' + id, role: 'user', parts: [{ kind: 'text', text: text }], createdAt: updatedAt }]
+      : []
+  };
+}
+
+test('sync merge keeps the newest copy and never drops local sessions', () => {
+  const local = [
+    syncSession('a', 100, 'local-a'),
+    syncSession('b', 300, 'local-b'),
+    syncSession('c', 500, 'local-c')
+  ];
+  const remote = [
+    syncSession('a', 200, 'remote-a'),
+    syncSession('b', 100, 'remote-b'),
+    syncSession('d', 400, 'remote-d')
+  ];
+  const out = syncMerge.mergeSessionSets(local, remote);
+  assert.equal(out.addedFromRemote, 1);
+  assert.equal(out.updatedFromRemote, 1);
+  assert.equal(out.keptLocal, 1);
+  assert.equal(out.sessions.length, 4);
+  const byId = new Map(out.sessions.map((s) => [s.meta.id, s]));
+  assert.equal(byId.get('a').messages[0].parts[0].text, 'remote-a');
+  assert.equal(byId.get('b').messages[0].parts[0].text, 'local-b');
+  assert.equal(byId.get('c').messages[0].parts[0].text, 'local-c');
+  assert.equal(byId.get('d').messages[0].parts[0].text, 'remote-d');
+  // Newest first, matching the session list order.
+  assert.deepEqual(out.sessions.map((s) => s.meta.id), ['c', 'd', 'b', 'a']);
+  assert.equal(syncMerge.remoteChangeCount(local, remote), 2);
+});
+
+test('sync merge breaks timestamp ties toward the side with messages', () => {
+  const local = [syncSession('x', 42, '')];
+  const remote = [syncSession('x', 42, 'remote')];
+  const out = syncMerge.mergeSessionSets(local, remote);
+  assert.equal(out.updatedFromRemote, 1);
+  assert.equal(out.sessions[0].messages.length, 1);
+
+  const reverse = syncMerge.mergeSessionSets(remote, local);
+  assert.equal(reverse.updatedFromRemote, 0);
+  assert.equal(reverse.keptLocal, 1);
+  assert.equal(reverse.sessions[0].messages.length, 1);
+});
+
+test('backup parse preserves ids and timestamps for merging', () => {
+  const now = new Date('2026-11-08T10:00:00Z');
+  const sessions = [syncSession('keep-1', 123456, 'hello')];
+  const text = backup.backupJson(types.defaultSettings(), sessions, now);
+  const parsed = sessionExport.parseBackupSessions(text, now);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.sessions.length, 1);
+  assert.equal(parsed.sessions[0].meta.id, 'keep-1');
+  assert.equal(parsed.sessions[0].meta.updatedAt, 123456);
+  assert.ok(!parsed.sessions[0].meta.title.endsWith('（导入）'));
+
+  // A remote copy identical to the local one changes nothing.
+  const merged = syncMerge.mergeSessionSets(parsed.sessions, parsed.sessions);
+  assert.equal(merged.addedFromRemote, 0);
+  assert.equal(merged.updatedFromRemote, 0);
+  assert.equal(merged.sessions.length, 1);
+  assert.equal(sessionExport.parseBackupSessions('{"app":"other"}', now).ok, false);
 });

@@ -79,6 +79,8 @@ import { keepScreenOn } from '../service/ScreenWake';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { McpRegistry, McpRuntime } from '../service/McpRuntime';
 import { mergeBackupSettings } from '../core/Backup';
+import { parseBackupSessions } from '../core/SessionExport';
+import { SyncMergeResult, mergeSessionSets } from '../core/SyncMerge';
 import { parseDeepLink, DeepLink } from '../core/DeepLink';
 import {
   ScheduledTask,
@@ -186,6 +188,9 @@ struct Index {
   /** Task whose run is currently streaming, for the run history entry. */
   private activeTaskId: string = '';
   private activeTaskStartedAt: number = 0;
+  /** Debounced WebDAV auto-sync; one request at a time. */
+  private syncTimer: number = -1;
+  private syncRunning: boolean = false;
 
   aboutToAppear(): void {
     this.bootstrap();
@@ -451,6 +456,10 @@ struct Index {
       clearTimeout(this.saveTimer);
       this.saveTimer = -1;
     }
+    if (this.syncTimer !== -1) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = -1;
+    }
     this.persistNow();
     if (this.agent !== null) {
       this.agent.cancel();
@@ -498,6 +507,7 @@ struct Index {
     this.showOnboarding = !this.settings.onboardingDone &&
       this.settings.apiKey.trim().length === 0;
     this.ready = true;
+    this.scheduleAutoSync();
     if (this.pendingDeepLinkUri.length > 0) {
       const uri: string = this.pendingDeepLinkUri;
       this.pendingDeepLinkUri = '';
@@ -919,7 +929,7 @@ struct Index {
     this.toast(outcome.message);
   }
 
-  /** Download `latest`, decrypt with the WebDAV password, then import. */
+  /** Download `latest`, decrypt and merge by session id (never duplicates). */
   private async restoreRemoteBackup(
     url: string,
     user: string,
@@ -943,8 +953,140 @@ struct Index {
       this.toast(decrypted.message);
       return;
     }
-    this.applyImportOutcome(importSessionsText(decrypted.text,
-      () => util.generateRandomUUID(true)));
+    const parsed = parseBackupSessions(decrypted.text, new Date());
+    if (!parsed.ok) {
+      this.toast(parsed.error);
+      return;
+    }
+    const merge: SyncMergeResult = mergeSessionSets(this.store, parsed.sessions);
+    this.store = merge.sessions;
+    this.refreshSessions();
+    const current: StoredSession | null = this.findSession(this.currentId);
+    if (current !== null) {
+      this.messages = current.messages.slice();
+    }
+    this.persistSoon();
+    this.toast('已合并远端备份：新增 ' + merge.addedFromRemote.toString() +
+      '，更新 ' + merge.updatedFromRemote.toString());
+  }
+
+  /** Merge with the remote copy, then push the merged library back. */
+  private async syncRemoteBackup(
+    url: string,
+    user: string,
+    password: string
+  ): Promise<void> {
+    const draft: AppSettings = cloneSettings(this.settings);
+    draft.webDavUrl = url;
+    draft.webDavUser = user;
+    draft.webDavPassword = password;
+    await this.syncBackup(draft, true);
+  }
+
+  private scheduleAutoSync(): void {
+    if (!this.settings.webDavAutoSync) {
+      return;
+    }
+    if (this.syncRunning || this.streaming) {
+      return;
+    }
+    if (this.settings.webDavUrl.trim().length === 0 ||
+      this.settings.webDavPassword.length === 0) {
+      return;
+    }
+    if (this.syncTimer !== -1) {
+      clearTimeout(this.syncTimer);
+    }
+    this.syncTimer = setTimeout(() => {
+      this.syncTimer = -1;
+      this.syncBackup(cloneSettings(this.settings), false);
+    }, 15000);
+  }
+
+  /**
+   * Pull-merge-push. A missing remote backup is not an error (first run).
+   * Only failures visible to a user who pressed the button are toasted.
+   */
+  private async syncBackup(settings: AppSettings, manual: boolean): Promise<void> {
+    if (this.syncRunning) {
+      if (manual) {
+        this.toast('正在同步，请稍候');
+      }
+      return;
+    }
+    if (this.streaming) {
+      if (manual) {
+        this.toast('请先停止当前生成');
+      }
+      return;
+    }
+    if (settings.webDavUrl.trim().length === 0 || settings.webDavPassword.length === 0) {
+      if (manual) {
+        this.toast('请先填写 WebDAV 地址与密码');
+      }
+      return;
+    }
+    this.syncRunning = true;
+    try {
+      const download: WebDavDownload = await downloadLatestBackup(settings);
+      let remote: StoredSession[] = [];
+      if (download.ok) {
+        const decrypted: DecryptOutcome =
+          await decryptBackupText(download.text, settings.webDavPassword);
+        if (!decrypted.ok) {
+          if (manual) {
+            this.toast(decrypted.message);
+          }
+          return;
+        }
+        const parsed = parseBackupSessions(decrypted.text, new Date());
+        if (!parsed.ok) {
+          if (manual) {
+            this.toast(parsed.error);
+          }
+          return;
+        }
+        remote = parsed.sessions;
+      } else if (download.message !== '远端还没有备份') {
+        if (manual) {
+          this.toast(download.message);
+        }
+        return;
+      }
+      const merge: SyncMergeResult = mergeSessionSets(this.store, remote);
+      const changed: boolean =
+        merge.addedFromRemote > 0 || merge.updatedFromRemote > 0;
+      if (changed) {
+        this.store = merge.sessions;
+        this.refreshSessions();
+        const current: StoredSession | null = this.findSession(this.currentId);
+        if (current !== null) {
+          this.messages = current.messages.slice();
+        }
+        await LocalStore.saveSessions(this.store);
+      }
+      const upload: WebDavOutcome =
+        await uploadEncryptedBackup(settings, this.store, new Date(), false);
+      if (!upload.ok) {
+        if (manual) {
+          this.toast(upload.message);
+        }
+        return;
+      }
+      settings.webDavLastSyncAt = Date.now();
+      this.settings = settings;
+      await LocalStore.saveSettings(settings);
+      if (manual || changed) {
+        this.toast('已同步：新增 ' + merge.addedFromRemote.toString() +
+          '，更新 ' + merge.updatedFromRemote.toString());
+      }
+    } catch (e) {
+      if (manual) {
+        this.toast('同步失败，请检查 WebDAV 配置');
+      }
+    } finally {
+      this.syncRunning = false;
+    }
   }
 
   /** Export every session plus a secret-free settings snapshot. */
@@ -1216,6 +1358,7 @@ struct Index {
           this.agent = null;
           this.searchEntries = this.buildSearchIndex();
           this.finishTaskRun(session);
+          this.scheduleAutoSync();
           BackgroundGuard.end().catch((error: Error) => {});
           keepScreenOn(getContext(this) as common.UIAbilityContext, false)
             .catch((error: Error) => {});
@@ -1628,6 +1771,7 @@ struct Index {
       session.meta.modelId = next.modelId;
     }
     this.refreshSessions();
+    this.scheduleAutoSync();
     this.toast('设置已保存');
   }
 
@@ -2461,6 +2605,9 @@ struct Index {
           onExportDiagnostics: () => this.exportDiagnostics(),
           onUploadRemoteBackup: (url: string, user: string, password: string) => {
             this.uploadRemoteBackup(url, user, password);
+          },
+          onSyncRemoteBackup: (url: string, user: string, password: string) => {
+            this.syncRemoteBackup(url, user, password);
           },
           onDownloadRemoteBackup: (url: string, user: string, password: string) => {
             this.restoreRemoteBackup(url, user, password);

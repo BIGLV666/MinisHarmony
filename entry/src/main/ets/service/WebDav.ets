@@ -92,20 +92,24 @@ async function put(url: string, settings: AppSettings, body: string): Promise<We
 
 /**
  * Encrypt the whole library with the WebDAV password and PUT a dated snapshot
- * plus `latest`. If the server rejects the dated copy nothing is considered
- * uploaded, so a successful message really means both objects exist.
+ * plus `latest` (or only `latest` for automatic sync, to avoid one dated file
+ * per turn). If the server rejects the first copy nothing is considered
+ * uploaded.
  */
 export async function uploadEncryptedBackup(
   settings: AppSettings,
   sessions: StoredSession[],
-  now: Date
+  now: Date,
+  includeDated: boolean = true
 ): Promise<WebDavOutcome> {
   const problem: string = configured(settings);
   if (problem.length > 0) {
     return { ok: false, message: problem };
   }
-  const targets: string[] = webDavUploadTargets(settings.webDavUrl, now);
-  if (targets.length === 0) {
+  const targets: string[] = includeDated
+    ? webDavUploadTargets(settings.webDavUrl, now)
+    : [webDavFileUrl(settings.webDavUrl, WEBDAV_LATEST_NAME)];
+  if (targets.length === 0 || targets[0].length === 0) {
     return { ok: false, message: 'WebDAV 地址无效' };
   }
   let sealed: string = '';

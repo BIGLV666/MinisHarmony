@@ -276,7 +276,12 @@ interface RawImport {
   error: string;
 }
 
-function importRawSession(raw: RawSession, newId: string, now: Date): RawImport {
+function importRawSession(
+  raw: RawSession,
+  newId: string,
+  now: Date,
+  preserve: boolean = false
+): RawImport {
   if (raw === null || raw === undefined || raw.meta === undefined ||
     !Array.isArray(raw.messages)) {
     return { session: null, error: '文件里没有会话数据' };
@@ -294,19 +299,27 @@ function importRawSession(raw: RawSession, newId: string, now: Date): RawImport 
   let title: string = raw.meta.title !== undefined && raw.meta.title.trim().length > 0
     ? raw.meta.title.trim()
     : '导入的对话';
-  if (!title.endsWith('（导入）')) {
+  if (!preserve && !title.endsWith('（导入）')) {
     title = title + '（导入）';
   }
+  const rawId: string = raw.meta.id !== undefined && raw.meta.id.length > 0
+    ? raw.meta.id
+    : '';
+  const id: string = preserve && rawId.length > 0 ? rawId : newId;
+  const updatedAt: number = preserve && raw.meta.updatedAt !== undefined &&
+    raw.meta.updatedAt > 0
+    ? raw.meta.updatedAt
+    : now.getTime();
   return {
     session: {
       meta: {
-        id: newId,
+        id: id,
         title: title,
-        updatedAt: now.getTime(),
+        updatedAt: updatedAt,
         modelId: raw.meta.modelId !== undefined ? raw.meta.modelId : '',
         messageCount: messages.length,
-        pinned: false,
-        archived: false,
+        pinned: preserve ? raw.meta.pinned === true : false,
+        archived: preserve ? raw.meta.archived === true : false,
         modelOverride: raw.meta.modelOverride !== undefined ? raw.meta.modelOverride : '',
         thinkingOverride: raw.meta.thinkingOverride !== undefined ? raw.meta.thinkingOverride : '',
         promptOverride: raw.meta.promptOverride !== undefined ? raw.meta.promptOverride : ''
@@ -338,7 +351,8 @@ interface RawEnvelopeRoot {
 export function parseSessionsExport(
   text: string,
   newId: () => string,
-  now: Date
+  now: Date,
+  preserveIds: boolean = false
 ): SessionBundleImportResult {
   let root: RawEnvelopeRoot;
   try {
@@ -372,7 +386,8 @@ export function parseSessionsExport(
   const imported: StoredSession[] = [];
   let firstError: string = '';
   for (let i = 0; i < rawList.length; i++) {
-    const result: RawImport = importRawSession(rawList[i], newId(), now);
+    const result: RawImport =
+      importRawSession(rawList[i], newId(), now, preserveIds);
     if (result.session !== null) {
       imported.push(result.session);
     } else if (firstError.length === 0) {
@@ -387,4 +402,16 @@ export function parseSessionsExport(
     };
   }
   return { ok: true, error: '', sessions: imported };
+}
+
+/**
+ * Restore/sync path: keeps the original session ids, timestamps, titles and
+ * flags so a downloaded backup can be merged with the local library instead
+ * of being imported as a duplicate copy.
+ */
+export function parseBackupSessions(
+  text: string,
+  now: Date
+): SessionBundleImportResult {
+  return parseSessionsExport(text, (): string => '', now, true);
 }

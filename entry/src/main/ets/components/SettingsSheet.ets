@@ -23,6 +23,7 @@ import { SkillDoc } from '../core/SkillDoc';
 import { SkillStore } from '../service/SkillStore';
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
 import { formatEventLine } from '../core/EventLog';
+import { formatDateTime } from '../core/Device';
 import { MemoryFile } from '../core/Memory';
 import { SOUL_PRESETS, SoulPreset } from '../core/Soul';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
@@ -97,6 +98,9 @@ export struct SettingsSheet {
   onUploadRemoteBackup: (url: string, user: string, password: string) => void =
     (url: string, user: string, password: string) => {
     };
+  onSyncRemoteBackup: (url: string, user: string, password: string) => void =
+    () => {
+    };
   onDownloadRemoteBackup: (url: string, user: string, password: string) => void =
     (url: string, user: string, password: string) => {
     };
@@ -168,6 +172,8 @@ export struct SettingsSheet {
   @State webDavUrl: string = '';
   @State webDavUser: string = '';
   @State webDavPassword: string = '';
+  @State webDavAutoSync: boolean = false;
+  @State webDavLastSyncAt: number = 0;
   @State showWebDavPassword: boolean = false;
 
   aboutToAppear(): void {
@@ -212,6 +218,8 @@ export struct SettingsSheet {
     this.webDavUrl = copy.webDavUrl;
     this.webDavUser = copy.webDavUser;
     this.webDavPassword = copy.webDavPassword;
+    this.webDavAutoSync = copy.webDavAutoSync;
+    this.webDavLastSyncAt = copy.webDavLastSyncAt;
   }
 
   private toolEnabled(name: string): boolean {
@@ -357,7 +365,9 @@ export struct SettingsSheet {
       mcpServers: normalizeMcpServers(this.mcpServers),
       webDavUrl: this.webDavUrl.trim(),
       webDavUser: this.webDavUser.trim(),
-      webDavPassword: this.webDavPassword
+      webDavPassword: this.webDavPassword,
+      webDavAutoSync: this.webDavAutoSync,
+      webDavLastSyncAt: this.webDavLastSyncAt
     };
     return next;
   }
@@ -1607,13 +1617,53 @@ export struct SettingsSheet {
             .width('100%')
             .alignItems(HorizontalAlign.Start)
 
+            Row({ space: 10 }) {
+              Column({ space: 3 }) {
+                Text('自动同步')
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_primary'))
+                Text('启动与对话结束后先拉取远端再合并上传；同一会话以更新时间新的一份为准，本机独有会话保留。')
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .lineHeight(14)
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+              Toggle({ type: ToggleType.Switch, isOn: this.webDavAutoSync })
+                .selectedColor($r('app.color.accent'))
+                .onChange((on: boolean) => {
+                  this.webDavAutoSync = on;
+                })
+            }
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
+
+            if (this.webDavLastSyncAt > 0) {
+              Text('上次同步：' + formatDateTime(this.webDavLastSyncAt))
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+                .width('100%')
+            }
+
+            Button('立即同步（合并远端）')
+              .width('100%')
+              .height(38)
+              .fontSize(12)
+              .fontColor($r('app.color.on_accent'))
+              .backgroundColor($r('app.color.accent'))
+              .borderRadius(10)
+              .onClick(() => this.onSyncRemoteBackup(
+                this.webDavUrl.trim(), this.webDavUser.trim(), this.webDavPassword))
+
             Row({ space: 8 }) {
               Button('上传加密备份')
                 .layoutWeight(1)
                 .height(38)
                 .fontSize(12)
-                .fontColor($r('app.color.on_accent'))
-                .backgroundColor($r('app.color.accent'))
+                .fontColor($r('app.color.text_secondary'))
+                .backgroundColor($r('app.color.surface_alt'))
                 .borderRadius(10)
                 .onClick(() => this.onUploadRemoteBackup(
                   this.webDavUrl.trim(), this.webDavUser.trim(), this.webDavPassword))

@@ -130,7 +130,10 @@ function normalizeSettings(source: AppSettings): AppSettings {
     mcpServers: normalizeMcpServers(source.mcpServers),
     webDavUrl: source.webDavUrl !== undefined ? source.webDavUrl : '',
     webDavUser: source.webDavUser !== undefined ? source.webDavUser : '',
-    webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : ''
+    webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : '',
+    webDavAutoSync: source.webDavAutoSync === true,
+    webDavLastSyncAt: source.webDavLastSyncAt !== undefined &&
+      source.webDavLastSyncAt > 0 ? source.webDavLastSyncAt : 0
   };
 }
 

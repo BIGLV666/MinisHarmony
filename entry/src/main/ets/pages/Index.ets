@@ -75,6 +75,7 @@ import {
   publishGenerating
 } from '../service/Notify';
 import { SidebarView } from '../components/SidebarView';
+import { BrowserPage } from '../components/BrowserPage';
 
 @Entry
 @Component
@@ -98,6 +99,8 @@ struct Index {
   @State showSettings: boolean = false;
   @State showModels: boolean = false;
   @State showWorkspace: boolean = false;
+  @State showBrowser: boolean = false;
+  @State browserUrl: string = '';
   @State showOnboarding: boolean = false;
   @State locked: boolean = false;
   @State unlocking: boolean = false;
@@ -1751,7 +1754,21 @@ struct Index {
       onNew: () => this.createChat(),
       onRegenerate: () => this.regenerateLast(),
       onEdit: (id: string) => this.beginEdit(id),
-      onRewind: (id: string) => this.requestRewind(id)
+      onRewind: (id: string) => this.requestRewind(id),
+      onOpenLink: (url: string) => {
+        this.browserUrl = url;
+        this.showBrowser = true;
+      }
+    })
+  }
+
+  @Builder
+  browserOverlay() {
+    BrowserPage({
+      initialUrl: this.browserUrl,
+      onClose: () => {
+        this.showBrowser = false;
+      }
     })
   }
 
@@ -1867,5 +1884,6 @@ struct Index {
         this.isWide = width >= 840;
       }
     })
+    .bindContentCover($$this.showBrowser, this.browserOverlay())
   }
 }

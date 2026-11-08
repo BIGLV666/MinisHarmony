@@ -24,6 +24,8 @@ export struct MarkdownView {
   @Prop @Watch('onTextChanged') text: string = '';
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
+  /** When set, http(s) links open in the in-app browser. */
+  onOpenLink: ((url: string) => void) | null = null;
   @State blocks: MdBlock[] = [];
 
   aboutToAppear(): void {
@@ -75,10 +77,16 @@ export struct MarkdownView {
     });
   }
 
-  /** Hand an http(s) link to the system browser without leaving the chat. */
+  /** In-app browser when the host provides a handler, system browser otherwise. */
   private openLink(url: string): void {
     if (!isOpenableUrl(url)) {
       this.getUIContext().getPromptAction().showToast({ message: '不支持的链接类型' });
+      return;
+    }
+    const lower: string = url.toLowerCase();
+    const isWeb: boolean = lower.indexOf('http://') === 0 || lower.indexOf('https://') === 0;
+    if (this.onOpenLink !== null && isWeb) {
+      this.onOpenLink(url);
       return;
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;

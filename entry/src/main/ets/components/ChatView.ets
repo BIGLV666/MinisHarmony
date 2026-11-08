@@ -46,6 +46,7 @@ export struct ChatView {
   };
   onRewind: (id: string) => void = (id: string) => {
   };
+  onOpenLink: ((url: string) => void) | null = null;
 
   private scroller: Scroller = new Scroller();
 
@@ -378,7 +379,8 @@ export struct ChatView {
                   canRewind: !this.streaming && message.id !== this.lastMessageId(),
                   onRegenerate: () => this.onRegenerate(),
                   onEdit: () => this.onEdit(message.id),
-                  onRewind: () => this.onRewind(message.id)
+                  onRewind: () => this.onRewind(message.id),
+                  onOpenLink: this.onOpenLink
                 })
               }
             }, (message: ChatMessage) => messageKey(message))

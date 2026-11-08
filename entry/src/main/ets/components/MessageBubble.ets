@@ -42,6 +42,7 @@ export struct MessageBubble {
   };
   onRewind: () => void = () => {
   };
+  onOpenLink: ((url: string) => void) | null = null;
 
   private isUser(): boolean {
     return this.message.role === 'user';
@@ -308,7 +309,7 @@ export struct MessageBubble {
       }
 
       if (this.content().length > 0) {
-        MarkdownView({ text: this.content() })
+        MarkdownView({ text: this.content(), onOpenLink: this.onOpenLink })
       } else if (this.message.streaming && this.calls().length === 0) {
         this.thinking()
       }

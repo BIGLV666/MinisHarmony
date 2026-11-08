@@ -19,6 +19,7 @@ import {
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
 import { formatEventLine } from '../core/EventLog';
 import { MemoryFile } from '../core/Memory';
+import { SOUL_PRESETS, SoulPreset } from '../core/Soul';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
@@ -72,6 +73,7 @@ export struct SettingsSheet {
   @State apiKey: string = '';
   @State modelId: string = OPENCODE_DEFAULT_MODEL;
   @State systemPrompt: string = '';
+  @State soulId: string = 'general';
   @State temperature: number = 1.0;
   @State maxTokensText: string = '8192';
   @State showKey: boolean = false;
@@ -110,6 +112,7 @@ export struct SettingsSheet {
     this.apiKey = copy.apiKey;
     this.modelId = copy.modelId;
     this.systemPrompt = copy.systemPrompt;
+    this.soulId = copy.soulId;
     this.temperature = copy.temperature;
     this.maxTokensText = copy.maxTokens.toString();
     this.toolsEnabled = copy.toolsEnabled;
@@ -174,6 +177,7 @@ export struct SettingsSheet {
       apiKey: this.apiKey.trim(),
       modelId: this.modelId.trim(),
       systemPrompt: this.systemPrompt,
+      soulId: this.soulId,
       temperature: this.temperature,
       maxTokens: this.maxTokensValue(),
       toolsEnabled: this.toolsEnabled,
@@ -1237,6 +1241,36 @@ export struct SettingsSheet {
             }
 
             Column() {
+              Text('人格 / Soul')
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .width('100%')
+              Row({ space: 5 }) {
+                ForEach(SOUL_PRESETS, (preset: SoulPreset) => {
+                  Text(preset.name)
+                    .layoutWeight(1)
+                    .height(30)
+                    .fontSize(10)
+                    .textAlign(TextAlign.Center)
+                    .fontColor(this.soulId === preset.id
+                      ? $r('app.color.on_accent')
+                      : $r('app.color.text_secondary'))
+                    .backgroundColor(this.soulId === preset.id
+                      ? $r('app.color.accent')
+                      : $r('app.color.surface_alt'))
+                    .borderRadius(8)
+                    .onClick(() => {
+                      this.soulId = preset.id;
+                    })
+                }, (preset: SoulPreset) => preset.id)
+              }
+              .width('100%')
+              Text('人格提示词排在系统提示词之前；会话里的「追加系统提示词」仍可进一步覆盖。')
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+                .lineHeight(14)
+                .width('100%')
+
               this.fieldLabel('系统提示词（可选）')
               TextArea({ text: this.systemPrompt, placeholder: '例如：你是一名资深鸿蒙应用开发工程师…' })
                 .width('100%')

@@ -503,6 +503,14 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 重复提醒。所有调用先检查 `isNotificationEnabled()`，失败一律静默——通知被用户关闭
 或设备不支持时，对话本身不受影响。
 
+## 人格（Soul）
+
+`core/Soul.ets` 提供五种内置人格的固定提示词；`AppSettings.soulId` 记录选择，
+`normalizeSoulId()` 对未知值回退 `general`。`ChatApi.buildMessages()` 按
+「人格 → 用户系统提示词 → 持久记忆」的顺序拼接 system 消息，因此人格是身份底色，
+用户的提示词和记忆在其后细化。会话级「追加系统提示词」由 `effectiveSettings()`
+先并进系统提示词，最终仍排在人设之后。当前不读取外部 `SOUL.md` 文件。
+
 ## 主题色与字号
 
 `AppSettings.accentColor`（`#RRGGBB`，默认 `#2F6BFF`）与 `fontScale`（0.9–1.3）由
@@ -552,6 +560,6 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 
 ## 可测试性
 
-`core/` 十九个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 二十个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

@@ -95,6 +95,8 @@ export interface AppSettings {
   accentColor: string;
   /** Reading scale for chat text, 0.9–1.3. */
   fontScale: number;
+  /** Built-in persona prepended to the system prompt. */
+  soulId: string;
 }
 
 export const DEFAULT_ACCENT_COLOR: string = '#2F6BFF';
@@ -413,7 +415,8 @@ export function defaultSettings(): AppSettings {
     onboardingDone: false,
     appLockEnabled: false,
     accentColor: DEFAULT_ACCENT_COLOR,
-    fontScale: 1
+    fontScale: 1,
+    soulId: 'general'
   };
 }
 
@@ -462,7 +465,10 @@ export function cloneSettings(source: AppSettings): AppSettings {
     onboardingDone: source.onboardingDone === true,
     appLockEnabled: source.appLockEnabled === true,
     accentColor: normalizeAccentColor(source.accentColor),
-    fontScale: clampFontScale(source.fontScale)
+    fontScale: clampFontScale(source.fontScale),
+    soulId: source.soulId !== undefined && source.soulId.length > 0
+      ? source.soulId
+      : 'general'
   };
 }
 

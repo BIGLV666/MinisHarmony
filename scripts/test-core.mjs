@@ -50,6 +50,7 @@ copyCore('SessionExport', ['Types', 'MarkdownExport']);
 copyCore('FileListing');
 copyCore('SessionParams', ['Types']);
 copyCore('Appearance');
+copyCore('Soul');
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -120,6 +121,7 @@ const sessionExport = await import(pathToFileURL(join(tmp, 'SessionExport.mts'))
 const listing = await import(pathToFileURL(join(tmp, 'FileListing.mts')).href);
 const sessionParams = await import(pathToFileURL(join(tmp, 'SessionParams.mts')).href);
 const appearance = await import(pathToFileURL(join(tmp, 'Appearance.mts')).href);
+const soul = await import(pathToFileURL(join(tmp, 'Soul.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -335,6 +337,13 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(appearance.ACCENT_PRESETS.length, 6);
   assert.equal(types.normalizeAccentColor(appearance.ACCENT_PRESETS[3].value),
     appearance.ACCENT_PRESETS[3].value);
+  assert.equal(settings.soulId, 'general');
+  assert.equal(soul.normalizeSoulId('engineer'), 'engineer');
+  assert.equal(soul.normalizeSoulId('nope'), 'general');
+  assert.equal(soul.soulPrompt('general'), '');
+  assert.equal(soul.soulPrompt('engineer').length > 0, true);
+  assert.equal(soul.soulPrompt('unknown'), '');
+  assert.equal(soul.SOUL_PRESETS.length >= 5, true);
   assert.deepEqual(
     types.normalizeToolNames(['read_file', 'read_file', '', 'now']),
     ['read_file', 'now']

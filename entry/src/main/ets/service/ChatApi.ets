@@ -2,6 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { AppSettings, ChatMessage } from '../core/Types';
+import { soulPrompt } from '../core/Soul';
 import { ApiMessage, ImageResolver, toApiMessages } from '../core/ToolProtocol';
 import { ToolDefinition, ToolParameters } from '../core/ToolTypes';
 import {
@@ -170,6 +171,12 @@ function buildMessages(
 ): ApiMessage[] {
   const messages: ApiMessage[] = toApiMessages(history, resolveImage);
   let systemPrompt: string = settings.systemPrompt.trim();
+  const soul: string = soulPrompt(settings.soulId).trim();
+  if (soul.length > 0) {
+    systemPrompt = systemPrompt.length > 0
+      ? soul + '\n\n' + systemPrompt
+      : soul;
+  }
   const memory: string = memoryContext.trim();
   if (memory.length > 0) {
     systemPrompt = systemPrompt.length > 0

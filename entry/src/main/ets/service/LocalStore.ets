@@ -1,6 +1,7 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { SecureStore } from './SecureStore';
+import { normalizeSoulId } from '../core/Soul';
 import {
   AppSettings,
   ChatMessage,
@@ -98,7 +99,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     onboardingDone: source.onboardingDone === true,
     appLockEnabled: source.appLockEnabled === true,
     accentColor: normalizeAccentColor(source.accentColor),
-    fontScale: clampFontScale(source.fontScale)
+    fontScale: clampFontScale(source.fontScale),
+    soulId: normalizeSoulId(source.soulId)
   };
 }
 

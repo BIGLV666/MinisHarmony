@@ -1,4 +1,5 @@
 import { BUILTIN_MODELS, ModelInfo } from '../core/Types';
+import { capsForModel, capsLabel } from '../core/ModelCaps';
 
 @Component
 export struct ModelPicker {
@@ -16,7 +17,8 @@ export struct ModelPicker {
         Text(item.name)
           .fontSize(14)
           .fontColor($r('app.color.text_primary'))
-        Text(item.id + (item.note.length > 0 ? ' · ' + item.note : ''))
+        Text(item.id + (item.note.length > 0 ? ' · ' + item.note : '') +
+          ' · ' + capsLabel(capsForModel(item.id)))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
       }

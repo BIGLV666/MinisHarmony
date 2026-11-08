@@ -334,6 +334,12 @@ chunk 里返回 `usage`，且该 chunk 常常是 `choices: []` —— `SseParser
 持久化，所以重启后每条回复的 `↑X ↓Y` 仍可见；顶栏取最近一条有 token 的消息显示
 上下文大小。上游不返回 usage 时三个字段保持 0，UI 不显示。
 
+估算窗口来自 `core/ModelCaps.ets`：按模型 id 前缀（`gpt-6`、`claude`、`gemini`、
+`kimi-k3` 等）给出上下文窗口、最大输出、是否支持视觉与推理，未知模型回退
+128k / 8192。顶栏因此显示 `上下文 12.3k / 128k (10%)`，模型列表显示
+`400k · 视觉 · 推理`。该表是**离线估计**，不做强校验：`max_tokens` 只在用户值
+超过估计上限时夹取，不因表里没有视觉能力就禁用 `read_image`，避免误判自定义模型。
+
 ## 上下文预算与压缩
 
 两个独立机制，都在 `core/ContextBudget.ets`（纯函数，可 Node 测试）：
@@ -588,6 +594,6 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 
 ## 可测试性
 
-`core/` 二十一个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 二十二个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

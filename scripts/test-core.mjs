@@ -52,6 +52,7 @@ copyCore('SessionParams', ['Types']);
 copyCore('Appearance');
 copyCore('Soul');
 copyCore('SkillDoc');
+copyCore('ModelCaps');
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -124,6 +125,7 @@ const sessionParams = await import(pathToFileURL(join(tmp, 'SessionParams.mts'))
 const appearance = await import(pathToFileURL(join(tmp, 'Appearance.mts')).href);
 const soul = await import(pathToFileURL(join(tmp, 'Soul.mts')).href);
 const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
+const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -308,6 +310,32 @@ test('skill slash commands match enabled ids', () => {
   assert.equal(skilldoc.matchSkillCommand('/Deploy Helper', ['deploy-helper']), null);
   assert.equal(skilldoc.matchSkillCommand('review', ids), null);
   assert.equal(skilldoc.matchSkillCommand('/', ids), null);
+});
+
+test('model capability estimates and max token clamping', () => {
+  const gpt = modelCaps.capsForModel('gpt-6-luna');
+  assert.equal(gpt.contextWindow, 400000);
+  assert.equal(gpt.vision, true);
+  assert.equal(gpt.reasoning, true);
+  assert.equal(modelCaps.capsForModel('Claude-Haiku-5-5').contextWindow, 200000);
+  assert.equal(modelCaps.capsForModel('gemini-4-argon').contextWindow, 1000000);
+  assert.equal(modelCaps.capsForModel('kimi-k2.7-code').vision, false);
+
+  const unknown = modelCaps.capsForModel('my-custom-model');
+  assert.equal(unknown.contextWindow, 128000);
+  assert.equal(unknown.maxOutput, 8192);
+  assert.equal(unknown.tools, true);
+
+  assert.equal(modelCaps.clampMaxTokens(4096, gpt), 4096);
+  assert.equal(modelCaps.clampMaxTokens(64000, gpt), 32768);
+  assert.equal(modelCaps.clampMaxTokens(0, gpt), 32768);
+
+  assert.equal(modelCaps.formatWindow(128000), '128k');
+  assert.equal(modelCaps.formatWindow(1000000), '1m');
+  assert.equal(modelCaps.contextPercent(64000, 128000), 50);
+  assert.equal(modelCaps.contextPercent(200000, 128000), 100);
+  assert.equal(modelCaps.contextPercent(0, 128000), 0);
+  assert.equal(modelCaps.capsLabel(gpt).indexOf('视觉') >= 0, true);
 });
 
 test('session params merge over global settings', () => {

@@ -1,4 +1,5 @@
 import { ChatMessage, messageKey, modelName, scaleFont } from '../core/Types';
+import { capsForModel, contextPercent, formatWindow } from '../core/ModelCaps';
 import { formatTokens } from '../service/Format';
 import { MessageBubble } from './MessageBubble';
 
@@ -98,7 +99,9 @@ export struct ChatView {
       const message: ChatMessage = this.messages[i];
       if (message.role === 'assistant' && message.totalTokens > 0) {
         const used: number = message.promptTokens + message.completionTokens;
-        value += ' · 上下文 ' + formatTokens(used);
+        const window: number = capsForModel(this.modelId).contextWindow;
+        value += ' · 上下文 ' + formatTokens(used) + ' / ' + formatWindow(window) +
+          ' (' + contextPercent(used, window).toString() + '%)';
         break;
       }
     }

@@ -54,6 +54,7 @@
 | OpenMinis 工具循环保护 | `core/ToolLoop.ets` + `AgentRuntime` | 连续相同调用 3 次追加警告 |
 | 本地文件 / shell 工具 | `service/LocalToolRuntime.ets`、`RemoteToolRuntime.ets` | 应用工作区或远程 HTTP 服务，共用 `ToolRuntime` |
 | OpenCode Go 模型发现 | `ChatApi.fetchModelIds()` | 规范基址 `/zen/go/v1/models`；旧基址自动换算 |
+| OpenMinis 模型能力目录 | `core/ModelCaps.ets` | 家族前缀估计上下文/最大输出/视觉/推理；顶栏占比与模型列表标签；离线，不做 models.dev 拉取 |
 | Android `preferences` / DB | `service/LocalStore.ets` | 单库 JSON；后续可换 RDB |
 
 ## 这一阶段做了什么

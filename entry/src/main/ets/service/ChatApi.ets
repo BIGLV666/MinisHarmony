@@ -3,6 +3,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { AppSettings, ChatMessage } from '../core/Types';
 import { soulPrompt } from '../core/Soul';
+import { capsForModel, clampMaxTokens } from '../core/ModelCaps';
 import { ApiMessage, ImageResolver, toApiMessages } from '../core/ToolProtocol';
 import { ToolDefinition, ToolParameters } from '../core/ToolTypes';
 import {
@@ -239,7 +240,7 @@ export function startChatStream(
     stream: true,
     stream_options: { include_usage: true },
     temperature: settings.temperature,
-    max_tokens: settings.maxTokens
+    max_tokens: clampMaxTokens(settings.maxTokens, capsForModel(settings.modelId))
   };
   if (settings.thinkingLevel !== 'off') {
     body.reasoning_effort = settings.thinkingLevel;

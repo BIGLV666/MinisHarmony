@@ -92,7 +92,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | thinking level | 逐模型推理档位 | 设置页四档（off/low/medium/high）+ `/thinking` 循环；请求体 `reasoning_effort`。全局设置，不做逐模型元数据 | P2 |
 | - [ ] | fast mode | 优先级队列 | 取决于上游支持 | P3 |
 | - [ ] | 逐模型参数覆盖 | temperature/top_p/headers/extra_body | `AppSettings` 增加 per-model 表 | P2 |
-| - [ ] | 模型能力元数据 | models.dev 目录、上下文长度 | 内置少量 + 拉取 | P2 |
+| - [x] | 模型能力元数据 | models.dev 目录、上下文长度 | `core/ModelCaps.ets` 按家族前缀内置上下文/输出/视觉/推理估计；顶栏显示 `已用 / 窗口 (百分比)`，模型列表显示能力标签，`max_tokens` 按上限夹取；离线可用，不做远端拉取 | P2 |
 
 ## 5. 记忆 / 技能 / 人格
 
@@ -252,3 +252,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 生成时保持常亮 | `service/ScreenWake.ets` 在开始生成时 `setWindowKeepScreenOn(true)`，完成或停止恢复；失败静默 |
 | 2026-11-08 | tool call 配对加固 | 全历史重复 `tool_call_id` 追加 `_2`/`_3` 后缀并同步结果；空工具名的调用不再发送；中断调用仍回填合成结果；51 项测试通过 |
 | 2026-11-08 | Skills 斜杠命令 | 已启用技能按 id 注册为 `/命令`，大小写不敏感；正文作为本轮系统提示注入、不显示在气泡；命令后文字作为用户输入；`/help` 动态列出；52 项测试通过 |
+| 2026-11-08 | 模型能力元数据 | `core/ModelCaps.ets` 家族前缀估计上下文/最大输出/视觉/推理；顶栏显示窗口占比、模型列表显示标签；请求 `max_tokens` 夹取到模型上限；未知模型回退 128k/8k；53 项测试通过 |

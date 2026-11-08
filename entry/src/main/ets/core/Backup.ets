@@ -52,6 +52,7 @@ export function redactedSettings(settings: AppSettings): AppSettings {
   const copy: AppSettings = cloneSettings(settings);
   copy.apiKey = '';
   copy.sandboxToken = '';
+  copy.webDavPassword = '';
   const overrides: ModelOverride[] = [];
   for (let i = 0; i < copy.modelOverrides.length; i++) {
     const item: ModelOverride = copy.modelOverrides[i];
@@ -168,6 +169,10 @@ export function parseBackupSettings(text: string): AppSettings | null {
   base.enabledSkills = normalizeToolNames(raw.enabledSkills);
   base.modelOverrides = Array.isArray(raw.modelOverrides) ? raw.modelOverrides : [];
   base.mcpServers = Array.isArray(raw.mcpServers) ? raw.mcpServers : [];
+  base.webDavUrl = stringOr(raw.webDavUrl, '');
+  base.webDavUser = stringOr(raw.webDavUser, '');
+  // The WebDAV password is a credential and is never part of a backup.
+  base.webDavPassword = '';
   // cloneSettings normalizes/clamps every field a second time.
   return cloneSettings(base);
 }
@@ -183,5 +188,6 @@ export function mergeBackupSettings(
   const next: AppSettings = cloneSettings(backup);
   next.apiKey = current.apiKey;
   next.sandboxToken = current.sandboxToken;
+  next.webDavPassword = current.webDavPassword;
   return next;
 }

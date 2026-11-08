@@ -112,6 +112,11 @@ export interface AppSettings {
   modelOverrides: ModelOverride[];
   /** MCP servers whose tools are exposed as `mcp_<server>_<tool>`. */
   mcpServers: McpServerConfig[];
+  /** WebDAV collection used for encrypted remote backups; empty disables it. */
+  webDavUrl: string;
+  webDavUser: string;
+  /** Basic-auth password, kept in the Asset Store like the API key. */
+  webDavPassword: string;
 }
 
 export const DEFAULT_ACCENT_COLOR: string = '#2F6BFF';
@@ -446,7 +451,10 @@ export function defaultSettings(): AppSettings {
     soulId: 'general',
     enabledSkills: [],
     modelOverrides: [],
-    mcpServers: []
+    mcpServers: [],
+    webDavUrl: '',
+    webDavUser: '',
+    webDavPassword: ''
   };
 }
 
@@ -540,7 +548,10 @@ export function cloneSettings(source: AppSettings): AppSettings {
       : 'general',
     enabledSkills: normalizeToolNames(source.enabledSkills),
     modelOverrides: normalizeModelOverrides(source.modelOverrides),
-    mcpServers: normalizeMcpServers(source.mcpServers)
+    mcpServers: normalizeMcpServers(source.mcpServers),
+    webDavUrl: source.webDavUrl !== undefined ? source.webDavUrl : '',
+    webDavUser: source.webDavUser !== undefined ? source.webDavUser : '',
+    webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : ''
   };
 }
 

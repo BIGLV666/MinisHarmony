@@ -93,6 +93,13 @@ export struct SettingsSheet {
   /** Host builds and saves the diagnostics bundle (needs the session store). */
   onExportDiagnostics: () => void = () => {
   };
+  /** Draft credentials are passed straight to the host; nothing is logged. */
+  onUploadRemoteBackup: (url: string, user: string, password: string) => void =
+    (url: string, user: string, password: string) => {
+    };
+  onDownloadRemoteBackup: (url: string, user: string, password: string) => void =
+    (url: string, user: string, password: string) => {
+    };
 
   @State preset: ProviderPreset = 'opencode';
   @State baseUrl: string = OPENCODE_GO_BASE;
@@ -154,6 +161,10 @@ export struct SettingsSheet {
   @State mcpEnabled: boolean = true;
   @State mcpRefreshing: boolean = false;
   @State mcpStatusText: string = '';
+  @State webDavUrl: string = '';
+  @State webDavUser: string = '';
+  @State webDavPassword: string = '';
+  @State showWebDavPassword: boolean = false;
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -190,6 +201,9 @@ export struct SettingsSheet {
     this.disabledTools = copy.disabledTools.slice();
     this.modelOverrides = normalizeModelOverrides(copy.modelOverrides);
     this.mcpServers = normalizeMcpServers(copy.mcpServers);
+    this.webDavUrl = copy.webDavUrl;
+    this.webDavUser = copy.webDavUser;
+    this.webDavPassword = copy.webDavPassword;
   }
 
   private toolEnabled(name: string): boolean {
@@ -328,7 +342,10 @@ export struct SettingsSheet {
       fontScale: this.fontScale,
       enabledSkills: this.enabledSkills.slice(),
       modelOverrides: normalizeModelOverrides(this.modelOverrides),
-      mcpServers: normalizeMcpServers(this.mcpServers)
+      mcpServers: normalizeMcpServers(this.mcpServers),
+      webDavUrl: this.webDavUrl.trim(),
+      webDavUser: this.webDavUser.trim(),
+      webDavPassword: this.webDavPassword
     };
     return next;
   }
@@ -1482,6 +1499,96 @@ export struct SettingsSheet {
                 .backgroundColor($r('app.color.surface'))
                 .borderRadius(9)
               }
+            }
+            .width('100%')
+
+            this.sectionTitle('远程备份（WebDAV）', '上传加密备份到你自己的 WebDAV；换机或多端恢复时不用电脑')
+            Column() {
+              this.fieldLabel('WebDAV 地址')
+              TextInput({ text: this.webDavUrl, placeholder: 'https://dav.example.com/minis' })
+                .height(42)
+                .fontSize(13)
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(10)
+                .onChange((value: string) => {
+                  this.webDavUrl = value;
+                })
+              Text('填写文件夹地址；上传会写入「minis-backup-日期-enc.json」并覆盖「minis-backup-latest-enc.json」。')
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+                .margin({ top: 4 })
+                .lineHeight(13)
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+
+            Column() {
+              this.fieldLabel('用户名')
+              TextInput({ text: this.webDavUser, placeholder: 'WebDAV 账号' })
+                .height(42)
+                .fontSize(13)
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(10)
+                .onChange((value: string) => {
+                  this.webDavUser = value;
+                })
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+
+            Column() {
+              this.fieldLabel('密码')
+              Row({ space: 8 }) {
+                TextInput({
+                  text: this.webDavPassword,
+                  placeholder: '同时用于认证和加密备份'
+                })
+                  .layoutWeight(1)
+                  .height(42)
+                  .fontSize(13)
+                  .type(this.showWebDavPassword ? InputType.Normal : InputType.Password)
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(10)
+                  .onChange((value: string) => {
+                    this.webDavPassword = value;
+                  })
+                Text(this.showWebDavPassword ? '隐藏' : '显示')
+                  .fontSize(11)
+                  .fontColor($r('app.color.accent'))
+                  .padding({ left: 4, right: 4 })
+                  .onClick(() => {
+                    this.showWebDavPassword = !this.showWebDavPassword;
+                  })
+              }
+              .width('100%')
+              Text('密码只保存在系统安全存储；远端文件始终用该密码经 PBKDF2 + AES-256-GCM 加密，不会上传明文。')
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+                .margin({ top: 4 })
+                .lineHeight(13)
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+
+            Row({ space: 8 }) {
+              Button('上传加密备份')
+                .layoutWeight(1)
+                .height(38)
+                .fontSize(12)
+                .fontColor($r('app.color.on_accent'))
+                .backgroundColor($r('app.color.accent'))
+                .borderRadius(10)
+                .onClick(() => this.onUploadRemoteBackup(
+                  this.webDavUrl.trim(), this.webDavUser.trim(), this.webDavPassword))
+              Button('从 WebDAV 恢复')
+                .layoutWeight(1)
+                .height(38)
+                .fontSize(12)
+                .fontColor($r('app.color.text_secondary'))
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(10)
+                .onClick(() => this.onDownloadRemoteBackup(
+                  this.webDavUrl.trim(), this.webDavUser.trim(), this.webDavPassword))
             }
             .width('100%')
 

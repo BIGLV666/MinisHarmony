@@ -158,8 +158,8 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 单轮截图分享 | 渲染一张图 | 助手回复底部「截图」：离屏 `componentSnapshot.createFromBuilder` 渲染 720vp 卡片（会话名、用户问题、Markdown 正文、工具调用摘要、绝对时间与 token），`image.createImagePacker` 编码 PNG 后经系统文档选择器保存；离屏容器不能承载 ArkWeb，显示公式退化为 Unicode 近似；不依赖滚动位置，长回复可完整导出；正文超 12000 字截断、工具行超 12 行折叠，避免贴图过大 | P3 |
 | - [ ] | 系统分享 | 文件/链接/文本 | `ShareKit` | P2 |
 | - [x] | 备份 / 恢复 | 本地归档、加密 | 整库备份可导出为单个 JSON（全部会话 + 设置快照，API Key / 沙箱 Token / MCP 与模型请求头全部剔除），导入时合并会话并恢复非密钥设置、保留当前密钥；侧栏新增「加密备份（密码保护）」：PBKDF2-HMAC-SHA256（12 万次、16 字节盐）派生密钥，AES-256-GCM（12 字节 IV、16 字节认证标签）加密，密码仅用于派生、不落盘不写日志；导入端自动识别加密包并弹窗要密码，错密码与篡改统一报「密码错误或文件已损坏」，明文上限 16 MB | P2 |
-| - [ ] | 远程备份 | rclone（SMB/WebDAV/S3/SFTP） | WebDAV 起步 | P3 |
-| - [ ] | 多端同步 | iCloud（iOS） | 自建 WebDAV，端到端加密 | P3 |
+| - [x] | 远程备份 | rclone（SMB/WebDAV/S3/SFTP） | WebDAV 起步：设置页填地址/账号/密码（密码进 Asset Store，与 API Key 同等对待）；上传把整库用该密码经 PBKDF2-HMAC-SHA256 + AES-256-GCM 加密后 PUT 到「minis-backup-日期-enc.json」并覆盖「minis-backup-latest-enc.json」；恢复 GET latest → 解密 → 合并会话并恢复非密钥设置；鸿蒙 `http` 不支持 PROPFIND，因此不列目录、以固定 `latest` 为恢复入口；明文与密码本身永不上传 | P3 |
+| - [~] | 多端同步 | iCloud（iOS） | 已具备手动 WebDAV 上传/恢复与端到端加密；自动多端合并、冲突解决尚未实现 | P3 |
 | - [ ] | 分享链接 / 回放卡 | ——（OpenMinis 也没有） | 不做 | - |
 
 ## 10. 设置 / 外观 / 本地化
@@ -277,3 +277,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 图像生成 | `core/ImageGen.ets` 纯函数：端点拼接（复用 `normalizeBaseUrl`）、请求体、尺寸白名单、响应解析（b64/url/错误）、魔数识别图片格式；`service/ImageGen.ets` 走 `http` POST `/images/generations`，URL 结果二次下载，写入附件目录；新增 `generate_image` 工具与 `ImageGenHandler` 边界、设置开关 `imageGenEnabled`（默认关）；`MessageBubble` 工具卡片显示图片缩略图并复用全屏预览；远程沙箱不暴露；82 项测试通过、构建通过 |
 | 2026-11-08 | 单轮截图分享 | `components/ShareCardView.ets` 全局 `@Builder` 卡片（问题条 + Markdown 正文 + 工具摘要 + 时间/token 页脚）；`service/Screenshot.ets` 用 `UIContext.getComponentSnapshot().createFromBuilder` 离屏渲染（不受滚动位置裁剪）、`image.createImagePacker` 转 PNG、`DocumentViewPicker` 保存；`MarkdownView.plainMath` 让离屏卡片用 Unicode 公式；`core/ShareCard.ets` 负责文件名与 12000 字/12 工具的边界；`ChatView` 找到上一条用户消息一并入图；83 项测试通过、构建通过 |
 | 2026-11-08 | 崩溃 / 诊断导出 | `core/Diagnostics.ets` 定义诊断文档（环境、非密钥设置摘要、计数、崩溃、事件）与文件名，`crashLine` 对系统上报参数再次脱敏并截断到 2000 字；`service/CrashLog.ets` 用 `hiAppEvent.addWatcher` 订阅 `APP_CRASH`/`APP_FREEZE`，落 `crashes.jsonl` 保留 40 条；`service/Diagnostics.ets` 汇总 `deviceInfo`、`bundleManager`、`i18n`、`AppLogger.recent(300)` 并经文档选择器导出；设置页「导出诊断包」；84 项测试通过、构建通过 |
+| 2026-11-08 | 远程备份 WebDAV | `core/WebDav.ets` 负责地址规范化、文件 URL 与「日期快照 + latest」目标；`service/WebDav.ets` 用 Basic 认证 PUT 加密信封、GET latest 供恢复；`AppSettings` 新增 `webDavUrl/webDavUser/webDavPassword`，密码走 `SecureStore` 新增别名并在保存设置时从 preferences 剔除；`redactedSettings` 清空 WebDAV 密码、备份恢复保留当前密码；设置页新增「远程备份（WebDAV）」区块（地址/账号/密码 + 上传/恢复），草稿凭据直接用于当次操作；86 项测试通过、构建通过 |

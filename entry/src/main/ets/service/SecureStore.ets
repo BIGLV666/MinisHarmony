@@ -3,6 +3,7 @@ import { util } from '@kit.ArkTS';
 
 const ALIAS_API_KEY: string = 'MinisHarmony.apiKey';
 const ALIAS_SANDBOX_TOKEN: string = 'MinisHarmony.sandboxToken';
+const ALIAS_WEBDAV_PASSWORD: string = 'MinisHarmony.webDavPassword';
 
 const encoder: util.TextEncoder = new util.TextEncoder();
 const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
@@ -36,6 +37,10 @@ export class SecureStore {
 
   static sandboxTokenAlias(): string {
     return ALIAS_SANDBOX_TOKEN;
+  }
+
+  static webDavPasswordAlias(): string {
+    return ALIAS_WEBDAV_PASSWORD;
   }
 
   /** Returns '' when the alias is unset, or null when the kit is unavailable. */

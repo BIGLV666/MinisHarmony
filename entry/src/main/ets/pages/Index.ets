@@ -43,6 +43,12 @@ import { SummaryResult, summarizeConversation } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { CrashLog } from '../service/CrashLog';
 import { saveDiagnostics } from '../service/Diagnostics';
+import {
+  WebDavDownload,
+  WebDavOutcome,
+  downloadLatestBackup,
+  uploadEncryptedBackup
+} from '../service/WebDav';
 import { BackgroundGuard } from '../service/BackgroundGuard';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
@@ -663,6 +669,57 @@ struct Index {
     const outcome: ExportOutcome = await saveDiagnostics(
       context, this.settings, this.store);
     this.toast(outcome.message);
+  }
+
+  /**
+   * Upload the whole library to WebDAV. The settings sheet passes its draft
+   * credentials so a user can back up before saving; the payload is encrypted
+   * with the same password and never contains the credential itself.
+   */
+  private async uploadRemoteBackup(
+    url: string,
+    user: string,
+    password: string
+  ): Promise<void> {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    const next: AppSettings = cloneSettings(this.settings);
+    next.webDavUrl = url;
+    next.webDavUser = user;
+    next.webDavPassword = password;
+    const outcome: WebDavOutcome =
+      await uploadEncryptedBackup(next, this.store, new Date());
+    this.toast(outcome.message);
+  }
+
+  /** Download `latest`, decrypt with the WebDAV password, then import. */
+  private async restoreRemoteBackup(
+    url: string,
+    user: string,
+    password: string
+  ): Promise<void> {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    const next: AppSettings = cloneSettings(this.settings);
+    next.webDavUrl = url;
+    next.webDavUser = user;
+    next.webDavPassword = password;
+    const download: WebDavDownload = await downloadLatestBackup(next);
+    if (!download.ok) {
+      this.toast(download.message);
+      return;
+    }
+    const decrypted: DecryptOutcome = await decryptBackupText(download.text, password);
+    if (!decrypted.ok) {
+      this.toast(decrypted.message);
+      return;
+    }
+    this.applyImportOutcome(importSessionsText(decrypted.text,
+      () => util.generateRandomUUID(true)));
   }
 
   /** Export every session plus a secret-free settings snapshot. */
@@ -2168,7 +2225,13 @@ struct Index {
           onBrowseWorkspace: () => {
             this.showWorkspace = true;
           },
-          onExportDiagnostics: () => this.exportDiagnostics()
+          onExportDiagnostics: () => this.exportDiagnostics(),
+          onUploadRemoteBackup: (url: string, user: string, password: string) => {
+            this.uploadRemoteBackup(url, user, password);
+          },
+          onDownloadRemoteBackup: (url: string, user: string, password: string) => {
+            this.restoreRemoteBackup(url, user, password);
+          }
         })
       }
 

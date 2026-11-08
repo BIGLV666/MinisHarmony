@@ -113,7 +113,10 @@ function normalizeSettings(source: AppSettings): AppSettings {
     soulId: normalizeSoulId(source.soulId),
     enabledSkills: normalizeToolNames(source.enabledSkills),
     modelOverrides: normalizeModelOverrides(source.modelOverrides),
-    mcpServers: normalizeMcpServers(source.mcpServers)
+    mcpServers: normalizeMcpServers(source.mcpServers),
+    webDavUrl: source.webDavUrl !== undefined ? source.webDavUrl : '',
+    webDavUser: source.webDavUser !== undefined ? source.webDavUser : '',
+    webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : ''
   };
 }
 
@@ -293,6 +296,19 @@ export class LocalStore {
       }
     }
 
+    const secureWebDav: string | null =
+      await SecureStore.get(SecureStore.webDavPasswordAlias());
+    if (secureWebDav !== null) {
+      if (secureWebDav.length > 0) {
+        settings.webDavPassword = secureWebDav;
+      } else if (settings.webDavPassword.length > 0) {
+        if (await SecureStore.set(SecureStore.webDavPasswordAlias(),
+          settings.webDavPassword)) {
+          migrated = true;
+        }
+      }
+    }
+
     if (migrated) {
       // Rewrites preferences without the plaintext copies.
       await LocalStore.saveSettings(settings);
@@ -314,6 +330,10 @@ export class LocalStore {
     }
     if (await SecureStore.set(SecureStore.sandboxTokenAlias(), settings.sandboxToken)) {
       stored.sandboxToken = '';
+    }
+    if (await SecureStore.set(SecureStore.webDavPasswordAlias(),
+      settings.webDavPassword)) {
+      stored.webDavPassword = '';
     }
 
     await prefs.put(KEY_SETTINGS, JSON.stringify(stored));

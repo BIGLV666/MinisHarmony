@@ -49,6 +49,7 @@ copyCore('ContextBudget', ['Types']);
 copyCore('MarkdownExport', ['Types']);
 copyCore('ShareCard', ['MarkdownExport']);
 copyCore('Diagnostics', ['MarkdownExport', 'EventLog']);
+copyCore('WebDav', ['BackupCrypto', 'Backup', 'SessionExport']);
 copyCore('ToolArgs');
 copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
@@ -189,6 +190,7 @@ const jobs = await import(pathToFileURL(join(tmp, 'SubagentJob.mts')).href);
 const webUrl = await import(pathToFileURL(join(tmp, 'WebUrl.mts')).href);
 const shareCard = await import(pathToFileURL(join(tmp, 'ShareCard.mts')).href);
 const diagnostics = await import(pathToFileURL(join(tmp, 'Diagnostics.mts')).href);
+const webDav = await import(pathToFileURL(join(tmp, 'WebDav.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -2090,4 +2092,58 @@ test('diagnostics bundle redacts, trims and omits secrets', () => {
   assert.ok(!('apiKey' in doc.settings));
   assert.ok(!('baseUrl' in doc.settings));
   assert.ok(!('sandboxToken' in doc.settings));
+});
+
+test('WebDAV URLs and targets are normalized and bounded', () => {
+  assert.equal(webDav.normalizeWebDavUrl(' https://dav.example.com/minis/// '),
+    'https://dav.example.com/minis');
+  assert.equal(webDav.normalizeWebDavUrl('HTTP://x/y/'), 'HTTP://x/y');
+  assert.equal(webDav.normalizeWebDavUrl('ftp://dav.example.com'), '');
+  assert.equal(webDav.normalizeWebDavUrl('dav.example.com/minis'), '');
+  assert.equal(webDav.normalizeWebDavUrl('https://'), '');
+  assert.equal(webDav.normalizeWebDavUrl('   '), '');
+
+  assert.equal(
+    webDav.webDavFileUrl('https://dav.example.com/minis/', 'a.json'),
+    'https://dav.example.com/minis/a.json'
+  );
+  assert.equal(webDav.webDavFileUrl('', 'a.json'), '');
+
+  const targets = webDav.webDavUploadTargets(
+    'https://dav.example.com/minis', new Date(2026, 10, 8));
+  assert.deepEqual(targets, [
+    'https://dav.example.com/minis/minis-backup-2026-11-08-enc.json',
+    'https://dav.example.com/minis/' + webDav.WEBDAV_LATEST_NAME
+  ]);
+  assert.equal(webDav.webDavUploadTargets('bad', new Date()).length, 0);
+});
+
+test('backup redaction clears every credential including WebDAV', () => {
+  const settings = types.defaultSettings();
+  settings.apiKey = 'sk-secret-value';
+  settings.sandboxToken = 'sandbox-token';
+  settings.webDavUrl = 'https://dav.example.com/minis';
+  settings.webDavUser = 'me';
+  settings.webDavPassword = 'dav-password';
+  const redacted = backup.redactedSettings(settings);
+  assert.equal(redacted.apiKey, '');
+  assert.equal(redacted.sandboxToken, '');
+  assert.equal(redacted.webDavPassword, '');
+  // Non-secret remote configuration survives so restore points at the folder.
+  assert.equal(redacted.webDavUrl, 'https://dav.example.com/minis');
+  assert.equal(redacted.webDavUser, 'me');
+
+  const text = backup.backupJson(settings, [], new Date(2026, 10, 8));
+  assert.ok(!text.includes('dav-password'));
+  assert.ok(!text.includes('sk-secret-value'));
+  assert.ok(!text.includes('sandbox-token'));
+
+  const restored = backup.parseBackupSettings(text);
+  assert.equal(restored.webDavUrl, 'https://dav.example.com/minis');
+  assert.equal(restored.webDavUser, 'me');
+  assert.equal(restored.webDavPassword, '');
+
+  const merged = backup.mergeBackupSettings(settings, restored);
+  assert.equal(merged.webDavPassword, 'dav-password');
+  assert.equal(merged.apiKey, 'sk-secret-value');
 });

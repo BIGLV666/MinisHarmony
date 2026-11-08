@@ -44,6 +44,7 @@ export struct SettingsSheet {
   @State contextBudgetText: string = '60000';
   @State loggingEnabled: boolean = false;
   @State memoryEnabled: boolean = false;
+  @State imageToolsEnabled: boolean = false;
   @State backgroundEnabled: boolean = true;
 
   aboutToAppear(): void {
@@ -64,6 +65,7 @@ export struct SettingsSheet {
     this.contextBudgetText = copy.contextBudgetChars.toString();
     this.loggingEnabled = copy.loggingEnabled;
     this.memoryEnabled = copy.memoryEnabled;
+    this.imageToolsEnabled = copy.imageToolsEnabled;
     this.backgroundEnabled = copy.backgroundEnabled;
   }
 
@@ -103,6 +105,7 @@ export struct SettingsSheet {
       contextBudgetChars: clampContextBudget(Number(this.contextBudgetText)),
       loggingEnabled: this.loggingEnabled,
       memoryEnabled: this.memoryEnabled,
+      imageToolsEnabled: this.imageToolsEnabled,
       backgroundEnabled: this.backgroundEnabled
     };
     return next;
@@ -621,6 +624,31 @@ export struct SettingsSheet {
               .padding({ left: 12, right: 12, top: 8, bottom: 8 })
               .backgroundColor($r('app.color.surface_alt'))
               .borderRadius(11)
+
+              if (this.sandboxMode === 'local') {
+                Row({ space: 10 }) {
+                  Column({ space: 3 }) {
+                    Text('允许读取图片')
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_primary'))
+                    Text('开启后模型可调用 read_image 查看工作区图片；仅对支持视觉的模型有效，纯文本模型会报错。')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(14)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  Toggle({ type: ToggleType.Switch, isOn: this.imageToolsEnabled })
+                    .selectedColor($r('app.color.accent'))
+                    .onChange((on: boolean) => {
+                      this.imageToolsEnabled = on;
+                    })
+                }
+                .width('100%')
+                .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(11)
+              }
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {

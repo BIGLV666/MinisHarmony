@@ -357,6 +357,23 @@ filesDir/memory/
 `fileSuffixChoices` 限定 `.md`），再用 `fileIo` 写入返回的 URI。因此不需要
 申请宽泛的存储权限，也不会上传到应用之外，除非用户自己选择云盘目录。
 
+## 视觉输入
+
+`read_image`（默认关闭，设置里需显式开启）只检查路径、格式与大小，最多 5 MB。
+它把**相对路径**写进工具调用 part 的 `uri`/`mimeType`，不把 base64 存进会话，
+避免 preferences 膨胀。
+
+真正发请求时，`AgentRuntime` 把 `ToolRuntime.imageDataUrl()` 作为解析器传给
+`ChatApi` → `ToolProtocol.toApiMessages()`。这个纯函数把图片变成
+`data:<mime>;base64,...`，并在 `role:"tool"` 消息**之后**追加一条合成的
+`role:"user"` 多模态消息——Chat Completions 的 schema 禁止在 tool 消息里放
+`image_url`。`LocalToolRuntime` 按 `uri + size + mtime` 缓存编码结果，同一张图在
+多轮工具调用中只编码一次；`RemoteToolRuntime` 返回空字符串，因此远程模式永远不会
+发送本地图片。
+
+纯文本模型会拒绝 `image_url`，所以该工具默认不出现，必须由用户确认当前模型支持
+视觉后开启。
+
 ## 后台生成
 
 `settings.backgroundEnabled`（默认开启）打开时，`Index.runAgent()` 在开始生成前调用

@@ -68,6 +68,9 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('method', 'string', 'GET 或 POST，默认 GET。'),
     field('body', 'string', 'POST 请求体，可选。')
   ];
+  const readImageFields: FieldEntry[] = [
+    field('path', 'string', '工作区内的图片路径（相对根目录）。支持 png / jpg / jpeg / webp / gif / bmp，单文件上限 5 MB。')
+  ];
   const memoryWriteFields: FieldEntry[] = [
     field('content', 'string', '要长期记住的内容，一句话写清事实、偏好或决定。')
   ];
@@ -92,6 +95,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'read_file',
       description: '读取工作区内的文本文件。返回按行切片后的内容；大文件请用 offset/limit 分页。',
       parameters: parametersOf(readFileFields, ['path'])
+    },
+    {
+      name: 'read_image',
+      description: '读取工作区内的图片并把像素传给模型（需要模型支持视觉，且用户在设置中开启）。纯文本模型不要调用。',
+      parameters: parametersOf(readImageFields, ['path'])
     },
     {
       name: 'write_file',

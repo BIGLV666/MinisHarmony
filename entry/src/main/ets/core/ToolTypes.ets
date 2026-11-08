@@ -23,6 +23,9 @@ export interface ToolDefinition {
 export interface ToolResult {
   ok: boolean;
   content: string;
+  /** Workspace-relative image path; the runtime turns it into a data URL. */
+  imageUri?: string;
+  imageMimeType?: string;
 }
 
 /**
@@ -33,6 +36,8 @@ export interface ToolResult {
 export interface ToolRuntime {
   definitions(): ToolDefinition[];
   execute(name: string, argumentsJson: string): Promise<ToolResult>;
+  /** Build a data URL for a workspace image; empty when unavailable. */
+  imageDataUrl(uri: string, mimeType: string): string;
 }
 
 /**

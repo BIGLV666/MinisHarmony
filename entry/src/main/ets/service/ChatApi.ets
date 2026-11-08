@@ -2,7 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { AppSettings, ChatMessage } from '../core/Types';
-import { ApiMessage, toApiMessages } from '../core/ToolProtocol';
+import { ApiMessage, ImageResolver, toApiMessages } from '../core/ToolProtocol';
 import { ToolDefinition, ToolParameters } from '../core/ToolTypes';
 import {
   SseParser,
@@ -163,9 +163,10 @@ function httpErrorText(code: number, body: string): string {
 function buildMessages(
   settings: AppSettings,
   history: ChatMessage[],
-  memoryContext: string
+  memoryContext: string,
+  resolveImage: ImageResolver | null
 ): ApiMessage[] {
-  const messages: ApiMessage[] = toApiMessages(history);
+  const messages: ApiMessage[] = toApiMessages(history, resolveImage);
   let systemPrompt: string = settings.systemPrompt.trim();
   const memory: string = memoryContext.trim();
   if (memory.length > 0) {
@@ -207,7 +208,8 @@ export function startChatStream(
   history: ChatMessage[],
   tools: ToolDefinition[],
   memoryContext: string,
-  callbacks: ChatCallbacks
+  callbacks: ChatCallbacks,
+  resolveImage: ImageResolver | null = null
 ): ChatStreamHandle {
   const handle: ChatStreamHandle = new ChatStreamHandle();
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
@@ -224,7 +226,7 @@ export function startChatStream(
 
   const body: ChatRequestBody = {
     model: settings.modelId,
-    messages: buildMessages(settings, history, memoryContext),
+    messages: buildMessages(settings, history, memoryContext, resolveImage),
     stream: true,
     stream_options: { include_usage: true },
     temperature: settings.temperature,

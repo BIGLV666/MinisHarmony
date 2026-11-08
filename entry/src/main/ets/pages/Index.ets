@@ -646,6 +646,7 @@ struct Index {
       this.workspaceRoot,
       this.settings.allowWriteTools,
       this.settings.memoryEnabled,
+      this.settings.imageToolsEnabled,
       new SubagentRunner(
         this.settings,
         this.workspaceRoot,

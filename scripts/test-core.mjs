@@ -288,6 +288,31 @@ test('tool protocol expands calls and results into OpenAI messages', () => {
   });
 });
 
+test('read_image pixels follow the tool message as a synthetic user turn', () => {
+  const assistant = types.newChatMessage('a5', 'assistant', '');
+  const call = types.toolCallPart('call_img', 'read_image', '{"path":"pic.png"}');
+  call.status = types.TOOL_DONE;
+  call.resultText = 'Image loaded successfully.';
+  call.uri = 'pic.png';
+  call.mimeType = 'image/png';
+  assistant.parts.push(call);
+
+  const api = proto.toApiMessages([assistant], (uri, mime) => {
+    assert.equal(uri, 'pic.png');
+    assert.equal(mime, 'image/png');
+    return 'data:image/png;base64,QUJD';
+  });
+  assert.equal(api.length, 3);
+  assert.equal(api[1].role, 'tool');
+  assert.equal(api[2].role, 'user');
+  assert.equal(Array.isArray(api[2].content), true);
+  assert.equal(api[2].content[1].type, 'image_url');
+  assert.equal(api[2].content[1].image_url.url, 'data:image/png;base64,QUJD');
+
+  const plain = proto.toApiMessages([assistant]);
+  assert.equal(plain.length, 2);
+});
+
 test('interrupted tool calls get a synthetic result', () => {
   const assistant = types.newChatMessage('a2', 'assistant', '');
   const call = types.toolCallPart('', 'now', '');

@@ -33,6 +33,7 @@
 | Keychain / EncryptedPrefs | `service/SecureStore.ets` | Asset Store Kit，失败时回退 preferences 明文 |
 | 会话导出 Markdown | `core/MarkdownExport.ets` + `service/ExportService.ets` | 纯函数渲染，系统文档选择器选位置写入；不做 zip / 分享卡 |
 | Android 前台服务 / iOS background task | `service/BackgroundGuard.ets` | `dataTransfer` 长时任务，仅生成期间持有；失败静默回退 |
+| OpenMinis `read_image`（原生视觉分支） | `core/ToolProtocol.ets` + `LocalToolRuntime.imageDataUrl()` | tool 消息后追加合成 user `image_url` 消息；无 Vision Group 文本回退 |
 | 本地文件 / shell 工具 | `service/LocalToolRuntime.ets`、`RemoteToolRuntime.ets` | 应用工作区或远程 HTTP 服务，共用 `ToolRuntime` |
 | OpenCode Go 模型发现 | `ChatApi.fetchModelIds()` | 规范基址 `/zen/go/v1/models`；旧基址自动换算 |
 | Android `preferences` / DB | `service/LocalStore.ets` | 单库 JSON；后续可换 RDB |

@@ -26,12 +26,29 @@ export interface ApiToolCall {
   function: ApiToolFunction;
 }
 
+export interface ApiImageUrl {
+  url: string;
+}
+
+/** OpenAI multimodal content part: text or image_url. */
+export interface ApiContentPart {
+  type: string;
+  text?: string;
+  image_url?: ApiImageUrl;
+}
+
 export interface ApiMessage {
   role: string;
-  content: string;
+  content: string | ApiContentPart[];
   tool_calls?: ApiToolCall[];
   tool_call_id?: string;
 }
+
+/**
+ * Turns a workspace-relative image into a data URL. Injected by the agent
+ * runtime so this module stays free of file-system access.
+ */
+export type ImageResolver = (uri: string, mimeType: string) => string;
 
 const INTERRUPTED_RESULT: string = '工具调用在上一轮被中断，未执行。';
 
@@ -43,7 +60,10 @@ function callId(partId: string, fallback: string): string {
  * Convert persisted history into request messages. Reasoning parts are omitted:
  * they are display-only and not accepted by every OpenAI-compatible model.
  */
-export function toApiMessages(messages: ChatMessage[]): ApiMessage[] {
+export function toApiMessages(
+  messages: ChatMessage[],
+  resolveImage: ImageResolver | null = null
+): ApiMessage[] {
   const out: ApiMessage[] = [];
   for (let i = 0; i < messages.length; i++) {
     const message: ChatMessage = messages[i];
@@ -55,6 +75,7 @@ export function toApiMessages(messages: ChatMessage[]): ApiMessage[] {
     const text: string = textOf(message);
     const calls: ApiToolCall[] = [];
     const results: ApiMessage[] = [];
+    const images: string[] = [];
     for (let j = 0; j < message.parts.length; j++) {
       const part = message.parts[j];
       if (part.kind !== PART_TOOL_CALL) {
@@ -77,6 +98,11 @@ export function toApiMessages(messages: ChatMessage[]): ApiMessage[] {
         content: result,
         tool_call_id: id
       });
+      let dataUrl: string = '';
+      if (resolveImage !== null && part.uri.length > 0) {
+        dataUrl = resolveImage(part.uri, part.mimeType);
+      }
+      images.push(dataUrl);
     }
 
     if (message.role === 'assistant') {
@@ -90,6 +116,15 @@ export function toApiMessages(messages: ChatMessage[]): ApiMessage[] {
       out.push(assistant);
       for (let k = 0; k < results.length; k++) {
         out.push(results[k]);
+        if (images[k].length > 0) {
+          // The Chat Completions schema does not allow image parts inside a
+          // role:"tool" message, so the pixels follow as a synthetic user turn.
+          const parts: ApiContentPart[] = [
+            { type: 'text', text: '以下是 read_image 读取的图片：' },
+            { type: 'image_url', image_url: { url: images[k] } }
+          ];
+          out.push({ role: 'user', content: parts });
+        }
       }
     } else if (message.role === 'user' || message.role === 'system') {
       if (text.length === 0) {

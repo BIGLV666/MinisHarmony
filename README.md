@@ -153,6 +153,7 @@ SDK Manager 里实际安装的版本，然后 Sync。
 | `read_file` | 读文本 | 按行 `offset` / `limit`，单文件上限 1 MB，拒绝二进制 |
 | `write_file` | 写文本 | 默认关闭，需显式允许；自动创建父目录 |
 | `file_edit` | 精确替换 | `old_string` 必须唯一，或 `replace_all=true`；与写入共用开关 |
+| `read_image` | 读图片 | 默认关闭；png/jpg/webp/gif/bmp，上限 5 MB，需模型支持视觉 |
 | `search_text` | 搜索文本 | 最多 2000 个文件 / 512 KB，跳过依赖与二进制 |
 | `memory_write` / `memory_get` | 持久记忆 | 需在设置中开启；写入 `filesDir/memory`，按天归档 |
 | `subagent_task` | 子代理 | 仅本机模式；独立内存会话，最多 3 个并行、10 分钟超时 |
@@ -295,9 +296,10 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - 消息回退：保留检查点、拒绝末条与不存在的 id；
 - 上下文压缩：按用户轮次切分、摘要文本截断、预算内不改动历史；
 - Markdown 导出：角色、思考、工具块与文件名清洗；
+- 视觉输入：`read_image` 的 data URL 作为合成 user 消息紧跟工具结果；
 - Markdown 块级与行内解析。
 
-当前结果：**38 项全部通过**。
+当前结果：**39 项全部通过**。
 
 另外做了静态与编译检查：
 
@@ -329,6 +331,7 @@ OHOS_BASE_SDK_HOME=<sdk 根目录> \
   影响，但安全性取决于设备本身。
 - 建议只使用 `https://` 基址；自定义 `http://` 明文地址能否使用取决于系统网络策略。
 - 本机工具只能访问 `filesDir/workspace`，拒绝绝对路径、`..` 和符号链接；写入默认关闭。
+- `read_image` 默认关闭；开启后图片会以 base64 发送到你配置的服务商，仅在本机模式下可用。
 - 事件日志默认关闭，只保存脱敏后的元数据，不含对话内容与密钥；可随时清空。
 - 远程工具会把工具名与参数发送到你填写的服务，远程端必须自行限制工作目录并校验
   Token；不要把无鉴权的工具服务暴露到公网。

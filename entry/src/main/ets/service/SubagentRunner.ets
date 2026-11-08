@@ -96,6 +96,7 @@ export class SubagentRunner implements SubagentHandler {
       this.workspaceRoot,
       this.allowWrite,
       false,
+      childSettings.imageToolsEnabled,
       nextRunner
     );
 

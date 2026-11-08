@@ -1,5 +1,6 @@
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
+import { util } from '@kit.ArkTS';
 import {
   SubagentHandler,
   ToolDefinition,
@@ -16,6 +17,7 @@ import { EditOutcome, applyExactEdit } from '../core/EditPatch';
 import { MemoryStore } from './MemoryStore';
 
 const MAX_READ_BYTES: number = 1024 * 1024;
+const MAX_IMAGE_BYTES: number = 5 * 1024 * 1024;
 const MAX_RESULT_CHARS: number = 24000;
 const MAX_SEARCH_FILES: number = 2000;
 const MAX_SEARCH_BYTES: number = 512 * 1024;
@@ -35,6 +37,10 @@ interface ReadFileArgs {
   path?: string;
   offset?: number;
   limit?: number;
+}
+
+interface ReadImageArgs {
+  path?: string;
 }
 
 interface WriteFileArgs {
@@ -101,6 +107,31 @@ function isBinaryName(name: string): boolean {
   return BINARY_EXT.indexOf(name.substring(dot + 1).toLowerCase()) >= 0;
 }
 
+/** MIME type for the image formats the model can actually decode. */
+function imageMimeFor(name: string): string {
+  const dot: number = name.lastIndexOf('.');
+  if (dot < 0) {
+    return '';
+  }
+  const ext: string = name.substring(dot + 1).toLowerCase();
+  if (ext === 'png') {
+    return 'image/png';
+  }
+  if (ext === 'jpg' || ext === 'jpeg') {
+    return 'image/jpeg';
+  }
+  if (ext === 'webp') {
+    return 'image/webp';
+  }
+  if (ext === 'gif') {
+    return 'image/gif';
+  }
+  if (ext === 'bmp') {
+    return 'image/bmp';
+  }
+  return '';
+}
+
 /**
  * Executes tools inside the application sandbox. Every path is resolved
  * against `workspaceRoot`; absolute paths, `..` and symlinks are rejected.
@@ -109,17 +140,21 @@ export class LocalToolRuntime implements ToolRuntime {
   private root: string;
   private allowWrite: boolean;
   private memoryEnabled: boolean;
+  private imagesEnabled: boolean;
   private subagent: SubagentHandler | null;
+  private imageCache: Map<string, string> = new Map();
 
   constructor(
     workspaceRoot: string,
     allowWrite: boolean,
     memoryEnabled: boolean,
+    imagesEnabled: boolean,
     subagent: SubagentHandler | null = null
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
     this.memoryEnabled = memoryEnabled;
+    this.imagesEnabled = imagesEnabled;
     this.subagent = subagent;
     try {
       if (!fs.accessSync(this.root)) {
@@ -144,6 +179,9 @@ export class LocalToolRuntime implements ToolRuntime {
       if (memoryTool && !this.memoryEnabled) {
         continue;
       }
+      if (name === 'read_image' && !this.imagesEnabled) {
+        continue;
+      }
       if (name === 'subagent_task' && this.subagent === null) {
         continue;
       }
@@ -166,6 +204,9 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'read_file') {
         return this.readFile(argumentsJson);
+      }
+      if (name === 'read_image') {
+        return this.readImage(argumentsJson);
       }
       if (name === 'write_file') {
         return this.writeFile(argumentsJson);
@@ -192,6 +233,46 @@ export class LocalToolRuntime implements ToolRuntime {
     } catch (e) {
       const error: Error = e as Error;
       return { ok: false, content: '工具执行失败：' + error.message };
+    }
+  }
+
+  imageDataUrl(uri: string, mimeType: string): string {
+    if (!this.imagesEnabled) {
+      return '';
+    }
+    try {
+      const absolute: string = this.resolvePath(uri, false);
+      const stat = fs.statSync(absolute);
+      if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_IMAGE_BYTES) {
+        return '';
+      }
+      const mime: string = mimeType.length > 0 ? mimeType : imageMimeFor(absolute);
+      if (mime.length === 0) {
+        return '';
+      }
+      // The same image is re-requested on every tool round; encode it once.
+      const key: string = uri + ':' + stat.size.toString() + ':' + stat.mtime.toString();
+      const cached: string | undefined = this.imageCache.get(key);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
+      const file = fs.openSync(absolute, fs.OpenMode.READ_ONLY);
+      try {
+        fs.readSync(file.fd, buffer);
+      } finally {
+        fs.closeSync(file);
+      }
+      const base64: string =
+        new util.Base64Helper().encodeToStringSync(new Uint8Array(buffer));
+      const dataUrl: string = 'data:' + mime + ';base64,' + base64;
+      if (this.imageCache.size >= 8) {
+        this.imageCache.clear();
+      }
+      this.imageCache.set(key, dataUrl);
+      return dataUrl;
+    } catch (e) {
+      return '';
     }
   }
 
@@ -303,6 +384,50 @@ export class LocalToolRuntime implements ToolRuntime {
       content += '\n…（还有 ' + remaining.toString() + ' 行，可用 offset 继续读取）';
     }
     return { ok: true, content: truncateText(content, MAX_RESULT_CHARS) };
+  }
+
+  private readImage(argumentsJson: string): ToolResult {
+    if (!this.imagesEnabled) {
+      return {
+        ok: false,
+        content: '读取图片未开启。请在设置 → 工具与沙箱中允许读取图片，并确认当前模型支持视觉。'
+      };
+    }
+    const args: ReadImageArgs = JSON.parse(argumentsJson) as ReadImageArgs;
+    const raw: string = args.path !== undefined ? args.path : '';
+    const relative: string | null = normalizeRelativePath(raw);
+    if (relative === null || relative.length === 0) {
+      return { ok: false, content: '路径必须是工作区内的相对文件路径。' };
+    }
+    const absolute: string = this.resolvePath(raw, false);
+    const stat = fs.statSync(absolute);
+    if (stat.isDirectory()) {
+      return { ok: false, content: '这是一个目录，请提供图片文件路径：' + raw };
+    }
+    const mime: string = imageMimeFor(absolute);
+    if (mime.length === 0) {
+      return {
+        ok: false,
+        content: '不支持的图片格式（支持 png / jpg / jpeg / webp / gif / bmp）：' + raw
+      };
+    }
+    if (stat.size <= 0) {
+      return { ok: false, content: '图片文件为空：' + raw };
+    }
+    if (stat.size > MAX_IMAGE_BYTES) {
+      return {
+        ok: false,
+        content: '图片过大（' + stat.size.toString() + ' B），上限为 ' +
+          MAX_IMAGE_BYTES.toString() + ' B。请先压缩后再读取。'
+      };
+    }
+    return {
+      ok: true,
+      content: 'Image loaded successfully.\nMIME: ' + mime +
+        '\nBytes: ' + stat.size.toString(),
+      imageUri: relative,
+      imageMimeType: mime
+    };
   }
 
   private writeFile(argumentsJson: string): ToolResult {

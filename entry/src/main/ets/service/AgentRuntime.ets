@@ -254,7 +254,8 @@ export class AgentRuntime {
         onError: (message: string) => {
           this.onModelError(assistant, message);
         }
-      }
+      },
+      (uri: string, mimeType: string) => this.tools.imageDataUrl(uri, mimeType)
     );
     this.handle = handle;
     if (!this.running || this.cancelled) {
@@ -375,6 +376,12 @@ export class AgentRuntime {
           call.resultText = truncateText(result.content, MAX_TOOL_RESULT);
           call.status = result.ok ? TOOL_DONE : TOOL_ERROR;
           call.isError = !result.ok;
+          if (result.imageUri !== undefined && result.imageUri.length > 0) {
+            call.uri = result.imageUri;
+            call.mimeType = result.imageMimeType !== undefined
+              ? result.imageMimeType
+              : '';
+          }
           this.toolCount++;
           this.log(
             EVENT_TOOL_DONE, result.ok ? LOG_INFO : LOG_WARN, this.step,

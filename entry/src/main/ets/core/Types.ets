@@ -40,6 +40,8 @@ export interface AppSettings {
   toolsEnabled: boolean;
   /** Local file writes need an explicit opt-in. */
   allowWriteTools: boolean;
+  /** Expose read_image; only enable when the selected model accepts images. */
+  imageToolsEnabled: boolean;
   /** Where tool calls execute: in the app sandbox or a remote helper. */
   sandboxMode: SandboxMode;
   sandboxUrl: string;
@@ -255,6 +257,7 @@ export function defaultSettings(): AppSettings {
     maxTokens: 8192,
     toolsEnabled: true,
     allowWriteTools: false,
+    imageToolsEnabled: false,
     sandboxMode: 'local',
     sandboxUrl: '',
     sandboxToken: '',
@@ -277,6 +280,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     maxTokens: source.maxTokens,
     toolsEnabled: source.toolsEnabled,
     allowWriteTools: source.allowWriteTools,
+    imageToolsEnabled: source.imageToolsEnabled === true,
     sandboxMode: source.sandboxMode,
     sandboxUrl: source.sandboxUrl,
     sandboxToken: source.sandboxToken,

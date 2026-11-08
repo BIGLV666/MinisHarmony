@@ -70,7 +70,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 搜索文本 | 通过 shell `grep` | `search_text` | — |
 | - [x] | HTTP 抓取 | 浏览器引擎 `fetch` | `fetch_url` | — |
 | - [x] | 当前时间 | 通过 shell `date` | `now` | — |
-| - [ ] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | 附件 + base64 image part | P1 |
+| - [x] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | `read_image` 读取工作区图片，工具消息后追加合成 user 图片消息；本机模式、默认关闭 | P1 |
 | - [ ] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集（导航/点击/取值/JS） | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |
 | - [~] | 子代理 | `subagent_task` | 本机模式已实现，见 2. 子代理；远程模式不暴露 | P1 |
@@ -226,3 +226,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 密钥安全存储 | API Key / 沙箱 Token 迁入 Asset Store Kit；旧 preferences 明文自动迁移；不可用时回退 |
 | 2026-11-08 | 导出 Markdown | 长按会话「导出为 Markdown」，系统文档选择器选择位置；38 项测试通过 |
 | 2026-11-08 | 后台继续生成 | `KEEP_BACKGROUND_RUNNING` + `backgroundModes: dataTransfer`；生成开始/结束成对启停长时任务，失败静默回退 |
+| 2026-11-08 | `read_image` 视觉输入 | 工作区图片经 `imageDataUrl()` 转 data URL，`role:"tool"` 后紧跟合成 user 图片消息；5 MB 上限、编码缓存、默认关闭；39 项测试通过 |

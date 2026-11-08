@@ -47,7 +47,7 @@ export class RemoteToolRuntime implements ToolRuntime {
       if (name === 'memory_write' || name === 'memory_get') {
         continue;
       }
-      if (name === 'subagent_task') {
+      if (name === 'subagent_task' || name === 'read_image') {
         continue;
       }
       if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {
@@ -63,6 +63,12 @@ export class RemoteToolRuntime implements ToolRuntime {
       return {
         ok: false,
         content: '持久记忆只在本机工作区模式下可用，远程沙箱不会转发记忆工具。'
+      };
+    }
+    if (name === 'read_image') {
+      return {
+        ok: false,
+        content: '读取图片只在本机工作区模式下可用，远程沙箱不会转发图片内容。'
       };
     }
     if (name === 'subagent_task') {
@@ -138,5 +144,10 @@ export class RemoteToolRuntime implements ToolRuntime {
     } finally {
       request.destroy();
     }
+  }
+
+  /** Remote images never travel back as pixels; the helper returns text only. */
+  imageDataUrl(uri: string, mimeType: string): string {
+    return '';
   }
 }

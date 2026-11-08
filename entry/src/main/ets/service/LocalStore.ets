@@ -78,6 +78,7 @@ function normalizeSettings(source: AppSettings): AppSettings {
     maxTokens: maxTokens,
     toolsEnabled: source.toolsEnabled !== false,
     allowWriteTools: source.allowWriteTools === true,
+    imageToolsEnabled: source.imageToolsEnabled === true,
     sandboxMode: sandboxMode,
     sandboxUrl: source.sandboxUrl !== undefined ? source.sandboxUrl : '',
     sandboxToken: source.sandboxToken !== undefined ? source.sandboxToken : '',

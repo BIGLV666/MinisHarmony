@@ -194,6 +194,17 @@ export struct MessageBubble {
     return '等待执行';
   }
 
+  /** The last few lines are what matter while a build or install streams. */
+  private liveTail(text: string): string {
+    const lines: string[] = text.split('\n');
+    const start: number = lines.length > 4 ? lines.length - 4 : 0;
+    const tail: string[] = [];
+    for (let i = start; i < lines.length; i++) {
+      tail.push(lines[i]);
+    }
+    return tail.join('\n').trim();
+  }
+
   private copy(): void {
     const data: pasteboard.PasteData = pasteboard.createData(
       pasteboard.MIMETYPE_TEXT_PLAIN,
@@ -322,6 +333,29 @@ export struct MessageBubble {
       }
       .width('100%')
       .onClick(() => this.toggleTool(part))
+
+      // Live output while running, even when the card is collapsed. The model
+      // still reads the complete (bounded) result once the call finishes.
+      if (part.status === TOOL_RUNNING && part.resultText.length > 0) {
+        Column({ space: 2 }) {
+          Text('实时输出')
+            .fontSize(9)
+            .fontColor($r('app.color.text_tertiary'))
+            .width('100%')
+          Text(this.liveTail(part.resultText))
+            .fontSize(10)
+            .fontColor($r('app.color.text_secondary'))
+            .lineHeight(15)
+            .maxLines(4)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+            .copyOption(CopyOptions.LocalDevice)
+        }
+        .width('100%')
+        .padding({ left: 6, right: 6, top: 4, bottom: 4 })
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(6)
+      }
 
       // Generated or read images arrive as an attachment URI on the tool part.
       if (part.uri.length > 0) {

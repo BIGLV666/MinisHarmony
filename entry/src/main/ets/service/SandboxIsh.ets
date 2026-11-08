@@ -104,7 +104,8 @@ export class SandboxIsh {
    */
   static async run(context: common.UIAbilityContext, command: string,
     timeoutMs: number = 300000,
-    options: SandboxOptions = { workspace: '', memory: '', attachments: '' }): Promise<SandboxRunResult> {
+    options: SandboxOptions = { workspace: '', memory: '', attachments: '' },
+    onProgress?: (text: string) => void): Promise<SandboxRunResult> {
     const previous: Promise<void> = SandboxIsh.queue;
     let release: () => void = () => {
     };
@@ -114,7 +115,7 @@ export class SandboxIsh {
     await previous;
     SandboxIsh.busy++;
     try {
-      return await SandboxIsh.execute(context, command, timeoutMs, options);
+      return await SandboxIsh.execute(context, command, timeoutMs, options, onProgress);
     } finally {
       SandboxIsh.busy--;
       release();
@@ -204,7 +205,8 @@ export class SandboxIsh {
   }
 
   private static async execute(context: common.UIAbilityContext, command: string,
-    timeoutMs: number, options: SandboxOptions): Promise<SandboxRunResult> {
+    timeoutMs: number, options: SandboxOptions,
+    onProgress?: (text: string) => void): Promise<SandboxRunResult> {
     const token: number = SandboxIsh.cancelToken;
     if (SandboxIsh.options.workspace.length === 0) {
       SandboxIsh.options = options;
@@ -243,6 +245,7 @@ export class SandboxIsh {
 
     const deadline: number = Date.now() + Math.max(1000, timeoutMs);
     let lastSize: number = -1;
+    let lastProgress: number = 0;
     while (Date.now() < deadline) {
       if (SandboxIsh.cancelToken !== token) {
         return { output: '', exitCode: -1, timedOut: false, error: '命令已取消' };
@@ -284,6 +287,12 @@ export class SandboxIsh {
             }
             return { output: output, exitCode: marker.code, timedOut: false, error: '' };
           }
+        }
+        // Live preview for the tool card; throttled so a chatty command does
+        // not re-render the message list on every poll.
+        if (onProgress !== undefined && Date.now() - lastProgress >= 700) {
+          lastProgress = Date.now();
+          onProgress(whole ? sample.substring(start) : sample);
         }
       }
       // Large outputs grow in expensive steps; poll them less often.

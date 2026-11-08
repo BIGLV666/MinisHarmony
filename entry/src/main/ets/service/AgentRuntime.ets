@@ -223,6 +223,9 @@ export class AgentRuntime {
         part.isError = true;
         if (part.resultText.length === 0) {
           part.resultText = '生成已停止，工具未执行。';
+        } else {
+          // The card may hold a live tail already; keep it but say it is partial.
+          part.resultText = part.resultText + '\n（已停止，以上为不完整输出）';
         }
       }
     }
@@ -571,8 +574,18 @@ export class AgentRuntime {
         return;
       }
     }
+    // Only the local shell reports progress today. The card shows the tail so
+    // a long build is not a frozen spinner, matching OpenMinis' live sheet.
+    const onProgress: (text: string) => void = (text: string) => {
+      if (!this.running || this.cancelled || text.length === 0) {
+        return;
+      }
+      call.resultText = text;
+      this.emit();
+    };
     try {
-      const result: ToolResult = await this.tools.execute(call.toolName, args);
+      const result: ToolResult = await this.tools.execute(
+        call.toolName, args, onProgress);
       if (!this.running || this.cancelled) {
         return;
       }

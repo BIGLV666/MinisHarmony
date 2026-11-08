@@ -74,7 +74,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 搜索文本 | 通过 shell `grep` | `search_text` | — |
 | - [x] | HTTP 抓取 | 浏览器引擎 `fetch` | `fetch_url` | — |
 | - [x] | 当前时间 | 通过 shell `date` | `now` | — |
-| - [~] | Shell 命令 | `shell_execute {command, timeout}`，默认 900 秒、上限 3600 秒 | 本机 `shell_execute`：iSH 常驻 shell（`cd`、环境变量跨调用保留），工作区与记忆目录 realfs 挂载，应用侧串行队列；完成检测只扫输出末尾 256 KB，命中后整读一次；会话输出过 24 MB 在命令间轮转 daemon；超时/用户停止停 daemon 并立即返回已打印内容（末尾 512 KB）；输出经 `core/Terminal.ets` 去 ANSI/OSC、折叠 `\r`、头尾截断到 20000 字符；受「允许写入工作区文件」、逐工具开关与逐次确认约束；主代理与子代理共用；远程模式由远端执行。**待平板实机二连命令冒烟** | P0 |
+| - [~] | Shell 命令 | `shell_execute {command, timeout}`，默认 900 秒、上限 3600 秒 | 本机 `shell_execute`：iSH 常驻 shell（`cd`、环境变量跨调用保留），工作区与记忆目录 realfs 挂载，应用侧串行队列；完成检测只扫输出末尾 256 KB，命中后整读一次；会话输出过 24 MB 在命令间轮转 daemon；超时/用户停止停 daemon 并立即返回已打印内容（末尾 512 KB）；输出经 `core/Terminal.ets` 去 ANSI/OSC、折叠 `\r`、头尾截断到 20000 字符；运行中每 700 ms 把清洗后的末尾 4000 字符推到工具卡片「实时输出」（折叠状态也显示最后 4 行，对齐 OpenMinis 的 live sheet），停止时标注输出不完整；受「允许写入工作区文件」、逐工具开关与逐次确认约束；主代理与子代理共用；远程模式由远端执行。**待平板实机二连命令冒烟** | P0 |
 | - [x] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | `read_image` 读取工作区图片，工具消息后追加合成 user 图片消息；本机模式、默认关闭 | P1 |
 | - [x] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集：隐藏 Web 视图常驻，`browser_use` 支持 open / click / type / text / html / eval / back / forward / reload / wait / title / url；页面加载最多等 20 秒，返回内容截断；远程沙箱模式不暴露 | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |
@@ -163,7 +163,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 导出 Markdown | 对话转 Markdown | 纯函数生成，经系统文档选择器保存（含思考与工具结果） | P2 |
 | - [x] | 多会话导出 | 多选打包 | 侧栏多选 → 单个 JSON bundle；导入端同时接受 bundle 与单会话文件 | P3 |
 | - [x] | 单轮截图分享 | 渲染一张图 | 助手回复底部「截图」：离屏 `componentSnapshot.createFromBuilder` 渲染 720vp 卡片（会话名、用户问题、Markdown 正文、工具调用摘要、绝对时间与 token），`image.createImagePacker` 编码 PNG 后经系统文档选择器保存；离屏容器不能承载 ArkWeb，显示公式退化为 Unicode 近似；不依赖滚动位置，长回复可完整导出；正文超 12000 字截断、工具行超 12 行折叠，避免贴图过大 | P3 |
-| - [ ] | 系统分享 | 文件/链接/文本 | `ShareKit` | P2 |
+| - [ ] | 系统分享 | 文件/链接/文本 | **暂不可做**：本机安装的 HarmonyOS 6.0.0 API 20 SDK 不含 `ShareKit`（`@hms.core.*` 目录缺失），`ACTION_SEND_DATA` 自 API 9 起已废弃，`ShareExtensionAbility` 只能接收。当前替代：截图分享 + 文档选择器导出 | P2 |
 | - [x] | 备份 / 恢复 | 本地归档、加密 | 整库备份可导出为单个 JSON（全部会话 + 设置快照，API Key / 沙箱 Token / MCP 与模型请求头全部剔除），导入时合并会话并恢复非密钥设置、保留当前密钥；侧栏新增「加密备份（密码保护）」：PBKDF2-HMAC-SHA256（12 万次、16 字节盐）派生密钥，AES-256-GCM（12 字节 IV、16 字节认证标签）加密，密码仅用于派生、不落盘不写日志；导入端自动识别加密包并弹窗要密码，错密码与篡改统一报「密码错误或文件已损坏」，明文上限 16 MB | P2 |
 | - [x] | 远程备份 | rclone（SMB/WebDAV/S3/SFTP） | WebDAV 起步：设置页填地址/账号/密码（密码进 Asset Store，与 API Key 同等对待）；上传把整库用该密码经 PBKDF2-HMAC-SHA256 + AES-256-GCM 加密后 PUT 到「minis-backup-日期-enc.json」并覆盖「minis-backup-latest-enc.json」；恢复 GET latest → 解密 → 合并会话并恢复非密钥设置；鸿蒙 `http` 不支持 PROPFIND，因此不列目录、以固定 `latest` 为恢复入口；明文与密码本身永不上传 | P3 |
 | - [x] | 多端同步 | iCloud（iOS） | WebDAV 端到端加密同步：`core/SyncMerge.ets` 按会话 id 合并，`updatedAt` 新者胜、同刻偏好有消息的一侧、仅本地存在的一侧永远保留（删除不自动传播）；远端恢复改为保 id 解析并合并，不再重复导入；设置页新增「自动同步」开关与「立即同步（合并远端）」，每轮对话结束/启动/保存设置后 15 秒防抖执行「下载→解密→合并→只推 latest」，单飞锁避免并发；`webDavLastSyncAt` 记录并在设置页显示；自动同步失败静默，手动同步才提示错误 | P3 |
@@ -306,3 +306,5 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | shell 权限门禁 | `shell_execute` 可写任意挂载目录，之前却不受「允许写入工作区文件」约束、没有逐工具开关、也不走逐次确认。现在在 `definitions()`/`execute()` 里按写工具处理（关闭时不暴露、直接调用被拒），`confirmWriteTools` 对 shell 同样弹窗，设置页逐工具列表加入「Linux 沙箱」并更新说明文案。111 项单测、HAP 通过 |
 | 2026-11-08 | 终端输出清洗 | 新增 `core/Terminal.ets`（对齐 OpenMinis TerminalSanitizer）：按真实终端语义折叠 `\r` 覆写（含 `ESC[K` 擦除）、去 ANSI/OSC 序列与控制字符、合并空行；截断改为保留头尾并标注省略字符数，构建日志尾部的报错不再被砍掉；清洗前先预截 400k 字符限制中间分配。`ShellTool` 使用它。5 项新测试，116 项通过 |
 | 2026-11-08 | 沙箱协议抽取 | `core/SandboxProtocol.ets` 承接与 `sandbox_ish.cpp` 共用的帧格式：结束标记解析（id 匹配、未闭合、负退出码）、`id=<n>\n<命令>` 负载、16 KB 上限（按 UTF-8 字节计，中文命令不再低估）、请求文件；`SandboxIsh` 改为调用。3 项新测试，119 项通过 |
+| 2026-11-08 | 附件目录挂载进沙箱 | OpenMinis 的 shell 能直接处理 `/var/minis/attachments` 里的聊天图片；`sandbox_ish.cpp` 新增 `attachments=` 请求键与 realfs 挂载，`SandboxIsh`/`ShellTool`/设置页冒烟参数传 `filesDir/attachments`，`shell_execute` 说明同步更新。可选挂载缺失只警告，不影响启动。119 项单测、HAP 通过 |
+| 2026-11-08 | shell 实时输出 | 对齐 OpenMinis 的 ToolLiveSheet：`ToolRuntime`/`ShellHandler` 增加可选 `onProgress`，`SandboxIsh` 轮询时每 700 ms 回传新增输出，`ShellTool` 清洗并只保留末尾 4000 字符，`AgentRuntime.runTool` 写入 `resultText` 后 `emit()`；工具卡片在折叠状态也显示「实时输出」最后 4 行，流式期间可见；停止生成时保留已有输出并标注「已停止，以上为不完整输出」。119 项单测、HAP 构建通过，实机待验 |

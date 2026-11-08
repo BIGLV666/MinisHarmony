@@ -5,6 +5,8 @@ import { SandboxIsh, SandboxOptions, SandboxRunResult } from './SandboxIsh';
 
 /** Matches OpenMinis: one shell call may return at most this much text. */
 const MAX_SHELL_CHARS: number = 20000;
+/** The running card shows the tail of this much output, not the whole log. */
+const MAX_PREVIEW_CHARS: number = 4000;
 /** OpenMinis defaults to 15 minutes and refuses anything above an hour. */
 const DEFAULT_TIMEOUT_SECONDS: number = 900;
 const MAX_TIMEOUT_SECONDS: number = 3600;
@@ -40,7 +42,8 @@ export class ShellTool implements ShellHandler {
     };
   }
 
-  async execute(argumentsJson: string): Promise<ToolResult> {
+  async execute(argumentsJson: string,
+    onProgress?: (text: string) => void): Promise<ToolResult> {
     let args: ShellArgs;
     try {
       args = JSON.parse(argumentsJson) as ShellArgs;
@@ -57,8 +60,20 @@ export class ShellTool implements ShellHandler {
     const seconds: number = Math.max(MIN_TIMEOUT_SECONDS,
       Math.min(MAX_TIMEOUT_SECONDS, requested));
 
+    // The preview is cleaned the same way as the final result, but only its
+    // tail matters while a build or install streams lines.
+    const report: ((text: string) => void) | undefined =
+      onProgress === undefined ? undefined : (text: string) => {
+        const clean: string = sanitizeTerminal(text);
+        if (clean.length === 0) {
+          return;
+        }
+        onProgress(clean.length > MAX_PREVIEW_CHARS
+          ? clean.substring(clean.length - MAX_PREVIEW_CHARS)
+          : clean);
+      };
     const result: SandboxRunResult = await SandboxIsh.run(
-      this.context, command, seconds * 1000, this.options);
+      this.context, command, seconds * 1000, this.options, report);
 
     // ANSI colours and `\r` progress rewrites are noise for the model; the
     // error at the end of a build log matters more than its head.

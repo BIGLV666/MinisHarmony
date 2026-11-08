@@ -265,7 +265,8 @@ export class LocalToolRuntime implements ToolRuntime {
     return available;
   }
 
-  async execute(name: string, argumentsJson: string): Promise<ToolResult> {
+  async execute(name: string, argumentsJson: string,
+    onProgress?: (text: string) => void): Promise<ToolResult> {
     try {
       if (isToolDisabled(this.disabledTools, name)) {
         return { ok: false, content: '工具已在此设备上关闭：' + name };
@@ -320,7 +321,7 @@ export class LocalToolRuntime implements ToolRuntime {
             content: '沙箱命令需要先在设置中开启「允许写入工作区文件」。'
           };
         }
-        return await this.shell.execute(argumentsJson);
+        return await this.shell.execute(argumentsJson, onProgress);
       }
       if (name === 'fetch_url') {
         return await this.fetchUrl(argumentsJson);

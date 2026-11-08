@@ -41,7 +41,12 @@ export interface ToolResult {
  */
 export interface ToolRuntime {
   definitions(): ToolDefinition[];
-  execute(name: string, argumentsJson: string): Promise<ToolResult>;
+  /**
+   * `onProgress` receives partial output while a long-running tool runs; only
+   * the local shell reports it today, and every implementation may ignore it.
+   */
+  execute(name: string, argumentsJson: string,
+    onProgress?: (text: string) => void): Promise<ToolResult>;
   /** Build a data URL for a workspace image; empty when unavailable. */
   imageDataUrl(uri: string, mimeType: string): string;
 }
@@ -94,7 +99,8 @@ export interface BrowserHandler {
  * when a handler is supplied.
  */
 export interface ShellHandler {
-  execute(argumentsJson: string): Promise<ToolResult>;
+  execute(argumentsJson: string,
+    onProgress?: (text: string) => void): Promise<ToolResult>;
 }
 
 /**

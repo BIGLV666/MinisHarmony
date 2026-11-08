@@ -50,7 +50,8 @@ bash scripts/manual-sign.sh init   # 会读取 SIGN_STORE_PASS_FILE=signing/.sto
 ## 2. 在 AppGallery Connect 申请调试证书与 Profile
 
 前提：华为开发者账号，且已在 AGC 创建应用（包名必须是
-`app.minis.harmony`，与 `AppScope/app.json5` 一致）。
+`app.minis.client`，与 `AppScope/app.json5` 一致；包名不能含
+`harmony` 等 AGC 保留字）。
 
 1. **证书**：用户与访问 → 证书管理 → 新增证书 → 类型选「调试证书」，
    上传 `signing/minisharmony.csr`，下载得到的 `.cer`，放到

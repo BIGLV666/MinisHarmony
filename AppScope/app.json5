@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "app.minis.harmony",
+    "bundleName": "app.minis.client",
     "vendor": "minis",
     "versionCode": 1000000,
     "versionName": "1.0.0",

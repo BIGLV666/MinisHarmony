@@ -18,6 +18,7 @@
 #   scripts/build-ish-ohos.sh                 # build the library
 #   scripts/build-ish-ohos.sh --rootfs        # also prepare the Alpine fakefs
 #   scripts/build-ish-ohos.sh --rootfs --push # ... and push it to the tablet
+#   scripts/build-ish-ohos.sh --bundle-rootfs # ... and refresh rawfile/ish-rootfs.zip
 #   scripts/build-ish-ohos.sh --clean         # remove the build directory first
 #
 # Environment overrides:
@@ -56,6 +57,7 @@ DEVICE_ROOTFS=${DEVICE_ROOTFS:-/data/local/tmp/minis-ish-rootfs}
 
 DO_ROOTFS=0
 DO_PUSH=0
+DO_BUNDLE=0
 DO_CLEAN=0
 
 usage() {
@@ -67,6 +69,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --rootfs) DO_ROOTFS=1 ;;
         --push) DO_ROOTFS=1; DO_PUSH=1 ;;
+        --bundle-rootfs) DO_ROOTFS=1; DO_BUNDLE=1 ;;
         --clean) DO_CLEAN=1 ;;
         -h|--help) usage 0 ;;
         *) echo "unknown argument: $1" >&2; usage 1 ;;
@@ -112,6 +115,9 @@ command -v sha256sum >/dev/null || die "sha256sum not found"
 command -v python3 >/dev/null || die "python3 not found"
 if [ "$DO_PUSH" = 1 ]; then
     command -v "$HDC" >/dev/null || die "hdc not found (set HDC)"
+fi
+if [ "$DO_BUNDLE" = 1 ]; then
+    command -v zip >/dev/null || die "zip not found (needed for --bundle-rootfs)"
 fi
 
 if [ "$DO_CLEAN" = 1 ]; then
@@ -236,6 +242,17 @@ prepare_rootfs() {
     chmod -R a+rwX "$root/data"
     tar -czf "$BUILD_DIR/rootfs.tar.gz" -C "$root" data meta.db
     printf '  %s\n' "$BUILD_DIR/rootfs.tar.gz"
+
+    if [ "$DO_BUNDLE" = 1 ]; then
+        # -y keeps symlinks as links. Alpine's applets point at /bin/busybox;
+        # a zip that followed them would balloon to ~350 MB. fakefs also
+        # accepts a regular file holding the target path, so this works even
+        # if the device unzip ignores Unix symlink attributes.
+        ( cd "$root" && zip -q -y -r -9 "$BUILD_DIR/rootfs.zip" data meta.db )
+        mkdir -p "$ROOT/entry/src/main/resources/rawfile"
+        cp "$BUILD_DIR/rootfs.zip" "$ROOT/entry/src/main/resources/rawfile/ish-rootfs.zip"
+        printf '  %s\n' "$ROOT/entry/src/main/resources/rawfile/ish-rootfs.zip"
+    fi
 }
 
 push_rootfs() {

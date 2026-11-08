@@ -75,8 +75,11 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
 - **通信**：不依赖 PTY（HarmonyOS 没有可用的 `/dev/ptmx` 保证）。用
   `ChildProcessArgs.fds` 传一对 socketpair/pipe，协议为长度前缀 JSON：
   `exec {command,timeout,cwd}` / `stdout` / `stderr` / `exit`；stdin 可选。
-- **文件系统**：Alpine minirootfs 解压到应用私有目录；workspace、memory、
-  skills、attachments 映射进 guest 的 `/var/minis/*`。
+- **文件系统**：Alpine minirootfs 以 `rawfile/ish-rootfs.zip` 随 HAP 分发，
+  首次启动用 `@ohos.zlib.decompressFile` 解到应用私有目录 `filesDir/ish-rootfs/`；
+  不把 rootfs 放在 `/data/local/tmp`，避免 `debug_hap` 域访问
+  `data_local_tmp` 的 SELinux 限制，应用也天然拥有 rootfs 的读写权限。
+  workspace、memory、skills、attachments 后续映射进 guest 的 `/var/minis/*`。
 - **隔离边界**：iSH 内核本身是边界：guest 只能看见 rootfs 和显式挂载的目录；
   网络默认共享宿主（与 OpenMinis 一致），后续可加开关。
 - **生命周期**：每个应用进程一个沙箱内核，多条命令共享同一个 guest；命令级
@@ -94,8 +97,9 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       可由 `scripts/build-ish-ohos.sh` 从 iSH 源码重建。
 - [ ] M2 启动内核：原生子进程里 `ish_init` + 挂载 Alpine rootfs，
       跑通 `/bin/sh -c 'echo hi'`，结果经管道回到 ArkTS。
-      （harness 已实现并链接进 `libishsandbox.so`，rootfs 已推到平板；
-      平板锁屏，`aa start` 被系统拒绝，运行时验证待解锁后进行。）
+      （harness 已实现并链接进 `libishsandbox.so`，Alpine rootfs 已打进
+      `rawfile/ish-rootfs.zip`；HAP 构建、签名、安装均成功。平板锁屏，
+      `aa start` 被系统拒绝，运行时验证待解锁后进行。）
 - [ ] M3 工具接入：本机模式新增 `shell_execute`，超时/输出上限/取消；
       工作区与记忆目录挂载。
 - [ ] M4 稳定性：连续命令、并发、长输出、Python/Node 冒烟；
@@ -122,7 +126,10 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
 # 默认从 /home/biglv/project/OpenMinis/deps/ish 取源码。
 scripts/build-ish-ohos.sh --clean
 
-# 重新生成 Alpine fakefs 并推到平板（hdc 可用时）
+# 重新生成 Alpine fakefs 并更新 HAP 内置的 rawfile/ish-rootfs.zip
+scripts/build-ish-ohos.sh --bundle-rootfs
+
+# 调试时也可以把 rootfs 推到 /data/local/tmp（SELinux 可能拒绝应用访问）
 scripts/build-ish-ohos.sh --rootfs --push
 ```
 

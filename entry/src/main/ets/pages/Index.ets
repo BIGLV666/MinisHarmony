@@ -1076,7 +1076,9 @@ struct Index {
         new SubagentRunner(
           settings,
           this.workspaceRoot,
-          settings.allowWriteTools
+          settings.allowWriteTools,
+          0,
+          (session: StoredSession) => this.adoptSubagentSession(session)
         ),
         settings.disabledTools,
         settings.clipboardToolsEnabled
@@ -1164,6 +1166,32 @@ struct Index {
     }
     this.refreshSessions();
     this.toast('已切换到 ' + id);
+  }
+
+  /**
+   * A subagent finished: keep its transcript as a normal stored session. The
+   * sidebar shows it immediately, so the user can read the work or continue
+   * that conversation manually.
+   */
+  private adoptSubagentSession(session: StoredSession): void {
+    session.meta.messageCount = session.messages.length;
+    session.meta.updatedAt = Date.now();
+    let replaced: boolean = false;
+    const next: StoredSession[] = [];
+    for (let i = 0; i < this.store.length; i++) {
+      if (this.store[i].meta.id === session.meta.id) {
+        next.push(session);
+        replaced = true;
+      } else {
+        next.push(this.store[i]);
+      }
+    }
+    if (!replaced) {
+      next.unshift(session);
+    }
+    this.store = next;
+    this.refreshSessions();
+    this.persistSoon();
   }
 
   private persistSoon(): void {

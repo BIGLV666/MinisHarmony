@@ -43,6 +43,8 @@ export class SubagentRunner implements SubagentHandler {
   private workspaceRoot: string;
   private allowWrite: boolean;
   private depth: number;
+  /** Persist finished child transcripts so they remain openable in the sidebar. */
+  private onFinish: ((session: StoredSession) => void) | null;
 
   private static active: number = 0;
 
@@ -50,12 +52,14 @@ export class SubagentRunner implements SubagentHandler {
     settings: AppSettings,
     workspaceRoot: string,
     allowWrite: boolean,
-    depth: number = 0
+    depth: number = 0,
+    onFinish: ((session: StoredSession) => void) | null = null
   ) {
     this.settings = settings;
     this.workspaceRoot = workspaceRoot;
     this.allowWrite = allowWrite;
     this.depth = depth;
+    this.onFinish = onFinish;
   }
 
   async run(prompt: string, label: string): Promise<ToolResult> {
@@ -90,7 +94,8 @@ export class SubagentRunner implements SubagentHandler {
 
     const nextDepth: number = this.depth + 1;
     const nextRunner: SubagentRunner | null = nextDepth < MAX_SUBAGENT_DEPTH
-      ? new SubagentRunner(childSettings, this.workspaceRoot, this.allowWrite, nextDepth)
+      ? new SubagentRunner(
+        childSettings, this.workspaceRoot, this.allowWrite, nextDepth, this.onFinish)
       : null;
     const tools: LocalToolRuntime = new LocalToolRuntime(
       this.workspaceRoot,
@@ -102,7 +107,7 @@ export class SubagentRunner implements SubagentHandler {
       childSettings.clipboardToolsEnabled
     );
 
-    const title: string = label.length > 0 ? label : '子代理';
+    const title: string = label.length > 0 ? '子代理 · ' + label : '子代理';
     const meta: SessionMeta = {
       id: util.generateRandomUUID(true),
       title: title,
@@ -126,6 +131,15 @@ export class SubagentRunner implements SubagentHandler {
         if (timer !== -1) {
           clearTimeout(timer);
           timer = -1;
+        }
+        if (this.onFinish !== null && session.messages.length > 0) {
+          session.meta.messageCount = session.messages.length;
+          session.meta.updatedAt = Date.now();
+          try {
+            this.onFinish(session);
+          } catch (e) {
+            // A storage failure must not turn a finished task into an error.
+          }
         }
         resolve(result);
       };

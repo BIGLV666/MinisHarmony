@@ -47,7 +47,7 @@
 | - [x] | 轮次上限可配置 | `MAX_AGENT_TURNS = 200` | 默认 200，1–1000，可续跑 | — |
 | - [x] | 中断工具补结果 | 避免悬空 tool_call | `interruptToolCalls` + `INTERRUPTED_RESULT` | — |
 | - [x] | 本地事件日志 | 结构化日志、脱敏 | `EventLog` + `AppLogger` | — |
-| - [~] | 子代理 `subagent_task` | 最多 3 个并行、steer/cancel/resume、10 分钟 | 独立 `AgentRuntime` + 内存子会话、并行上限 3、10 分钟超时、嵌套 2 层；无 steer/resume，子会话不落库 | P1 |
+| - [~] | 子代理 `subagent_task` | 最多 3 个并行、steer/cancel/resume、10 分钟 | 独立 `AgentRuntime`、并行上限 3、10 分钟超时、嵌套 2 层；结束时子会话落库并以「子代理 · 标签」出现在侧栏，可打开继续；无运行中 steer / 专门 resume 按钮 | P1 |
 | - [x] | 工具并行执行 | 同一轮多个 tool_calls 并发 | `Promise.all` 并发执行，结果回到各自 part | P1 |
 | - [x] | 上下文压缩（compact） | `/compact` 摘要旧消息 | 保留最近 3 个用户轮次，旧轮次由模型摘要替换 | P1 |
 | - [x] | 工具循环检测 | 重复调用同一工具时警告 | 连续相同 `name+args` 达 3 次时在工具结果前追加警告 | P2 |
@@ -73,7 +73,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | `read_image` 读取工作区图片，工具消息后追加合成 user 图片消息；本机模式、默认关闭 | P1 |
 | - [ ] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集（导航/点击/取值/JS） | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |
-| - [~] | 子代理 | `subagent_task` | 本机模式已实现，见 2. 子代理；远程模式不暴露 | P1 |
+| - [~] | 子代理 | `subagent_task` | 本机模式已实现且子会话落库，见 2. 子代理；远程模式不暴露；运行中 steer 未做 | P1 |
 | - [ ] | 图像生成 | `minis-model-use` 调用 `/images/generations` | 可选，取决于订阅模型 | P3 |
 | - [x] | 工具开关 UI | 逐工具启用/禁用 | 设置页「逐工具开关」；`AppSettings.disabledTools`，本机/远程/子代理共用；执行时同样拒绝 | P2 |
 | - [x] | 工具权限确认 | 危险操作弹出确认 | 设置项「写入前逐次确认」；`write_file` / `file_edit` 执行前弹窗，允许/拒绝，停止生成会按拒绝结算 | P2 |
@@ -257,6 +257,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
 | 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |
 | 2026-11-08 | 逐模型参数覆盖 | `core/ModelOverride.ets` + 设置页「逐模型参数」：按模型 ID 精确匹配，覆盖 temperature / top_p / max_tokens，合并额外请求头与 extra_body；未知模型或全局参数不受影响；坏 JSON 保存时拒绝；57 项测试通过 |
+| 2026-11-08 | 子代理会话落库 | `SubagentRunner` 结束时通过 `onFinish` 把子会话交给页面，`Index.adoptSubagentSession` 合并进 `store` 并触发保存，侧栏标题「子代理 · 标签」，可打开查看或继续对话；失败/超时也保留已有记录；嵌套子代理同样上报；运行中 steer 仍未做；70 项测试通过、构建通过 |
 | 2026-11-08 | 内置浏览器 | `components/BrowserPage.ets`：聊天内 http(s) 链接改为全屏 ArkWeb 覆盖层打开，工具栏含地址栏、后退/前进/刷新/系统浏览器/关闭，页面加载进度条与标题；`MarkdownView` 新增可选 `onOpenLink` 回调，未注入时仍走系统浏览器，mailto/tel 继续交系统；暂未做多标签、历史列表、下载、Cookie 管理；70 项测试通过、构建通过 |
 | 2026-11-08 | Gemini 原生协议 | `core/GeminiProtocol.ets`：user/model 角色，助手工具调用转 `functionCall`、结果并入紧随其后的 user `functionResponse`（含错误标记），图片转 `inlineData` base64，system 放 `systemInstruction`；设置页第 4 个预设（默认 `https://generativelanguage.googleapis.com/v1beta`）；`streamGenerateContent?alt=sse` 解析文本、`thought` 推理、函数调用（参数对象转 JSON 字符串）、`usageMetadata` 与安全检查拦截；模型发现过滤 `generateContent` 能力；`/compact` 走 `:generateContent`；70 项测试通过 |
 | 2026-11-08 | Anthropic 原生协议 | `core/AnthropicProtocol.ets`：历史转 Messages，assistant 工具调用转 `tool_use`、结果并入紧随其后的 user `tool_result`（重复 ID 自动加后缀），图片转 base64 block，system 提到顶层；设置页新增 Anthropic 预设（默认 `https://api.anthropic.com/v1`）；SSE 解码 `message_start` / `content_block_start|delta|stop` / `message_delta` / `message_stop`，累加 input/output tokens；`/compact` 与模型发现同样走 `x-api-key` 原生端点；SSE 传输层抽出 `runStream` 供两种协议共用；67 项测试通过 |

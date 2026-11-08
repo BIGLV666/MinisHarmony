@@ -548,6 +548,35 @@ test('empty assistant turns are dropped, reasoning is not sent', () => {
   assert.deepEqual(api, [{ role: 'assistant', content: 'answer' }]);
 });
 
+test('duplicate tool call ids are made unique', () => {
+  const assistant = types.newChatMessage('a9', 'assistant', '');
+  const first = types.toolCallPart('call_dup', 'read_file', '{"path":"a"}');
+  first.resultText = 'A';
+  first.status = types.TOOL_DONE;
+  const second = types.toolCallPart('call_dup', 'read_file', '{"path":"b"}');
+  second.resultText = 'B';
+  second.status = types.TOOL_DONE;
+  assistant.parts.push(first, second);
+
+  const api = proto.toApiMessages([assistant]);
+  assert.equal(api[0].tool_calls[0].id, 'call_dup');
+  assert.equal(api[0].tool_calls[1].id, 'call_dup_2');
+  assert.equal(api[1].tool_call_id, 'call_dup');
+  assert.equal(api[2].tool_call_id, 'call_dup_2');
+  assert.equal(api[1].content, 'A');
+  assert.equal(api[2].content, 'B');
+});
+
+test('tool calls without a name are not sent', () => {
+  const assistant = types.newChatMessage('a10', 'assistant', 'thinking');
+  assistant.parts.push(types.toolCallPart('call_blank', '   ', '{}'));
+  assistant.parts.push(types.toolCallPart('call_ok', 'now', '{}'));
+  const api = proto.toApiMessages([assistant]);
+  assert.equal(api.length, 2);
+  assert.equal(api[0].tool_calls.length, 1);
+  assert.equal(api[0].tool_calls[0].id, 'call_ok');
+});
+
 test('workspace path jail rejects escapes', () => {
   assert.equal(workspace.normalizeRelativePath('../etc/passwd'), null);
   assert.equal(workspace.normalizeRelativePath('/etc/passwd'), null);

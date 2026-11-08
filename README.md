@@ -294,7 +294,7 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - SSE 分块、CRLF、多 data 行、尾部 flush；
 - OpenAI 流式 chunk（content / reasoning / tool_calls / finish / DONE / error）；
 - parts 消息模型：文本/思考分离、追加顺序、`messageKey`；
-- 工具协议：`assistant.tool_calls` + `tool` 消息展开、中断调用补结果；
+- 工具协议：`assistant.tool_calls` + `tool` 消息展开、中断调用补结果、重复 id 去重、空工具名跳过；
 - 工作区路径规则：绝对路径、`..`、反斜杠与截断；
 - Agent 轮次上限：默认 200、边界钳制、旧设置缺字段；
 - 事件日志：密钥脱敏、单行化、JSONL、会话短标签、按天文件名；
@@ -313,7 +313,7 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - 循环检测：只统计连续相同调用；
 - Markdown 块级与行内解析。
 
-当前结果：**49 项全部通过**。
+当前结果：**51 项全部通过**。
 
 另外做了静态与编译检查：
 

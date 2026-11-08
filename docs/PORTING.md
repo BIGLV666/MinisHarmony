@@ -20,7 +20,7 @@
 | Kotlin `ChatViewModel.ensureSession()` | `pages/Index.ets#createChat()` | 先持久化会话再发首个请求 |
 | Compose / Flutter 平板断点 | `onAreaChange` + 840vp | 双栏 / 单栏切换 |
 | SSE 流式 provider | `core/SseParser.ets` | 增量、CRLF、多 data 行、错误体 |
-| OpenAI tool calling | `core/ToolProtocol.ets` + `service/AgentRuntime.ets` | 流式 tool_calls、结果回填、默认 200 轮（与 OpenMinis 对齐，可配置） |
+| OpenAI tool calling | `core/ToolProtocol.ets` + `service/AgentRuntime.ets` | 流式 tool_calls、结果回填、重复 id 去重、空名跳过、默认 200 轮（与 OpenMinis 对齐，可配置） |
 | Android 日志 / 埋点 | `core/EventLog.ets` + `service/AppLogger.ets` | 默认关闭、脱敏、按天轮转；不上报远端 |
 | Kotlin `file_edit` 工具 | `core/EditPatch.ets` + `LocalToolRuntime` | 唯一锚点、`replace_all`；纯逻辑可测 |
 | iOS / Android token 用量 | `SseParser.usage` + `ChatMessage.*Tokens` | `stream_options.include_usage`，落库并在气泡显示 |

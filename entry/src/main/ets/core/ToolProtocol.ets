@@ -57,6 +57,22 @@ function callId(partId: string, fallback: string): string {
 }
 
 /**
+ * Duplicate ids in imported or interrupted histories would make the API pair a
+ * result with the wrong call. The first occurrence keeps its id; later ones get
+ * a numeric suffix and the matching tool message uses the same suffixed id.
+ */
+function uniqueCallId(raw: string, used: string[]): string {
+  let id: string = raw;
+  let attempt: number = 2;
+  while (used.indexOf(id) >= 0) {
+    id = raw + '_' + attempt.toString();
+    attempt++;
+  }
+  used.push(id);
+  return id;
+}
+
+/**
  * Convert persisted history into request messages. Reasoning parts are omitted:
  * they are display-only and not accepted by every OpenAI-compatible model.
  */
@@ -65,6 +81,7 @@ export function toApiMessages(
   resolveImage: ImageResolver | null = null
 ): ApiMessage[] {
   const out: ApiMessage[] = [];
+  const usedIds: string[] = [];
   for (let i = 0; i < messages.length; i++) {
     const message: ChatMessage = messages[i];
     if (message.role === 'tool') {
@@ -78,10 +95,11 @@ export function toApiMessages(
     const images: string[] = [];
     for (let j = 0; j < message.parts.length; j++) {
       const part = message.parts[j];
-      if (part.kind !== PART_TOOL_CALL) {
+      if (part.kind !== PART_TOOL_CALL || part.toolName.trim().length === 0) {
         continue;
       }
-      const id: string = callId(part.toolCallId, 'call_' + i + '_' + j);
+      const id: string = uniqueCallId(
+        callId(part.toolCallId, 'call_' + i + '_' + j), usedIds);
       const args: string = part.argumentsText.length > 0 ? part.argumentsText : '{}';
       calls.push({
         id: id,

@@ -35,7 +35,7 @@
 | - [x] | 失败重试 | 一键重发上一条 | 错误回复显示「重试」，复用重新生成 | P1 |
 | - [x] | 斜杠命令 | `/clear` `/compact` `/memory` `/thinking` | `/new` `/clear` `/compact` `/memory` `/thinking` `/help`；记忆开关为全局而非每会话，思考用请求级 `reasoning_effort`（无模型元数据） | P1 |
 | - [x] | 消息内图片预览 | 附件缩略图、点开大图 | 用户气泡显示缩略图，点按全屏 `bindContentCover` 查看；图片副本存应用私有目录 | P2 |
-| - [~] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | GFM 表格已支持（表头、对齐分隔行、缺列补空）；代码块按语言着色（JS/TS/ETS/Python/Shell/JSON/Kotlin/Go/Rust 的关键字、字符串、注释、数字、函数调用，未知语言纯文本）；LaTeX 常见公式转 Unicode 文本（`\frac`、`\sqrt`、希腊字母、运算符、上下标、`\text`），`$$` 独占一块等宽卡片；矩阵/多行环境只断行不做真实排版，远非 KaTeX 级 | P2 |
+| - [~] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | GFM 表格已支持（表头、对齐分隔行、缺列补空）；代码块按语言着色（JS/TS/ETS/Python/Shell/JSON/Kotlin/Go/Rust 的关键字、字符串、注释、数字、函数调用，未知语言纯文本）；`$$` 独立公式块用内置 KaTeX（`katex.min.js` + `mhchem.min.js` + 字体，约 888 KB）在 ArkWeb 中真实排版，支持矩阵、多行环境、化学式与 `\tag`，按测量高度自适应、超宽横向滚动，深色配色与字号跟随设置，渲染失败退回 Unicode；行内 `$...$` 仍是 `core/Latex.ets` 的 Unicode 近似（`\frac`、`\sqrt`、希腊字母、运算符、上下标、`\text`），不启动 Web 以保证长列表性能 | P2 |
 | - [x] | 消息内链接点击 | 内置浏览器打开 | Markdown 链接与裸 URL 可点击，默认在 `BrowserPage` 内置浏览器打开（可一键转系统浏览器）；仅允许 http/https，mailto/tel 仍交系统处理 | P2 |
 
 ## 2. Agent 运行时
@@ -271,3 +271,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | LaTeX 公式 | `core/Latex.ets` 轻量转换：`\frac/\dfrac/\tfrac`、`\sqrt[n]`、希腊字母、关系/集合/箭头运算符、`\sin` 等函数名、`^`/`_` 上下标（Unicode 上下标字符，不支持时退 `^(...)`/`_(...)`）、`\text`/`\mathrm`/`\operatorname`、`\left`/`\right`、`\begin|\end` 环境断行；未知命令丢弃。Markdown 识别单行与围栏式 `$$` 块（等宽居中卡片）以及行内 `$...$`；行内规则排除 `$5` 货币、`$$`、空行与未闭合。矩阵/多行环境只断行，非真实排版；73 项测试通过 |
 | 2026-11-08 | 子代理 steer / status / cancel / resume | `subagent_task` 改为单个工具 + `action`：delegate 默认后台执行并立即返回 job_id，结束时把「[后台任务结束 …]」作为用户消息送回父对话并自动续跑；`wait=true`/嵌套子代理同步阻塞。全局最多 3 个并行，其余排队，空位自动泵出；`max_minutes` 1–60。`status` 报告状态/当前工具/耗时/模型/结果；`steer` 由 `AgentRuntime.injectInput` 在下一请求前插入，若 turn 刚好结束则续跑而不是丢弃；`cancel` 保留部分结果；活动任务写入 preferences，重启后标记 `interrupted` 并可由 `resume` 按原始说明重跑。父对话停止时同步取消其阻塞子代理，后台任务继续投递；非当前会话的结果在打开时自动续跑。`core/SubagentJob.ets` 状态机/前缀匹配/报告/后台消息 78 项测试通过 |
 | 2026-11-08 | 内置浏览器对齐 | 按 OpenMinis 实际范围校正清单：参考实现只有单页 WebView 预览，没有多标签/历史/下载/Cookie 管理。补齐工具栏差异：加载中显示停止按钮（`controller.stop()`），标题下方显示去 `www.` 与端口的主机名；地址栏与 `browser_use` 共用 `core/WebUrl.ets` 的补协议与主机解析；79 项测试通过 |
+| 2026-11-08 | KaTeX 公式排版 | 从参考实现复制内置 `katex/` 资源（`katex.min.js`、`katex.min.css`、`mhchem.min.js`、字体、`katex-render.html`，约 888 KB）到 `rawfile`；`components/MathBlockView.ets` 用独立 ArkWeb 加载并 `javaScriptProxy` 回传测量宽高，`$$` 块按高度自适应，超宽横向滚动，深色与字号跟随设置，`throwOnError` 失败退回 Unicode 文本；`MdBlock.raw` 保留原始 LaTeX；`nestedScroll` 让公式内竖滑交给聊天列表；79 项测试通过、构建通过 |

@@ -1778,6 +1778,7 @@ test('Markdown recognizes display and inline math', () => {
   const blocks = md.parseMarkdown('$$\\frac{1}{2}$$');
   assert.equal(blocks[0].kind, 'math');
   assert.equal(blocks[0].text, '1/2');
+  assert.equal(blocks[0].raw, '\\frac{1}{2}');
 
   const inline = md.parseInline('质能方程 $E=mc^2$ 成立');
   assert.equal(inline[0].text, '质能方程 ');
@@ -1787,6 +1788,7 @@ test('Markdown recognizes display and inline math', () => {
   const multiline = md.parseMarkdown('$$\na+b\n$$');
   assert.equal(multiline[0].kind, 'math');
   assert.equal(multiline[0].text, 'a+b');
+  assert.equal(multiline[0].raw, 'a+b');
 });
 
 function sampleJob(id, parent, state) {

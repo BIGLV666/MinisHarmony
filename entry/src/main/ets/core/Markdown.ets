@@ -27,6 +27,8 @@ export interface MdBlock {
   index: number;
   /** Present for `Table` blocks: first row is the header. */
   rows?: string[][];
+  /** Present for `Math` blocks: the original LaTeX, for KaTeX rendering. */
+  raw?: string;
 }
 
 export interface MdInline {
@@ -48,7 +50,8 @@ function mathBlock(source: string): MdBlock {
     level: 0,
     lang: '',
     ordered: false,
-    index: 0
+    index: 0,
+    raw: source.trim()
   };
 }
 

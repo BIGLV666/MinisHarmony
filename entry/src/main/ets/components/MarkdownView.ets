@@ -9,6 +9,7 @@ import {
   parseMarkdown
 } from '../core/Markdown';
 import { scaleFont } from '../core/Types';
+import { MathBlockView } from './MathBlockView';
 import {
   CodeSegment,
   TOKEN_COMMENT,
@@ -243,17 +244,9 @@ export struct MarkdownView {
 
   @Builder
   mathBlock(block: MdBlock) {
-    Text(block.text)
-      .fontSize(scaleFont(14, this.fontScale))
-      .fontFamily('monospace')
-      .fontColor($r('app.color.text_primary'))
-      .lineHeight(scaleFont(22, this.fontScale))
-      .width('100%')
-      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-      .backgroundColor($r('app.color.surface_alt'))
-      .borderRadius(10)
-      .textAlign(TextAlign.Center)
-      .copyOption(CopyOptions.LocalDevice)
+    MathBlockView({
+      source: block.raw !== undefined ? block.raw : block.text
+    })
   }
 
   @Builder

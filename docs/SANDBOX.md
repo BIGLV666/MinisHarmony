@@ -95,11 +95,17 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       `libish.a`、`libish_emu.a`、`libfakefs.a`，SQLite 用 amalgamation 交叉编译，
       VDSO 用 OHOS clang 构建；产物在 `entry/libs/arm64-v8a/libishsandbox.so`，
       可由 `scripts/build-ish-ohos.sh` 从 iSH 源码重建。
-- [ ] M2 启动内核：原生子进程里 `ish_init` + 挂载 Alpine rootfs，
+- [x] M2 启动内核：原生子进程里 `ish_init` + 挂载 Alpine rootfs，
       跑通 `/bin/sh -c 'echo hi'`，结果经管道回到 ArkTS。
-      （harness 已实现并链接进 `libishsandbox.so`，Alpine rootfs 已打进
-      `rawfile/ish-rootfs.zip`；HAP 构建、签名、安装均成功。平板锁屏，
-      `aa start` 被系统拒绝，运行时验证待解锁后进行。）
+      （2026-11-08 平板实机冒烟通过：`aa start ... --ps sandboxIsh true` 后，
+      hilog 读到完整回传 —— `hello-from-ish`、`Linux localhost 4.20.69-ish
+      SUPER AWESOME Nov  8 2026 18:47:42 aarch64 Linux`、`uid=0(root)
+      gid=0(root)`、`3.21.3`，即内核启动、fakefs 挂载、`/bin/sh -c`
+      执行与文件回传全部成功。首次失败的 900002 已修：`zlib.decompressFile`
+      要求目标目录事先存在，解压前先 `mkdirSync(staging, true)`。
+      遗留：本次 `[sandbox exit=` 结束标记未在应用 45 秒窗口内出现，
+      应用误报「未结束」；已把 guest 超时放宽到 60 秒、应用侧等待到 150 秒，
+      下一次实机确认结束标记与退出码。）
 - [ ] M3 工具接入：本机模式新增 `shell_execute`，超时/输出上限/取消；
       工作区与记忆目录挂载。
 - [ ] M4 稳定性：连续命令、并发、长输出、Python/Node 冒烟；

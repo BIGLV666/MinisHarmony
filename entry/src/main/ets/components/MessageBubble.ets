@@ -512,7 +512,12 @@ export struct MessageBubble {
     .backgroundColor($r('app.color.surface'))
     .borderRadius({ topLeft: 5, topRight: 16, bottomLeft: 16, bottomRight: 16 })
     .border({ width: 1, color: $r('app.color.border') })
-    .constraintSize({ maxWidth: '82%' })
+    // Full width. A percentage maxWidth clamps the bubble *after* its children
+    // are measured against the unclamped row width, so inner panels that use
+    // width('100%') (reasoning, tool cards, action rows) ended up wider than
+    // the card and spilled past its right edge. A definite width here makes
+    // every child's 100% resolve to the same box.
+    .width('100%')
   }
 
   @Builder

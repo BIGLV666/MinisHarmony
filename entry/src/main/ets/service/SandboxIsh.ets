@@ -21,6 +21,10 @@ export class SandboxIsh {
   private static readonly LEGACY_ROOTFS: string = '/data/local/tmp/minis-ish-rootfs';
   private static readonly MARKER: string = '[sandbox exit=';
   private static readonly TIMEOUT_MARKER: string = '[sandbox timeout';
+  /** Guest-side limit, written into the request. */
+  private static readonly GUEST_TIMEOUT_MS: number = 60000;
+  /** App-side ceiling: guest timeout plus kernel boot and scheduling slack. */
+  private static readonly POLL_TIMEOUT_MS: number = 150000;
 
   /** Returns the app-private rootfs, extracting the bundled archive once. */
   private static async ensureRootfs(context: common.UIAbilityContext): Promise<string> {
@@ -37,8 +41,10 @@ export class SandboxIsh {
       throw new Error('无法写入 rootfs 压缩包');
     }
     // Extract to a fresh staging directory so a failed or interrupted unzip
-    // never leaves a half-valid rootfs behind.
+    // never leaves a half-valid rootfs behind. decompressFile requires the
+    // destination directory to exist already (otherwise 900002).
     SandboxIsh.removeTree(staging);
+    fileIo.mkdirSync(staging, true);
     await zlib.decompressFile(archivePath, staging);
     SandboxIsh.remove(archivePath);
     if (!SandboxIsh.hasMetaDb(staging)) {
@@ -71,9 +77,12 @@ export class SandboxIsh {
     // The native parser reads one key=value per line, so flatten newlines in
     // the command into shell separators for now.
     const flat: string = command.replace(/\r?\n/g, '; ');
+    // The guest timeout must stay well inside the app-side poll window: booting
+    // the fakefs kernel on a tablet is not instant, and if the app gives up
+    // first the user sees a false "did not finish" even though the command ran.
     const request: string = 'rootfs=' + rootfs + '\n' +
       'output=' + outputPath + '\n' +
-      'timeout_ms=30000\n' +
+      'timeout_ms=' + SandboxIsh.GUEST_TIMEOUT_MS.toString() + '\n' +
       'command=' + flat + '\n';
     if (!SandboxIsh.writeText(requestPath, request)) {
       return '无法写入沙箱请求文件：' + requestPath;
@@ -89,7 +98,7 @@ export class SandboxIsh {
       return '沙箱子进程启动失败：' + error.code.toString() + ' ' + error.message;
     }
 
-    const deadline: number = Date.now() + 45000;
+    const deadline: number = Date.now() + SandboxIsh.POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
       const text: string = SandboxIsh.read(outputPath);
       if (text.indexOf(SandboxIsh.MARKER) >= 0 ||
@@ -100,7 +109,9 @@ export class SandboxIsh {
     }
     const partial: string = SandboxIsh.read(outputPath);
     if (partial.length > 0) {
-      return '沙箱未在 45 秒内结束，已收到的输出：\n' + partial;
+      const seconds: number = Math.round(SandboxIsh.POLL_TIMEOUT_MS / 1000);
+      return '沙箱在 ' + seconds.toString() + ' 秒内没有报告结束（命令可能仍在运行），' +
+        '已收到的输出：\n' + partial;
     }
     return '沙箱没有产生输出，可能是原生子进程被系统拒绝或内核启动失败。';
   }

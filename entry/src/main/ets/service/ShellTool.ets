@@ -38,7 +38,9 @@ export class ShellTool implements ShellHandler {
       memory: context.filesDir + '/memory',
       // Attachments are where read_image and the chat picker store media, so
       // the shell can process the same files (Python, file, identify, ...).
-      attachments: context.filesDir + '/attachments'
+      attachments: context.filesDir + '/attachments',
+      // Imported skills are plain markdown; scripts can read the same files.
+      skills: context.filesDir + '/skills'
     };
   }
 

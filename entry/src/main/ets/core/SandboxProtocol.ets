@@ -100,11 +100,12 @@ export function commandTooLong(payload: string): boolean {
 
 /** One-time daemon request, one `key=value` per line. */
 export function sandboxRequestPayload(rootfs: string, output: string, commands: string,
-  workspace: string, memory: string, attachments: string): string {
+  workspace: string, memory: string, attachments: string, skills: string): string {
   return 'rootfs=' + rootfs + '\n' +
     'output=' + output + '\n' +
     'commands=' + commands + '\n' +
     'workspace=' + workspace + '\n' +
     'memory=' + memory + '\n' +
-    'attachments=' + attachments + '\n';
+    'attachments=' + attachments + '\n' +
+    'skills=' + skills + '\n';
 }

@@ -1026,7 +1026,8 @@ export struct SettingsSheet {
       const options: SandboxOptions = {
         workspace: context.filesDir + '/workspace',
         memory: context.filesDir + '/memory',
-        attachments: context.filesDir + '/attachments'
+        attachments: context.filesDir + '/attachments',
+        skills: context.filesDir + '/skills'
       };
       const result: SandboxRunResult = await SandboxIsh.run(context,
         'echo hello-from-ish; uname -a; id; cat /etc/alpine-release', 180000, options);

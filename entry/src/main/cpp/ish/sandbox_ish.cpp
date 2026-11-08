@@ -14,6 +14,7 @@
  *   workspace=<optional host dir mounted at /var/minis/workspace>
  *   memory=<optional host dir mounted at /var/minis/memory>
  *   attachments=<optional host dir mounted at /var/minis/attachments>
+ *   skills=<optional host dir mounted at /var/minis/skills>
  *
  * The guest keeps one `/bin/sh` alive as PID 1 and reads a script stream from
  * stdin. Each command file is `id=<n>\n<command text>`; the harness feeds
@@ -113,6 +114,7 @@ struct Request {
     char workspace[512];
     char memory[512];
     char attachments[512];
+    char skills[512];
 };
 
 sem_t g_exitSem;
@@ -202,6 +204,8 @@ bool parseRequest(const char *path, Request *request) {
         } else if (strncmp(line, "attachments=", 12) == 0) {
             snprintf(request->attachments, sizeof(request->attachments), "%s",
                      line + 12);
+        } else if (strncmp(line, "skills=", 7) == 0) {
+            snprintf(request->skills, sizeof(request->skills), "%s", line + 7);
         }
     }
     free(text);
@@ -380,6 +384,9 @@ int serve(Request *request) {
     // Chat attachments (images, files); the shell can process the same media
     // read_image sees, for example with Python or file(1).
     mountGuestDir(request->attachments, "/var/minis/attachments");
+    // Imported skills, so a script can read a skill's reference files the same
+    // way read_skill returns its body.
+    mountGuestDir(request->skills, "/var/minis/skills");
 
     err = become_new_init_child();
     if (err < 0) {

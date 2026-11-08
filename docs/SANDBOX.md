@@ -63,6 +63,7 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
                  ├─ /var/minis/workspace ← 应用 workspace/
                  ├─ /var/minis/memory    ← 应用 memory/
                  ├─ /var/minis/attachments ← 应用 attachments/（聊天图片等）
+                 ├─ /var/minis/skills    ← 应用 skills/（导入的 SKILL.md）
                  └─ 管道协议：start / write / read / signal / exit
                               │
                               ▼
@@ -74,7 +75,8 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
 - **入口**：`libishsandbox.so` 导出 `Main(NativeChildProcess_Args)`，由 ArkTS
   `childProcessManager.startNativeChildProcess('libishsandbox.so:Main', ...)` 启动。
 - **通信**：不依赖 PTY（HarmonyOS 没有可用的 `/dev/ptmx` 保证）。请求文件
-  （`rootfs=` / `output=` / `commands=` / `workspace=` / `memory=`，一行一个键）
+  （`rootfs=` / `output=` / `commands=` / `workspace=` / `memory=` /
+  `attachments=` / `skills=`，一行一个键）
   由 ArkTS 写一次；命令文件 `id=<n>\n<命令>` 每次原子替换（临时文件 + rename）。
   harness 把它包成 `{ … }; printf "\n[sandbox exit=%d id=<n>]\n" "$?"` 写进
   guest shell 的 stdin 管道，输出与标记都追加到 output 文件，应用按字符游标
@@ -83,8 +85,8 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   首次启动用 `@ohos.zlib.decompressFile` 解到应用私有目录 `filesDir/ish-rootfs/`；
   不把 rootfs 放在 `/data/local/tmp`，避免 `debug_hap` 域访问
   `data_local_tmp` 的 SELinux 限制，应用也天然拥有 rootfs 的读写权限。
-  workspace、memory、attachments 已映射进 guest 的 `/var/minis/*`；skills
-  仍由 `read_skill` 直接读应用目录，暂未挂载。
+  workspace、memory、attachments、skills 都已映射进 guest 的 `/var/minis/*`
+  （skills 是导入的 `.md` 文件，脚本可以直接读取）。
 - **预装 Python 3**：minirootfs 只有 busybox + apk，而 guest 没有网络，
   运行期无法 `apk add`。因此 `scripts/ish-rootfs-python.py` 在构建时按固定
   版本与 SHA-256 下载 Python 3.12.16 及 17 个依赖（musl、openssl、sqlite、

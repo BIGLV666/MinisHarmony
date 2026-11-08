@@ -203,7 +203,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 
 | | 功能 | 说明 |
 |---|---|---|
-| - [~] | 板载 Linux 沙箱 | 鸿蒙禁止 app exec 任何 ELF，但原生子进程可用；改为在子进程内嵌 iSH ARM64 内核 + Asbestos 解释执行 guest，rootfs 用 fakefs。2026-11-08 平板实机冒烟通过：kernel boot → fakefs 挂载 → `/bin/sh -c` 执行 → 输出回传（`hello-from-ish` / `uname -a` 显示 iSH 4.20.69 aarch64 / `uid=0` / Alpine 3.21.3），并以 `[sandbox exit=0]` 上报退出码。现为常驻 daemon：内核只启动一次，`/bin/sh` 作为 PID 1 从 stdin 管道读命令，`cd`/环境变量跨调用保留；`shell_execute` 已接入主代理与子代理，工作区与记忆目录经 realfs 挂到 `/var/minis/*`；rootfs 离线预装 Python 3.12.16 及依赖（构建脚本固定版本与校验和）。**待平板实机验证两条连续命令与 `python3 -c`**；见 [`SANDBOX.md`](SANDBOX.md) |
+| - [~] | 板载 Linux 沙箱 | 鸿蒙禁止 app exec 任何 ELF，但原生子进程可用；改为在子进程内嵌 iSH ARM64 内核 + Asbestos 解释执行 guest，rootfs 用 fakefs。2026-11-08 平板实机冒烟通过：kernel boot → fakefs 挂载 → `/bin/sh -c` 执行 → 输出回传（`hello-from-ish` / `uname -a` 显示 iSH 4.20.69 aarch64 / `uid=0` / Alpine 3.21.3），并以 `[sandbox exit=0]` 上报退出码。现为常驻 daemon：内核只启动一次，`/bin/sh` 作为 PID 1 从 stdin 管道读命令，`cd`/环境变量跨调用保留；`shell_execute` 已接入主代理与子代理，工作区、记忆、聊天附件与技能目录经 realfs 挂到 `/var/minis/*`；rootfs 离线预装 Python 3.12.16 及依赖（构建脚本固定版本与校验和）。**待平板实机验证两条连续命令与 `python3 -c`**；见 [`SANDBOX.md`](SANDBOX.md) |
 | - [-] | Android AccessibilityService | 鸿蒙无对等自动化 API |
 | - [-] | Shizuku | Android 专用 |
 | - [-] | iCloud 同步 / Live Activity / Dynamic Island | iOS 专用，鸿蒙用服务卡片 / 通知替代 |
@@ -308,3 +308,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 沙箱协议抽取 | `core/SandboxProtocol.ets` 承接与 `sandbox_ish.cpp` 共用的帧格式：结束标记解析（id 匹配、未闭合、负退出码）、`id=<n>\n<命令>` 负载、16 KB 上限（按 UTF-8 字节计，中文命令不再低估）、请求文件；`SandboxIsh` 改为调用。3 项新测试，119 项通过 |
 | 2026-11-08 | 附件目录挂载进沙箱 | OpenMinis 的 shell 能直接处理 `/var/minis/attachments` 里的聊天图片；`sandbox_ish.cpp` 新增 `attachments=` 请求键与 realfs 挂载，`SandboxIsh`/`ShellTool`/设置页冒烟参数传 `filesDir/attachments`，`shell_execute` 说明同步更新。可选挂载缺失只警告，不影响启动。119 项单测、HAP 通过 |
 | 2026-11-08 | shell 实时输出 | 对齐 OpenMinis 的 ToolLiveSheet：`ToolRuntime`/`ShellHandler` 增加可选 `onProgress`，`SandboxIsh` 轮询时每 700 ms 回传新增输出，`ShellTool` 清洗并只保留末尾 4000 字符，`AgentRuntime.runTool` 写入 `resultText` 后 `emit()`；工具卡片在折叠状态也显示「实时输出」最后 4 行，流式期间可见；停止生成时保留已有输出并标注「已停止，以上为不完整输出」。119 项单测、HAP 构建通过，实机待验 |
+| 2026-11-08 | 技能目录挂载进沙箱 | `sandbox_ish.cpp` 新增 `skills=` 请求键，把 `filesDir/skills` 挂到 `/var/minis/skills`，脚本可直接读导入的 SKILL.md；`SandboxProtocol.sandboxRequestPayload` 改为 7 行、`SandboxOptions` 新增 `skills`，`ShellTool`/设置页冒烟/启动冒烟都传入；`shell_execute` 说明与 `SANDBOX.md` 同步。原生库重建（3.3 MB），119 项单测、HAP 构建通过 |

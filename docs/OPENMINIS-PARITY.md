@@ -186,7 +186,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 日志脱敏 | 环境变量、Key 脱敏 | `redactSecrets` | — |
 | - [x] | 工作区路径 jail | 沙箱根目录 | `normalizeRelativePath` + symlink 检查 | — |
 | - [x] | 写入需显式开启 | 工具权限 | `allowWriteTools` | — |
-| - [ ] | 密钥安全存储 | Keychain / EncryptedPrefs | `Asset Store Kit` | P1 |
+| - [x] | 密钥安全存储 | Keychain / EncryptedPrefs | `Asset Store Kit`；不可用时回退 preferences 并保留明文兼容 | P1 |
 | - [ ] | 应用锁 | Face ID / 生物识别 | `userIAM.userAuth` | P2 |
 | - [ ] | 加密备份 | `BackupCrypto` | AES-GCM + 口令派生 | P3 |
 | - [ ] | 崩溃 / 诊断导出 | 诊断包 | `hiAppEvent` + 日志打包 | P3 |
@@ -223,3 +223,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 修复 | `refreshSessions()` 自调用导致启动时无限递归；改为构建 meta 列表 |
 | 2026-11-08 | 上下文压缩 / 自动裁剪 | `/compact` 用模型摘要旧轮次并保留最近 3 轮；请求前按 `contextBudgetChars` 裁剪旧工具结果；37 项测试通过 |
 | 2026-11-08 | 子代理 `subagent_task` | 独立内存会话 + 相同工具；最多 3 并行、10 分钟超时、嵌套 2 层；远程模式不暴露 |
+| 2026-11-08 | 密钥安全存储 | API Key / 沙箱 Token 迁入 Asset Store Kit；旧 preferences 明文自动迁移；不可用时回退 |

@@ -1,5 +1,6 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
+import { SecureStore } from './SecureStore';
 import {
   AppSettings,
   ChatMessage,
@@ -16,6 +17,7 @@ import {
   TOOL_RUNNING,
   clampContextBudget,
   clampMaxTurns,
+  cloneSettings,
   defaultSettings,
   reasoningPart,
   textPart
@@ -221,10 +223,49 @@ export class LocalStore {
         return defaultSettings();
       }
       const parsed: AppSettings = JSON.parse(raw) as AppSettings;
-      return normalizeSettings(parsed);
+      const settings: AppSettings = normalizeSettings(parsed);
+      return await LocalStore.hydrateSecrets(settings);
     } catch (e) {
       return defaultSettings();
     }
+  }
+
+  /**
+   * Move legacy plaintext secrets from preferences into the Asset Store, and
+   * preload the current values. `null` from SecureStore means the kit is not
+   * usable here, in which case the preferences value is kept as a fallback.
+   */
+  private static async hydrateSecrets(settings: AppSettings): Promise<AppSettings> {
+    let migrated: boolean = false;
+
+    const secureKey: string | null = await SecureStore.get(SecureStore.apiKeyAlias());
+    if (secureKey !== null) {
+      if (secureKey.length > 0) {
+        settings.apiKey = secureKey;
+      } else if (settings.apiKey.length > 0) {
+        if (await SecureStore.set(SecureStore.apiKeyAlias(), settings.apiKey)) {
+          migrated = true;
+        }
+      }
+    }
+
+    const secureToken: string | null =
+      await SecureStore.get(SecureStore.sandboxTokenAlias());
+    if (secureToken !== null) {
+      if (secureToken.length > 0) {
+        settings.sandboxToken = secureToken;
+      } else if (settings.sandboxToken.length > 0) {
+        if (await SecureStore.set(SecureStore.sandboxTokenAlias(), settings.sandboxToken)) {
+          migrated = true;
+        }
+      }
+    }
+
+    if (migrated) {
+      // Rewrites preferences without the plaintext copies.
+      await LocalStore.saveSettings(settings);
+    }
+    return settings;
   }
 
   static async saveSettings(settings: AppSettings): Promise<void> {
@@ -232,7 +273,18 @@ export class LocalStore {
     if (prefs === null) {
       return;
     }
-    await prefs.put(KEY_SETTINGS, JSON.stringify(settings));
+    const stored: AppSettings = cloneSettings(settings);
+
+    // Only strip a secret from preferences once the Asset Store accepted it.
+    // On devices where the kit is unavailable the old behaviour is retained.
+    if (await SecureStore.set(SecureStore.apiKeyAlias(), settings.apiKey)) {
+      stored.apiKey = '';
+    }
+    if (await SecureStore.set(SecureStore.sandboxTokenAlias(), settings.sandboxToken)) {
+      stored.sandboxToken = '';
+    }
+
+    await prefs.put(KEY_SETTINGS, JSON.stringify(stored));
     await prefs.flush();
   }
 

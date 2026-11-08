@@ -211,7 +211,7 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
   "settings": {
     "preset": "opencode",
     "baseUrl": "https://opencode.ai/zen/go/v1",
-    "apiKey": "…",
+    "apiKey": "",            // 正常情况下为空，密钥在 Asset Store
     "modelId": "kimi-k3",
     "systemPrompt": "",
     "temperature": 1.0,
@@ -252,6 +252,12 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
   ]
 }
 ```
+
+密钥（`apiKey` / `sandboxToken`）不写进 preferences：`LocalStore.saveSettings()`
+先调用 `SecureStore`（Asset Store Kit，`DEVICE_FIRST_UNLOCKED`）写入，成功后把
+JSON 中的字段置空。加载时从 Asset Store 读回；若读到旧版本留下的明文，会自动
+迁移并在下一次保存时清除。Asset Store 在无锁屏设备或服务不可用时返回失败，
+此时保留 preferences 中的明文作为兼容回退——设置页不会因此报错。
 
 读取时会做字段级归一化：未知 role 丢弃、未知 part kind 归为 text、缺失字段补默认值、
 `streaming` 一律归零。上次运行中处于 `pending` / `running` 的工具调用会改成

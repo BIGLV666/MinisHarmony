@@ -318,10 +318,12 @@ OHOS_BASE_SDK_HOME=<sdk 根目录> \
 
 ## 安全与隐私
 
-- 对话、设置、API Key、远程沙箱 Token 只保存在应用私有 `preferences` 中，不会上传到
-  本机以外，除非你主动请求你配置的服务端。
-- API Key 与远程 Token 目前以明文保存在应用沙箱内。对安全要求更高时，可改用
-  **Asset Store Kit**（`@kit.AssetStoreKit`）保存密钥，见路线图。
+- 对话与设置保存在应用私有 `preferences` 中，不会上传到本机以外，除非你主动请求
+  你配置的服务端。
+- API Key 与远程 Token 优先保存在 **Asset Store Kit**（`@kit.AssetStoreKit`），
+  由系统加密并绑定锁屏；升级后旧的明文值会自动迁移并从 `preferences` 移除。
+- 没有锁屏或 Asset Store 不可用时，应用会回退为 `preferences` 明文保存，功能不受
+  影响，但安全性取决于设备本身。
 - 建议只使用 `https://` 基址；自定义 `http://` 明文地址能否使用取决于系统网络策略。
 - 本机工具只能访问 `filesDir/workspace`，拒绝绝对路径、`..` 和符号链接；写入默认关闭。
 - 事件日志默认关闭，只保存脱敏后的元数据，不含对话内容与密钥；可随时清空。

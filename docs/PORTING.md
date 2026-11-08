@@ -30,6 +30,7 @@
 | OpenMinis `/compact` | `core/ContextBudget.ets` + `ChatApi.summarizeConversation()` | 按用户轮次切分，模型摘要替换旧轮次 |
 | 工具结果预算裁剪 | `core/ContextBudget.ets#fitHistoryToBudget` | 只改请求副本，界面与存储保持完整 |
 | OpenMinis `subagent_task` | `service/SubagentRunner.ets` | 独立内存会话、3 并行、10 分钟超时、2 层嵌套；无 steer/resume |
+| Keychain / EncryptedPrefs | `service/SecureStore.ets` | Asset Store Kit，失败时回退 preferences 明文 |
 | 本地文件 / shell 工具 | `service/LocalToolRuntime.ets`、`RemoteToolRuntime.ets` | 应用工作区或远程 HTTP 服务，共用 `ToolRuntime` |
 | OpenCode Go 模型发现 | `ChatApi.fetchModelIds()` | 规范基址 `/zen/go/v1/models`；旧基址自动换算 |
 | Android `preferences` / DB | `service/LocalStore.ets` | 单库 JSON；后续可换 RDB |

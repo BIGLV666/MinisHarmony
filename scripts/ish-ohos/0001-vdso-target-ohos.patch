@@ -1,0 +1,13 @@
+--- a/vdso/arm64/meson.build
++++ b/vdso/arm64/meson.build
+@@ -21,7 +21,9 @@
+         endif
+     endif
+ 
+-    vdso_compiler = [clang, '-target', 'aarch64-linux-gnu', '-fuse-ld=lld']
++    # HarmonyOS: the guest is aarch64 Linux; only the OHOS sysroot toolchain
++    # is available, so build the VDSO with the ohos triple.
++    vdso_compiler = [clang, '-target', 'aarch64-linux-ohos', '-fuse-ld=lld']
+ 
+     vdso = custom_target('vdso-arm64',
+         input: ['vdso.S', 'vdso.c', 'vdso.lds'],

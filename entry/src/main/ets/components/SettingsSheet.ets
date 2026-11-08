@@ -12,7 +12,10 @@ import {
   parseModelList
 } from '../core/Types';
 import { common } from '@kit.AbilityKit';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
+import { SandboxProbe } from '../service/SandboxProbe';
+import { SandboxIsh } from '../service/SandboxIsh';
 import {
   ACCENT_PRESETS,
   AccentPreset,
@@ -136,6 +139,10 @@ export struct SettingsSheet {
   @State sandboxMode: SandboxMode = 'local';
   @State sandboxUrl: string = '';
   @State sandboxToken: string = '';
+  @State probeRunning: boolean = false;
+  @State probeReport: string = '';
+  @State ishRunning: boolean = false;
+  @State ishReport: string = '';
   @State maxTurnsText: string = '200';
   @State contextBudgetText: string = '60000';
   @State loggingEnabled: boolean = false;
@@ -791,6 +798,63 @@ export struct SettingsSheet {
   private clearMemory(): void {
     const removed: number = MemoryStore.clearDaily();
     this.onToast(removed > 0 ? '已清空 ' + removed.toString() + ' 个记忆文件' : '没有可清空的记忆');
+  }
+
+  private async runSandboxProbe(): Promise<void> {
+    if (this.probeRunning) {
+      return;
+    }
+    this.probeRunning = true;
+    this.probeReport = '正在启动原生子进程…';
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      this.probeReport = await SandboxProbe.run(context);
+    } catch (e) {
+      const error: Error = e as Error;
+      this.probeReport = '自检失败：' + error.message;
+    }
+    this.probeRunning = false;
+  }
+
+  private copyProbeReport(): void {
+    const data: pasteboard.PasteData = pasteboard.createData(
+      pasteboard.MIMETYPE_TEXT_PLAIN,
+      this.probeReport
+    );
+    pasteboard.getSystemPasteboard().setData(data).then(() => {
+      this.onToast('已复制自检结果');
+    }).catch((error: Error) => {
+      this.onToast('复制失败');
+    });
+  }
+
+  private async runIshSmoke(): Promise<void> {
+    if (this.ishRunning) {
+      return;
+    }
+    this.ishRunning = true;
+    this.ishReport = '正在启动 iSH 内核…';
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      this.ishReport = await SandboxIsh.run(context,
+        'echo hello-from-ish; uname -a; id; cat /etc/alpine-release');
+    } catch (e) {
+      const error: Error = e as Error;
+      this.ishReport = '沙箱启动失败：' + error.message;
+    }
+    this.ishRunning = false;
+  }
+
+  private copyIshReport(): void {
+    const data: pasteboard.PasteData = pasteboard.createData(
+      pasteboard.MIMETYPE_TEXT_PLAIN,
+      this.ishReport
+    );
+    pasteboard.getSystemPasteboard().setData(data).then(() => {
+      this.onToast('已复制沙箱输出');
+    }).catch((error: Error) => {
+      this.onToast('复制失败');
+    });
   }
 
   private async probe(): Promise<void> {
@@ -2636,6 +2700,108 @@ export struct SettingsSheet {
                 .width('100%')
                 .alignItems(HorizontalAlign.Start)
               }
+
+              Column({ space: 6 }) {
+                Row({ space: 8 }) {
+                  Button(this.probeRunning ? '自检中…' : '运行内核自检')
+                    .height(34)
+                    .layoutWeight(1)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                    .backgroundColor($r('app.color.surface_alt'))
+                    .borderRadius(9)
+                    .onClick(() => {
+                      this.runSandboxProbe();
+                    })
+                  if (this.probeReport.length > 0) {
+                    Button('复制结果')
+                      .height(34)
+                      .width(88)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_secondary'))
+                      .backgroundColor($r('app.color.surface_alt'))
+                      .borderRadius(9)
+                      .onClick(() => {
+                        this.copyProbeReport();
+                      })
+                  }
+                }
+                .width('100%')
+
+                if (this.probeReport.length > 0) {
+                  Scroll() {
+                    Text(this.probeReport)
+                      .fontSize(10)
+                      .fontFamily('monospace')
+                      .fontColor($r('app.color.text_secondary'))
+                      .width('100%')
+                      .copyOption(CopyOptions.LocalDevice)
+                  }
+                  .height(180)
+                  .width('100%')
+                  .padding(8)
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                } else {
+                  Text('检查当前设备是否允许原生子进程、exec、ptrace、可执行内存与命名空间；结果只保存在本机。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                    .width('100%')
+                }
+              }
+              .width('100%')
+
+              Column({ space: 6 }) {
+                Row({ space: 8 }) {
+                  Button(this.ishRunning ? '沙箱启动中…' : '启动 Linux 沙箱')
+                    .height(34)
+                    .layoutWeight(1)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                    .backgroundColor($r('app.color.surface_alt'))
+                    .borderRadius(9)
+                    .onClick(() => {
+                      this.runIshSmoke();
+                    })
+                  if (this.ishReport.length > 0) {
+                    Button('复制输出')
+                      .height(34)
+                      .width(88)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_secondary'))
+                      .backgroundColor($r('app.color.surface_alt'))
+                      .borderRadius(9)
+                      .onClick(() => {
+                        this.copyIshReport();
+                      })
+                  }
+                }
+                .width('100%')
+
+                if (this.ishReport.length > 0) {
+                  Scroll() {
+                    Text(this.ishReport)
+                      .fontSize(10)
+                      .fontFamily('monospace')
+                      .fontColor($r('app.color.text_secondary'))
+                      .width('100%')
+                      .copyOption(CopyOptions.LocalDevice)
+                  }
+                  .height(180)
+                  .width('100%')
+                  .padding(8)
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                } else {
+                  Text('在原生子进程里启动 iSH ARM64 内核并执行一条冒烟命令；根文件系统从 /data/local/tmp/minis-ish-rootfs 读取。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                    .width('100%')
+                }
+              }
+              .width('100%')
             }
 
             Column() {

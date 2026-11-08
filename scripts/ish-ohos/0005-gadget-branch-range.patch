@@ -1,0 +1,17 @@
+--- a/asbestos/guest-arm64/gadgets-aarch64/entry.S
++++ b/asbestos/guest-arm64/gadgets-aarch64/entry.S
+@@ -80,8 +80,12 @@
+     str xzr, [_cpu, #LOCAL_last_block]
+     b fiber_ret
+ #else
+-    // Check bit 63: if set, it's a fake_ip (unchained) → return to main loop
+-    tbnz _pc, #63, fiber_ret
++    // Check bit 63: if set, it's a fake_ip (unchained) → return to main loop.
++    // The test-bit branch has a ±32KB range and fiber_ret lives in another
++    // object, which lld cannot thunk; branch locally and use the ±128MB B.
++    tbz _pc, #63, 1f
++    b fiber_ret
++1:
+     // Check if we've been poked (timer interrupt pending)
+     ldr x8, [_cpu, #CPU_poked_ptr]
+     ldrb w8, [x8]

@@ -1,0 +1,67 @@
+--- a/fs/fake.c
++++ b/fs/fake.c
+@@ -29,6 +29,33 @@
+ #define ISH_INTERNAL
+ #include "fs/fake.h"
+ 
++/*
++ * Portability shims for the macOS-flavoured bind-mount code below.
++ * Linux/OHOS exposes the same timestamps under st_*tim, and there is no
++ * F_GETPATH ioctl, but /proc/self/fd works as a replacement.
++ */
++#if !defined(__APPLE__)
++#  define st_atimespec st_atim
++#  define st_mtimespec st_mtim
++#  define st_ctimespec st_ctim
++
++static int host_fd_path(int fd, char *buffer, size_t size) {
++    char link[64];
++    snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
++    ssize_t length = readlink(link, buffer, size - 1);
++    if (length < 0) {
++        return -1;
++    }
++    buffer[length] = '\0';
++    return 0;
++}
++#else
++static int host_fd_path(int fd, char *buffer, size_t size) {
++    (void)size;
++    return fcntl(fd, F_GETPATH, buffer);
++}
++#endif
++
+ // TODO document database
+ 
+ /* ===== Bind Mount Support =====
+@@ -113,8 +140,10 @@
+  * NULL unless host registers via fakefs_set_path_*_hook(). Defined here
+  * (before resolve_path() / bind_mount_translate_path() so both directions
+  * can consult them). */
+-static _Atomic(fakefs_path_translate_hook_t) g_path_translate_hook = NULL;
+-static _Atomic(fakefs_path_reverse_hook_t) g_path_reverse_hook = NULL;
++static _Atomic(fakefs_path_translate_hook_t) g_path_translate_hook =
++    (fakefs_path_translate_hook_t)0;
++static _Atomic(fakefs_path_reverse_hook_t) g_path_reverse_hook =
++    (fakefs_path_reverse_hook_t)0;
+ 
+ void fakefs_set_path_translate_hook(fakefs_path_translate_hook_t hook) {
+     atomic_store_explicit(&g_path_translate_hook, hook, memory_order_release);
+@@ -1151,7 +1180,7 @@
+     /* Get the absolute path of root_fd (F_GETPATH resolves symlinks,
+      * e.g. /var -> /private/var on iOS) */
+     char root_abs[PATH_MAX];
+-    if (fcntl(root_fd, F_GETPATH, root_abs) != 0) {
++    if (host_fd_path(root_fd, root_abs, sizeof(root_abs)) != 0) {
+         fprintf(stderr, "create_relative_symlink: F_GETPATH failed\n");
+         /* Fall back to absolute symlink */
+         return symlinkat(host_path, root_fd, host_link);
+@@ -1227,7 +1256,7 @@
+     /* Log root_fd info for context */
+     {
+         char fd_path[PATH_MAX];
+-        if (fcntl(g_fakefs_mount->root_fd, F_GETPATH, fd_path) == 0) {
++        if (host_fd_path(g_fakefs_mount->root_fd, fd_path, sizeof(fd_path)) == 0) {
+             fprintf(stderr, "fakefs_bind_mount: root_fd=%d path=\"%s\"\n",
+                     g_fakefs_mount->root_fd, fd_path);
+         } else {

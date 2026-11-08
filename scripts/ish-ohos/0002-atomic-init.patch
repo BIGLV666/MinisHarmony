@@ -1,0 +1,13 @@
+--- a/kernel/calls.c
++++ b/kernel/calls.c
+@@ -50,7 +50,9 @@
+ __thread volatile uint64_t jit_last_x10 = 0;
+ __thread volatile int jit_crash_count = 0;
+ 
+-static _Atomic(ish_timer_tick_hook_t) g_timer_tick_hook = NULL;
++/* Cast, not NULL: OHOS musl defines NULL as ((void *)0), which clang refuses
++ * as a constant initializer for an _Atomic-qualified pointer. */
++static _Atomic(ish_timer_tick_hook_t) g_timer_tick_hook = (ish_timer_tick_hook_t)0;
+ 
+ void ish_set_timer_tick_hook(ish_timer_tick_hook_t hook) {
+     atomic_store_explicit(&g_timer_tick_hook, hook, memory_order_release);

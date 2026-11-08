@@ -1,0 +1,12 @@
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -20,7 +20,8 @@
+ #define CPU_RETVAL(cpu) ((cpu).eax)
+ #endif
+ 
+-static _Atomic(ish_fork_guard_t) g_fork_guard = NULL;
++/* Cast, not NULL/0: OHOS clang rejects both as an _Atomic pointer initializer. */
++static _Atomic(ish_fork_guard_t) g_fork_guard = (ish_fork_guard_t)0;
+ 
+ void ish_set_fork_guard(ish_fork_guard_t guard) {
+     atomic_store_explicit(&g_fork_guard, guard, memory_order_release);

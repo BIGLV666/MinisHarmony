@@ -4,6 +4,7 @@
 *.iml
 build/
 entry/build/
+entry/.cxx/
 entry/.preview/
 entry/oh_modules/
 oh_modules/

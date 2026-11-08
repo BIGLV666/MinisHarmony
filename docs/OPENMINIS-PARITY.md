@@ -201,7 +201,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 
 | | 功能 | 说明 |
 |---|---|---|
-| - [-] | 板载 Linux 沙箱 | PRoot/iSH 依赖 exec；鸿蒙普通 HAP 不可行，QEMU 另行评估 |
+| - [~] | 板载 Linux 沙箱 | 鸿蒙禁止 app exec 任何 ELF，但原生子进程可用；改为在子进程内嵌 iSH ARM64 内核 + Asbestos 解释执行 guest，rootfs 用 fakefs。交叉编译与 harness 已完成，运行时验证待平板解锁；见 [`SANDBOX.md`](SANDBOX.md) |
 | - [-] | Android AccessibilityService | 鸿蒙无对等自动化 API |
 | - [-] | Shizuku | Android 专用 |
 | - [-] | iCloud 同步 / Live Activity / Dynamic Island | iOS 专用，鸿蒙用服务卡片 / 通知替代 |
@@ -291,3 +291,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | Linux 手动签名与首次安装 | 无 DevEco 自动签名，新增 `scripts/manual-sign.sh`（init/udid/build/sign/install）与 `docs/MANUAL-SIGNING.md`：SDK 自带 `hap-sign-tool.jar` 生成 EC P-256 密钥与 CSR，AGC 签发调试证书和 Profile，`hdc` 安装。包名因 AGC 保留字 `harmony` 改为 `app.minis.client`。首次安装报 `9568289 READ_CONTACTS`：该权限是 system_basic 受限 ACL，Profile 的 `allowed-acls` 为空无法授予；暂时从 `module.json5` 移除该权限，`DeviceTools.enabled('contacts')` 固定返回 false、设置页显示「暂不可用」，等 AGC ACL 审批通过后恢复。签名与安装成功 |
 | 2026-11-08 | 流式 `usage:null` 闪退修复 | OpenCode 的部分流式 chunk 带 `"usage":null`，`parseOpenAiData` 直接读 `usage.prompt_tokens` 触发 JsError 导致应用闪退；对 `usage`、`error`、`choices`、`delta`、`tool_calls`、`function` 全部做 null 防御，并新增回归测试；108 项测试通过、重新签名安装 |
 | 2026-11-08 | 流式字符串字段 `null` 闪退修复 | 修完 usage 后仍有 `Cannot read property length of null`（`ChatApi.consumeEvent` 读 `delta.reasoning.length`）：JSON 的 `null` 能通过 `!== undefined` 检查，被赋给字符串字段。三套协议解析器统一改成按 `typeof === 'string'/'number'` 取值（OpenAI 的 `content/reasoning_content/reasoning/finish_reason/error.message/tool_calls`，Anthropic 的 `text/thinking/partial_json/id/name/stop_reason`，Gemini 的 `text/functionCall.name/finishReason/error.message`），并在 `consumeEvent` 再做一层运行时兜底；新增 5 组 null 字段回归；109 项测试通过、重新签名安装 |
+| 2026-11-08 | 板载 Linux 沙箱（iSH 内核） | 实机探针确认：原生子进程可用，但 app 无法 exec 任何 ELF；ptrace 与 `mmap(PROT_EXEC)` 可用。改为在 `childProcessManager.startNativeChildProcess` 内嵌 iSH ARM64 内核 + Asbestos 解释器 + fakefs，guest `/bin/sh` 由内核加载执行。用 OHOS NDK 交叉编译 `libish.a`/`libish_emu.a`/`libfakefs.a` + SQLite amalgamation + 真实 VDSO，打 5 个 Linux/OHOS 可移植性补丁；harness（`entry/src/main/cpp/ish/sandbox_ish.cpp`）挂 rootfs、建设备节点、挂 `/proc`、`/dev/pts`，以文件为 stdio 跑 `/bin/sh -c` 并回写退出码；`scripts/build-ish-ohos.sh` 可从源码一键重建；Alpine 3.21.3 fakefs 已推送到平板。运行时冒烟被平板锁屏阻塞，待解锁后验证 |

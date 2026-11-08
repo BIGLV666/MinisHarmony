@@ -3,6 +3,7 @@ import { http } from '@kit.NetworkKit';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import {
+  BrowserHandler,
   SubagentHandler,
   ToolDefinition,
   ToolResult,
@@ -156,6 +157,7 @@ export class LocalToolRuntime implements ToolRuntime {
   private subagent: SubagentHandler | null;
   private disabledTools: string[];
   private clipboardEnabled: boolean;
+  private browser: BrowserHandler | null;
   private imageCache: Map<string, string> = new Map();
 
   constructor(
@@ -165,7 +167,8 @@ export class LocalToolRuntime implements ToolRuntime {
     imagesEnabled: boolean,
     subagent: SubagentHandler | null = null,
     disabledTools: string[] = [],
-    clipboardEnabled: boolean = false
+    clipboardEnabled: boolean = false,
+    browser: BrowserHandler | null = null
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
@@ -174,6 +177,7 @@ export class LocalToolRuntime implements ToolRuntime {
     this.subagent = subagent;
     this.disabledTools = disabledTools;
     this.clipboardEnabled = clipboardEnabled;
+    this.browser = browser;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -211,6 +215,9 @@ export class LocalToolRuntime implements ToolRuntime {
         continue;
       }
       if (name === 'subagent_task' && this.subagent === null) {
+        continue;
+      }
+      if (name === 'browser_use' && this.browser === null) {
         continue;
       }
       available.push(all[i]);
@@ -268,6 +275,12 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'subagent_task') {
         return await this.runSubagent(argumentsJson);
+      }
+      if (name === 'browser_use') {
+        if (this.browser === null) {
+          return { ok: false, content: '内置浏览器尚未就绪。' };
+        }
+        return await this.browser.execute(argumentsJson);
       }
       return { ok: false, content: '未知工具：' + name };
     } catch (e) {

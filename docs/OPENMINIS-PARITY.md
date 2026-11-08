@@ -71,7 +71,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | HTTP 抓取 | 浏览器引擎 `fetch` | `fetch_url` | — |
 | - [x] | 当前时间 | 通过 shell `date` | `now` | — |
 | - [x] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | `read_image` 读取工作区图片，工具消息后追加合成 user 图片消息；本机模式、默认关闭 | P1 |
-| - [ ] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集（导航/点击/取值/JS） | P2 |
+| - [x] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集：隐藏 Web 视图常驻，`browser_use` 支持 open / click / type / text / html / eval / back / forward / reload / wait / title / url；页面加载最多等 20 秒，返回内容截断；远程沙箱模式不暴露 | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |
 | - [~] | 子代理 | `subagent_task` | 本机模式已实现且子会话落库，见 2. 子代理；远程模式不暴露；运行中 steer 未做 | P1 |
 | - [ ] | 图像生成 | `minis-model-use` 调用 `/images/generations` | 可选，取决于订阅模型 | P3 |
@@ -257,6 +257,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
 | 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |
 | 2026-11-08 | 逐模型参数覆盖 | `core/ModelOverride.ets` + 设置页「逐模型参数」：按模型 ID 精确匹配，覆盖 temperature / top_p / max_tokens，合并额外请求头与 extra_body；未知模型或全局参数不受影响；坏 JSON 保存时拒绝；57 项测试通过 |
+| 2026-11-08 | 浏览器自动化 `browser_use` | `service/BrowserTool.ets` + `components/HiddenBrowser.ets`：App 就绪后常驻 1×1 隐藏 ArkWeb（JS/DOM storage 开、文件访问关），工具动作 open/click/type/text/html/eval/back/forward/reload/wait/title/url；选择器与输入文本 JSON 编码后注入，页面加载等 `onPageEnd` 最多 20 秒，结果按 `max_chars` 截断；远程沙箱与子代理不暴露；70 项测试通过、构建通过 |
 | 2026-11-08 | 子代理会话落库 | `SubagentRunner` 结束时通过 `onFinish` 把子会话交给页面，`Index.adoptSubagentSession` 合并进 `store` 并触发保存，侧栏标题「子代理 · 标签」，可打开查看或继续对话；失败/超时也保留已有记录；嵌套子代理同样上报；运行中 steer 仍未做；70 项测试通过、构建通过 |
 | 2026-11-08 | 内置浏览器 | `components/BrowserPage.ets`：聊天内 http(s) 链接改为全屏 ArkWeb 覆盖层打开，工具栏含地址栏、后退/前进/刷新/系统浏览器/关闭，页面加载进度条与标题；`MarkdownView` 新增可选 `onOpenLink` 回调，未注入时仍走系统浏览器，mailto/tel 继续交系统；暂未做多标签、历史列表、下载、Cookie 管理；70 项测试通过、构建通过 |
 | 2026-11-08 | Gemini 原生协议 | `core/GeminiProtocol.ets`：user/model 角色，助手工具调用转 `functionCall`、结果并入紧随其后的 user `functionResponse`（含错误标记），图片转 `inlineData` base64，system 放 `systemInstruction`；设置页第 4 个预设（默认 `https://generativelanguage.googleapis.com/v1beta`）；`streamGenerateContent?alt=sse` 解析文本、`thought` 推理、函数调用（参数对象转 JSON 字符串）、`usageMetadata` 与安全检查拦截；模型发现过滤 `generateContent` 能力；`/compact` 走 `:generateContent`；70 项测试通过 |

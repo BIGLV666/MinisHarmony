@@ -58,7 +58,8 @@ export class RemoteToolRuntime implements ToolRuntime {
         continue;
       }
       if (name === 'subagent_task' || name === 'read_image' ||
-        name === 'clipboard_read' || name === 'clipboard_write') {
+        name === 'clipboard_read' || name === 'clipboard_write' ||
+        name === 'browser_use') {
         continue;
       }
       if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {
@@ -95,6 +96,12 @@ export class RemoteToolRuntime implements ToolRuntime {
       return {
         ok: false,
         content: '剪贴板属于平板本机能力，远程沙箱不转发。'
+      };
+    }
+    if (name === 'browser_use') {
+      return {
+        ok: false,
+        content: '内置浏览器运行在平板上，远程沙箱模式下不可用。'
       };
     }
     if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {

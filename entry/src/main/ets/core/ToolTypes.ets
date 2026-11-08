@@ -53,3 +53,11 @@ export interface ToolRuntime {
 export interface SubagentHandler {
   run(prompt: string, label: string): Promise<ToolResult>;
 }
+
+/**
+ * Optional capability behind `browser_use`. Implemented by a handler bound to
+ * the hidden ArkWeb view; the runtime only advertises the tool when present.
+ */
+export interface BrowserHandler {
+  execute(argumentsJson: string): Promise<ToolResult>;
+}

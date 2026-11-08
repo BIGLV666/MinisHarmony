@@ -76,6 +76,8 @@ import {
 } from '../service/Notify';
 import { SidebarView } from '../components/SidebarView';
 import { BrowserPage } from '../components/BrowserPage';
+import { HiddenBrowser } from '../components/HiddenBrowser';
+import { BrowserTool } from '../service/BrowserTool';
 
 @Entry
 @Component
@@ -123,6 +125,7 @@ struct Index {
 
   private store: StoredSession[] = [];
   private agent: AgentRuntime | null = null;
+  private browserTool: BrowserTool = new BrowserTool();
   private workspaceRoot: string = '';
   private saveTimer: number = -1;
   private confirmResolve: ((allowed: boolean) => void) | null = null;
@@ -1081,7 +1084,8 @@ struct Index {
           (session: StoredSession) => this.adoptSubagentSession(session)
         ),
         settings.disabledTools,
-        settings.clipboardToolsEnabled
+        settings.clipboardToolsEnabled,
+        this.browserTool
       );
     }
     return new McpRuntime(base, settings.disabledTools);
@@ -1802,6 +1806,10 @@ struct Index {
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
+      if (this.ready) {
+        HiddenBrowser()
+      }
+
       if (!this.ready) {
         this.loadingView()
       } else if (this.isWide) {

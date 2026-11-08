@@ -89,6 +89,17 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('prompt', 'string', '交给子代理的完整任务说明。子代理看不到当前对话，必须写清目标、输入和期望输出。'),
     field('label', 'string', '可选短标签，用于日志与子会话标题。')
   ];
+  const browserFields: FieldEntry[] = [
+    field('action', 'string',
+      '动作：open 打开网址，click 点击，type 输入，text 取文本，html 取 HTML，' +
+        'eval 执行 JS，back/forward/reload 导航，wait 等待，title/url 读取当前页。'),
+    field('url', 'string', 'open 时必填；省略协议时自动补 https://。'),
+    field('selector', 'string', 'click/type/text/html 使用的 CSS 选择器；text/html 省略时取整个页面。'),
+    field('text', 'string', 'type 时要填入的文本。'),
+    field('script', 'string', 'eval 时要执行的 JavaScript。'),
+    field('max_chars', 'number', '返回内容的最大字符数，默认 8000，最大 20000。'),
+    field('milliseconds', 'number', 'wait 的毫秒数，默认 500，最大 10000。')
+  ];
   const noFields: FieldEntry[] = [];
 
   const definitions: ToolDefinition[] = [
@@ -156,6 +167,12 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'clipboard_write',
       description: '把纯文本写入设备剪贴板，覆盖原有内容。需要在设置中开启剪贴板工具。',
       parameters: parametersOf(clipboardWriteFields, ['text'])
+    },
+    {
+      name: 'browser_use',
+      description: '在内置浏览器中打开网页并交互：导航、点击、输入、读取文本/HTML 或执行 JS。' +
+        '适合需要登录态或 JavaScript 渲染的页面；静态接口请求请优先用 fetch_url。',
+      parameters: parametersOf(browserFields, ['action'])
     },
     {
       name: 'subagent_task',

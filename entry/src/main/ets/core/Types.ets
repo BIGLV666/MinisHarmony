@@ -28,7 +28,8 @@ export const TOOL_RUNNING: string = 'running';
 export const TOOL_DONE: string = 'done';
 export const TOOL_ERROR: string = 'error';
 
-export type ProviderPreset = 'opencode' | 'custom' | 'anthropic' | 'gemini';
+export type ProviderPreset =
+  'opencode' | 'custom' | 'anthropic' | 'gemini' | 'copilot';
 export type SandboxMode = 'local' | 'remote';
 /** Request-level reasoning effort; `off` omits the field entirely. */
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';

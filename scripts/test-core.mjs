@@ -2546,6 +2546,20 @@ test('device flow and Copilot session parsing', () => {
   const fallback = oauth.parseCopilotSession('{"token":"t"}', 1000);
   assert.equal(fallback.expiresAt, 1000 + 25 * 60 * 1000);
   assert.equal(oauth.parseCopilotSession('{}', 0), null);
+
+  const storage = {
+    githubToken: 'gho_test',
+    sessionToken: 'copilot-session',
+    sessionExpiresAt: 1700000000000
+  };
+  const roundtrip = oauth.parseCopilotStorage(oauth.copilotStorageJson(storage));
+  assert.deepEqual(roundtrip, storage);
+  assert.equal(oauth.parseCopilotStorage(''), null);
+  assert.equal(oauth.parseCopilotStorage('{"sessionToken":"x"}'), null);
+  const sparse = oauth.parseCopilotStorage('{"githubToken":"gho_min"}');
+  assert.equal(sparse.sessionToken, '');
+  assert.equal(sparse.sessionExpiresAt, 0);
+  assert.equal(oauth.parseCopilotStorage('not json'), null);
 });
 
 test('JWT claims and payload segment extraction', () => {

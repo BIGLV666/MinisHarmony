@@ -29,7 +29,13 @@ import { SOUL_PRESETS, SoulPreset } from '../core/Soul';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
-import { ClaudeLoginStart, OAuthOutcome, OAuthService } from '../service/OAuth';
+import {
+  ClaudeLoginStart,
+  CopilotLoginStart,
+  OAuthOutcome,
+  OAuthService
+} from '../service/OAuth';
+import { COPILOT_API_BASE, DeviceAuthorization } from '../core/OAuth';
 import {
   ModelOverride,
   OVERRIDE_INHERIT,
@@ -48,6 +54,8 @@ import {
   GEMINI_DEFAULT_BASE,
   GEMINI_DEFAULT_MODEL
 } from '../core/GeminiProtocol';
+
+const COPILOT_DEFAULT_MODEL: string = 'gpt-4o';
 
 interface ToolChoice {
   name: string;
@@ -183,6 +191,12 @@ export struct SettingsSheet {
   @State oauthVerifier: string = '';
   @State oauthState: string = '';
   @State oauthPaste: string = '';
+  @State copilotLoggedIn: boolean = false;
+  @State copilotMask: string = '';
+  @State copilotUserCode: string = '';
+  @State copilotVerifyUri: string = '';
+  @State copilotBusy: boolean = false;
+  private copilotDevice: DeviceAuthorization | null = null;
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -230,6 +244,8 @@ export struct SettingsSheet {
     this.webDavLastSyncAt = copy.webDavLastSyncAt;
     this.claudeLoggedIn = OAuthService.hasClaudeToken();
     this.claudeMask = OAuthService.claudeMaskedToken();
+    this.copilotLoggedIn = OAuthService.hasCopilotToken();
+    this.copilotMask = OAuthService.copilotMaskedToken();
   }
 
   private async startClaudeLogin(): Promise<void> {
@@ -282,6 +298,56 @@ export struct SettingsSheet {
     this.oauthExpanded = false;
     this.oauthPaste = '';
     this.onToast('已退出 Claude 账号');
+  }
+
+  private async startCopilotLogin(): Promise<void> {
+    if (this.copilotBusy) {
+      return;
+    }
+    this.copilotBusy = true;
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const start: CopilotLoginStart | null = await OAuthService.beginCopilotLogin(context);
+    this.copilotBusy = false;
+    if (start === null) {
+      this.onToast('无法获取 GitHub 设备码，请稍后重试');
+      return;
+    }
+    this.copilotDevice = start.device;
+    this.copilotUserCode = start.device.userCode;
+    this.copilotVerifyUri = start.device.verificationUri;
+    this.onToast('在浏览器中输入设备码完成授权');
+  }
+
+  private async waitCopilotLogin(): Promise<void> {
+    if (this.copilotBusy) {
+      return;
+    }
+    const device: DeviceAuthorization | null = this.copilotDevice;
+    if (device === null) {
+      this.onToast('请先获取设备码');
+      return;
+    }
+    this.copilotBusy = true;
+    const outcome: OAuthOutcome = await OAuthService.pollCopilotLogin(device);
+    this.copilotBusy = false;
+    this.onToast(outcome.message);
+    if (outcome.ok) {
+      this.copilotDevice = null;
+      this.copilotUserCode = '';
+      this.copilotVerifyUri = '';
+      this.copilotLoggedIn = OAuthService.hasCopilotToken();
+      this.copilotMask = OAuthService.copilotMaskedToken();
+    }
+  }
+
+  private async logoutCopilot(): Promise<void> {
+    await OAuthService.forgetCopilot();
+    this.copilotLoggedIn = false;
+    this.copilotMask = '';
+    this.copilotUserCode = '';
+    this.copilotVerifyUri = '';
+    this.copilotDevice = null;
+    this.onToast('已退出 GitHub Copilot');
   }
 
   private toolEnabled(name: string): boolean {
@@ -345,13 +411,15 @@ export struct SettingsSheet {
   private isStockBase(value: string): boolean {
     const v: string = value.trim();
     return v.length === 0 || v === OPENCODE_GO_BASE ||
-      v === ANTHROPIC_DEFAULT_BASE || v === GEMINI_DEFAULT_BASE;
+      v === ANTHROPIC_DEFAULT_BASE || v === GEMINI_DEFAULT_BASE ||
+      v === COPILOT_API_BASE;
   }
 
   private isStockModel(value: string): boolean {
     const v: string = value.trim();
     return v.length === 0 || v === OPENCODE_DEFAULT_MODEL ||
-      v === ANTHROPIC_DEFAULT_MODEL || v === GEMINI_DEFAULT_MODEL;
+      v === ANTHROPIC_DEFAULT_MODEL || v === GEMINI_DEFAULT_MODEL ||
+      v === COPILOT_DEFAULT_MODEL;
   }
 
   private selectPreset(value: ProviderPreset): void {
@@ -374,6 +442,13 @@ export struct SettingsSheet {
       }
       if (this.isStockModel(this.modelId)) {
         this.modelId = GEMINI_DEFAULT_MODEL;
+      }
+    } else if (value === 'copilot') {
+      if (this.isStockBase(this.baseUrl)) {
+        this.baseUrl = COPILOT_API_BASE;
+      }
+      if (this.isStockModel(this.modelId)) {
+        this.modelId = COPILOT_DEFAULT_MODEL;
       }
     }
   }
@@ -727,6 +802,8 @@ export struct SettingsSheet {
     const draft: AppSettings = this.draftSettings();
     if (draft.preset === 'anthropic') {
       draft.oauthToken = await OAuthService.validClaudeToken();
+    } else if (draft.preset === 'copilot') {
+      draft.oauthToken = await OAuthService.validCopilotSessionToken();
     }
     const result: ModelsResult = await fetchModelIds(draft);
     this.probing = false;
@@ -843,6 +920,92 @@ export struct SettingsSheet {
               this.startClaudeLogin();
             })
         }
+      }
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor($r('app.color.surface_alt'))
+    .borderRadius(12)
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  copilotOAuthCard() {
+    Column({ space: 8 }) {
+      Row({ space: 6 }) {
+        Text(this.copilotLoggedIn ? '已登录 GitHub Copilot' : 'GitHub Copilot 登录')
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+        if (this.copilotLoggedIn) {
+          Text('退出')
+            .fontSize(11)
+            .fontColor($r('app.color.danger'))
+            .padding({ left: 6, right: 2 })
+            .onClick(() => {
+              this.logoutCopilot();
+            })
+        }
+      }
+      .width('100%')
+
+      Text('非官方接入：GitHub 未公开该接口，账号风控风险由使用者自行承担。')
+        .fontSize(10)
+        .fontColor($r('app.color.danger'))
+        .width('100%')
+
+      if (this.copilotLoggedIn) {
+        Text('GitHub 令牌 ' + this.copilotMask)
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+      } else if (this.copilotUserCode.length > 0) {
+        Text('设备码：' + this.copilotUserCode)
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .width('100%')
+        Text('在浏览器打开 ' + this.copilotVerifyUri + ' 并输入上面的设备码，然后点下方按钮。')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+        Row({ space: 8 }) {
+          Button(this.copilotBusy ? '等待授权…' : '我已授权，继续')
+            .layoutWeight(1)
+            .height(38)
+            .fontSize(12)
+            .fontColor($r('app.color.on_accent'))
+            .backgroundColor($r('app.color.accent'))
+            .borderRadius(10)
+            .enabled(!this.copilotBusy)
+            .onClick(() => {
+              this.waitCopilotLogin();
+            })
+          Button('重新获取')
+            .height(38)
+            .fontSize(12)
+            .fontColor($r('app.color.accent'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(10)
+            .enabled(!this.copilotBusy)
+            .onClick(() => {
+              this.startCopilotLogin();
+            })
+        }
+        .width('100%')
+      } else {
+        Button(this.copilotBusy ? '正在获取…' : '使用 GitHub 登录')
+          .width('100%')
+          .height(38)
+          .fontSize(12)
+          .fontColor($r('app.color.accent'))
+          .backgroundColor($r('app.color.surface_alt'))
+          .borderRadius(10)
+          .enabled(!this.copilotBusy)
+          .onClick(() => {
+            this.startCopilotLogin();
+          })
       }
     }
     .width('100%')
@@ -1040,6 +1203,10 @@ export struct SettingsSheet {
                 this.presetCard('自定义', '自建中转 / 其他兼容服务', 'custom')
               }
               .width('100%')
+              Row({ space: 10 }) {
+                this.presetCard('GitHub Copilot', '设备码登录 · 非官方接入', 'copilot')
+              }
+              .width('100%')
             }
             .width('100%')
 
@@ -1092,6 +1259,9 @@ export struct SettingsSheet {
 
             if (this.preset === 'anthropic') {
               this.claudeOAuthCard()
+            }
+            if (this.preset === 'copilot') {
+              this.copilotOAuthCard()
             }
 
             Column() {

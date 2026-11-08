@@ -452,6 +452,39 @@ export interface CopilotSession {
   expiresAt: number;
 }
 
+/** Copilot keeps the long-lived GitHub token plus a short-lived session. */
+export interface CopilotStorage {
+  githubToken: string;
+  sessionToken: string;
+  sessionExpiresAt: number;
+}
+
+export function copilotStorageJson(storage: CopilotStorage): string {
+  return JSON.stringify(storage);
+}
+
+export function parseCopilotStorage(text: string): CopilotStorage | null {
+  if (text.length === 0) {
+    return null;
+  }
+  let raw: CopilotStorage;
+  try {
+    raw = JSON.parse(text) as CopilotStorage;
+  } catch (e) {
+    return null;
+  }
+  if (raw === null || raw === undefined || typeof raw.githubToken !== 'string' ||
+    raw.githubToken.length === 0) {
+    return null;
+  }
+  return {
+    githubToken: raw.githubToken,
+    sessionToken: typeof raw.sessionToken === 'string' ? raw.sessionToken : '',
+    sessionExpiresAt: typeof raw.sessionExpiresAt === 'number' && raw.sessionExpiresAt > 0
+      ? raw.sessionExpiresAt : 0
+  };
+}
+
 interface RawCopilotSession {
   token?: string;
   expires_at?: number;

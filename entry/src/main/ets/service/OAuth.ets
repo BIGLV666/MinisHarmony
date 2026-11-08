@@ -6,16 +6,31 @@ import { AppSettings, cloneSettings } from '../core/Types';
 import {
   CLAUDE_CLI_USER_AGENT,
   CLAUDE_OAUTH_BETAS,
+  COPILOT_ACCESS_TOKEN_URL,
+  COPILOT_CLIENT_ID,
+  COPILOT_DEVICE_CODE_URL,
+  COPILOT_SCOPE,
+  COPILOT_SESSION_TOKEN_URL,
+  CopilotSession,
+  CopilotStorage,
+  DeviceAuthorization,
+  DevicePollResult,
   JwtClaims,
   OAuthProvider,
   OAuthToken,
   RedirectCode,
   authorizeUrl,
+  bumpedDeviceInterval,
+  classifyDevicePoll,
+  copilotStorageJson,
   extractRedirectCode,
   jwtClaimsFromPayloadJson,
   jwtPayloadSegment,
   maskToken,
   oauthStateFromBytes,
+  parseCopilotSession,
+  parseCopilotStorage,
+  parseDeviceAuthorization,
   parseTokenJson,
   pkceChallengeFromDigest,
   pkceVerifierFromBytes,
@@ -39,6 +54,10 @@ export interface ClaudeLoginStart {
   url: string;
   verifier: string;
   state: string;
+}
+
+export interface CopilotLoginStart {
+  device: DeviceAuthorization;
 }
 
 export interface OAuthOutcome {
@@ -123,7 +142,7 @@ async function postJson(
         ok: false,
         message: '登录失败：HTTP ' + response.responseCode.toString() +
           (detail.length > 0 ? '（' + detail + '）' : ''),
-        text: ''
+        text: text
       };
     }
     return { ok: true, message: '', text: text };
@@ -133,6 +152,12 @@ async function postJson(
   } finally {
     request.destroy();
   }
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise<void>((resolve: (value: void) => void) => {
+    setTimeout(() => resolve(), ms);
+  });
 }
 
 /**
@@ -145,8 +170,10 @@ async function postJson(
 export class OAuthService {
   private static claudeToken: OAuthToken | null = null;
   private static codexToken: OAuthToken | null = null;
+  private static copilot: CopilotStorage | null = null;
   private static loaded: boolean = false;
   private static refreshing: Promise<string> | null = null;
+  private static copilotRefreshing: Promise<string> | null = null;
 
   static async init(): Promise<void> {
     if (OAuthService.loaded) {
@@ -160,6 +187,10 @@ export class OAuthService {
     const codex: string | null = await SecureStore.get(ALIAS_CODEX);
     if (codex !== null && codex.length > 0) {
       OAuthService.codexToken = parseTokenJson(codex);
+    }
+    const copilot: string | null = await SecureStore.get(ALIAS_COPILOT);
+    if (copilot !== null && copilot.length > 0) {
+      OAuthService.copilot = parseCopilotStorage(copilot);
     }
   }
 
@@ -305,11 +336,165 @@ export class OAuthService {
     return { ok: true, message: '已使用 Claude 账号登录' };
   }
 
+  // MARK: - GitHub Copilot (RFC 8628 device flow)
+
+  static hasCopilotToken(): boolean {
+    return OAuthService.copilot !== null;
+  }
+
+  static copilotMaskedToken(): string {
+    const storage: CopilotStorage | null = OAuthService.copilot;
+    return storage === null ? '' : maskToken(storage.githubToken);
+  }
+
+  static async forgetCopilot(): Promise<void> {
+    OAuthService.copilot = null;
+    await SecureStore.remove(ALIAS_COPILOT);
+  }
+
+  /**
+   * Ask GitHub for a device code and open the verification page. The caller
+   * shows `userCode`, then calls `pollCopilotLogin`.
+   */
+  static async beginCopilotLogin(
+    context: common.UIAbilityContext
+  ): Promise<CopilotLoginStart | null> {
+    const body: string = JSON.stringify({
+      client_id: COPILOT_CLIENT_ID,
+      scope: COPILOT_SCOPE
+    });
+    const result: OAuthHttpResult = await postJson(
+      COPILOT_DEVICE_CODE_URL, body, {});
+    if (!result.ok) {
+      return null;
+    }
+    const device: DeviceAuthorization | null = parseDeviceAuthorization(result.text);
+    if (device === null) {
+      return null;
+    }
+    if (device.verificationUri.length > 0) {
+      try {
+        await context.openLink(device.verificationUri);
+      } catch (e) {
+        // The code is still shown; the user can open the URL manually.
+      }
+    }
+    return { device: device };
+  }
+
+  /** Poll until GitHub says the device was authorised, the code expires, etc. */
+  static async pollCopilotLogin(device: DeviceAuthorization): Promise<OAuthOutcome> {
+    let interval: number = device.interval;
+    const deadline: number = Date.now() + device.expiresIn * 1000;
+    while (Date.now() < deadline) {
+      await delay(interval * 1000);
+      const body: string = JSON.stringify({
+        client_id: COPILOT_CLIENT_ID,
+        device_code: device.deviceCode,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+      });
+      const result: OAuthHttpResult = await postJson(
+        COPILOT_ACCESS_TOKEN_URL, body, {});
+      const poll: DevicePollResult = classifyDevicePoll(result.text, result.ok);
+      if (poll.kind === 'success') {
+        const storage: CopilotStorage = {
+          githubToken: poll.accessToken,
+          sessionToken: '',
+          sessionExpiresAt: 0
+        };
+        OAuthService.copilot = storage;
+        await SecureStore.set(ALIAS_COPILOT, copilotStorageJson(storage));
+        return { ok: true, message: '已使用 GitHub Copilot 账号登录' };
+      }
+      if (poll.kind === 'pending') {
+        continue;
+      }
+      if (poll.kind === 'slow_down') {
+        interval = bumpedDeviceInterval(interval);
+        continue;
+      }
+      return { ok: false, message: poll.message };
+    }
+    return { ok: false, message: '设备码已过期，请重新登录' };
+  }
+
+  /** The short-lived token Copilot's chat API actually accepts. */
+  static async validCopilotSessionToken(): Promise<string> {
+    const storage: CopilotStorage | null = OAuthService.copilot;
+    if (storage === null) {
+      return '';
+    }
+    if (storage.sessionToken.length > 0 &&
+      storage.sessionExpiresAt - Date.now() > 60 * 1000) {
+      return storage.sessionToken;
+    }
+    if (OAuthService.copilotRefreshing !== null) {
+      return OAuthService.copilotRefreshing;
+    }
+    OAuthService.copilotRefreshing = OAuthService.exchangeCopilotSession(storage);
+    try {
+      return await OAuthService.copilotRefreshing;
+    } finally {
+      OAuthService.copilotRefreshing = null;
+    }
+  }
+
+  private static async exchangeCopilotSession(
+    storage: CopilotStorage
+  ): Promise<string> {
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+      'Authorization': 'token ' + storage.githubToken,
+      'User-Agent': 'GitHubCopilotChat/0.31.0',
+      'Editor-Version': 'vscode/1.104.0',
+      'Editor-Plugin-Version': 'copilot-chat/0.31.0',
+      'X-GitHub-Api-Version': '2025-04-01'
+    };
+    const options: http.HttpRequestOptions = {
+      method: http.RequestMethod.GET,
+      header: headers,
+      connectTimeout: 20000,
+      readTimeout: 30000,
+      expectDataType: http.HttpDataType.STRING,
+      usingCache: false
+    };
+    const request: http.HttpRequest = http.createHttp();
+    try {
+      const response: http.HttpResponse =
+        await request.request(COPILOT_SESSION_TOKEN_URL, options);
+      const text: string = typeof response.result === 'string' ? response.result : '';
+      if (response.responseCode < 200 || response.responseCode >= 300) {
+        return '';
+      }
+      const session: CopilotSession | null = parseCopilotSession(text, Date.now());
+      if (session === null) {
+        return '';
+      }
+      const next: CopilotStorage = {
+        githubToken: storage.githubToken,
+        sessionToken: session.token,
+        sessionExpiresAt: session.expiresAt
+      };
+      OAuthService.copilot = next;
+      await SecureStore.set(ALIAS_COPILOT, copilotStorageJson(next));
+      return session.token;
+    } catch (e) {
+      return '';
+    } finally {
+      request.destroy();
+    }
+  }
+
   /** Fill the runtime-only OAuth fields the request builders read. */
   static async decorate(settings: AppSettings): Promise<AppSettings> {
     const copy: AppSettings = cloneSettings(settings);
     if (copy.preset === 'anthropic') {
       const token: string = await OAuthService.validClaudeToken();
+      if (token.length > 0) {
+        copy.oauthToken = token;
+      }
+    } else if (copy.preset === 'copilot') {
+      const token: string = await OAuthService.validCopilotSessionToken();
       if (token.length > 0) {
         copy.oauthToken = token;
       }

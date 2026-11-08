@@ -1282,10 +1282,12 @@ struct Index {
     }
     const claudeLogin: boolean =
       this.settings.preset === 'anthropic' && OAuthService.hasClaudeToken();
-    if (this.settings.apiKey.trim().length === 0 && !claudeLogin) {
+    const copilotLogin: boolean =
+      this.settings.preset === 'copilot' && OAuthService.hasCopilotToken();
+    if (this.settings.apiKey.trim().length === 0 && !claudeLogin && !copilotLogin) {
       this.pendingSkillBody = '';
       this.showSettings = true;
-      this.toast('请先填写 API Key 或登录 Claude 账号');
+      this.toast('请先填写 API Key 或登录账号');
       return;
     }
     if (this.settings.baseUrl.trim().length === 0) {

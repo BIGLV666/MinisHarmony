@@ -1,7 +1,7 @@
 import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
-import { AppSettings, ChatMessage } from '../core/Types';
+import { AppSettings, ChatMessage, PART_IMAGE } from '../core/Types';
 import { claudeOAuthRequestHeaders } from './OAuth';
 import { soulPrompt } from '../core/Soul';
 import { capsForModel, clampMaxTokens } from '../core/ModelCaps';
@@ -488,8 +488,8 @@ export function startChatStream(
     callbacks.onError('请先在设置中填写 API 地址');
     return handle;
   }
-  if (apiKey.length === 0) {
-    callbacks.onError('请先在设置中填写 API Key');
+  if (apiKey.length === 0 && bearerToken(settings).length === 0) {
+    callbacks.onError('请先在设置中填写 API Key，或登录服务商账号');
     return handle;
   }
   if (settings.preset === 'anthropic') {
@@ -533,13 +533,15 @@ export function startChatStream(
     }
   }
 
-  let headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'text/event-stream',
-    'Authorization': 'Bearer ' + apiKey,
-    'User-Agent': USER_AGENT
-  };
-  if (shouldAttachSessionHeader(baseUrl, sessionId)) {
+  let headers: Record<string, string> = settings.preset === 'copilot'
+    ? copilotHeaders(settings, 'text/event-stream', history)
+    : {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      'Authorization': 'Bearer ' + apiKey,
+      'User-Agent': USER_AGENT
+    };
+  if (settings.preset !== 'copilot' && shouldAttachSessionHeader(baseUrl, sessionId)) {
     headers[OPENCODE_SESSION_HEADER] = sessionId;
   }
   if (override !== null) {
@@ -563,6 +565,54 @@ export function startChatStream(
  * token budget and forbids temperature, which the generic setting does not
  * express. Users can add it through a per-model extra body instead.
  */
+function bearerToken(settings: AppSettings): string {
+  const oauth: string = settings.oauthToken !== undefined ? settings.oauthToken.trim() : '';
+  return oauth.length > 0 ? oauth : settings.apiKey.trim();
+}
+
+/**
+ * GitHub Copilot's undocumented API wants a plausible editor identity and an
+ * `X-Initiator` that says who drove the turn. Mislabelling agent traffic as a
+ * human is the direction that gets accounts flagged, so it is derived from the
+ * transcript rather than hard-coded.
+ */
+function copilotHeaders(
+  settings: AppSettings,
+  accept: string,
+  history: ChatMessage[]
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': accept,
+    'Authorization': 'Bearer ' + bearerToken(settings),
+    'Editor-Version': 'vscode/1.104.0',
+    'Editor-Plugin-Version': 'copilot-chat/0.31.0',
+    'User-Agent': 'GitHubCopilotChat/0.31.0',
+    'Copilot-Integration-Id': 'vscode-chat',
+    'X-GitHub-Api-Version': '2025-04-01',
+    'Openai-Intent': 'conversation-panel',
+    'X-Request-Id': util.generateRandomUUID(true)
+  };
+  let agentTurn: boolean = false;
+  let hasImages: boolean = false;
+  if (history.length > 0) {
+    agentTurn = history[history.length - 1].role === 'tool';
+    for (let i = 0; i < history.length; i++) {
+      const parts = history[i].parts;
+      for (let j = 0; j < parts.length; j++) {
+        if (parts[j].kind === PART_IMAGE) {
+          hasImages = true;
+        }
+      }
+    }
+  }
+  headers['X-Initiator'] = agentTurn ? 'agent' : 'user';
+  if (hasImages) {
+    headers['Copilot-Vision-Request'] = 'true';
+  }
+  return headers;
+}
+
 /** `x-api-key` for API keys, `Bearer` + CLI profile for an OAuth login. */
 function anthropicAuthHeaders(settings: AppSettings, accept: string): Record<string, string> {
   const token: string = settings.oauthToken !== undefined ? settings.oauthToken.trim() : '';
@@ -860,8 +910,8 @@ export async function summarizeConversation(
   if (baseUrl.length === 0) {
     return { ok: false, text: '', message: '请先在设置中填写 API 地址' };
   }
-  if (apiKey.length === 0) {
-    return { ok: false, text: '', message: '请先在设置中填写 API Key' };
+  if (apiKey.length === 0 && bearerToken(settings).length === 0) {
+    return { ok: false, text: '', message: '请先在设置中填写 API Key，或登录服务商账号' };
   }
   if (transcript.trim().length === 0) {
     return { ok: false, text: '', message: '没有可压缩的内容' };
@@ -890,13 +940,15 @@ export async function summarizeConversation(
     max_tokens: 1500
   };
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'Authorization': 'Bearer ' + apiKey,
-    'User-Agent': USER_AGENT
-  };
-  if (shouldAttachSessionHeader(baseUrl, sessionId)) {
+  const headers: Record<string, string> = settings.preset === 'copilot'
+    ? copilotHeaders(settings, 'application/json', [])
+    : {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': 'Bearer ' + apiKey,
+      'User-Agent': USER_AGENT
+    };
+  if (settings.preset !== 'copilot' && shouldAttachSessionHeader(baseUrl, sessionId)) {
     headers[OPENCODE_SESSION_HEADER] = sessionId;
   }
   const options: http.HttpRequestOptions = {
@@ -1063,11 +1115,13 @@ export async function fetchModelIds(settings: AppSettings): Promise<ModelsResult
   if (settings.preset === 'gemini') {
     return await fetchGeminiModelIds(settings);
   }
-  const headers: Record<string, string> = {
-    'Accept': 'application/json',
-    'Authorization': 'Bearer ' + settings.apiKey.trim(),
-    'User-Agent': USER_AGENT
-  };
+  const headers: Record<string, string> = settings.preset === 'copilot'
+    ? copilotHeaders(settings, 'application/json', [])
+    : {
+      'Accept': 'application/json',
+      'Authorization': 'Bearer ' + settings.apiKey.trim(),
+      'User-Agent': USER_AGENT
+    };
   const options: http.HttpRequestOptions = {
     method: http.RequestMethod.GET,
     header: headers,

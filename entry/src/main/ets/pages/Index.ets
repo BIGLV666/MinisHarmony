@@ -82,6 +82,8 @@ import { SkillStore } from '../service/SkillStore';
 import { keepScreenOn } from '../service/ScreenWake';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { McpRegistry, McpRuntime } from '../service/McpRuntime';
+import { WidgetBridge } from '../service/WidgetBridge';
+import { widgetExcerpt } from '../core/WidgetData';
 import { mergeBackupSettings } from '../core/Backup';
 import { parseBackupSessions } from '../core/SessionExport';
 import { SyncMergeResult, mergeSessionSets } from '../core/SyncMerge';
@@ -529,6 +531,8 @@ struct Index {
     this.showOnboarding = !this.settings.onboardingDone &&
       this.settings.apiKey.trim().length === 0;
     this.ready = true;
+    // Refresh the home-screen card once the component is attached.
+    setTimeout(() => this.publishWidget(), 0);
     this.scheduleAutoSync();
     if (this.pendingDeepLinkUri.length > 0) {
       const uri: string = this.pendingDeepLinkUri;
@@ -722,6 +726,7 @@ struct Index {
     this.canUndoCompact = false;
     this.draft = '';
     this.mobileChat = true;
+    this.publishWidget();
     if (!this.streaming && this.hasPendingBackgroundResult(session)) {
       this.runAgent(session, '', false);
     }
@@ -2070,6 +2075,34 @@ struct Index {
     const snapshot: StoredSession[] = this.store.slice();
     LocalStore.saveSessions(snapshot).catch((error: Error) => {
       // Persistence failures should not interrupt the conversation.
+    });
+    this.publishWidget();
+  }
+
+  /** Mirror the current conversation into the home-screen card. */
+  private publishWidget(): void {
+    let title: string = 'Minis';
+    let body: string = '打开应用开始新对话';
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session !== null) {
+      title = session.meta.title.length > 0 ? session.meta.title : '未命名对话';
+      for (let i = session.messages.length - 1; i >= 0; i--) {
+        const message: ChatMessage = session.messages[i];
+        if (message.role !== 'assistant') {
+          continue;
+        }
+        const text: string = textOf(message).trim();
+        if (text.length === 0) {
+          continue;
+        }
+        body = widgetExcerpt(text, 120);
+        break;
+      }
+    }
+    const hint: string = this.streaming ? '生成中' : '';
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    WidgetBridge.publish(context, title, body, hint).catch((error: Error) => {
+      // The card is decorative; never disturb the conversation for it.
     });
   }
 

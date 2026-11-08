@@ -67,6 +67,7 @@ copyCore('Soul');
 copyCore('SkillDoc');
 copyCore('ModelCaps');
 copyCore('ModelOverride');
+copyCore('WidgetData');
 copyCore('McpOAuth');
 copyCore('McpProtocol', ['McpOAuth']);
 copyCore('CodeHighlight');
@@ -196,6 +197,7 @@ const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
 const mcpOAuth = await import(pathToFileURL(join(tmp, 'McpOAuth.mts')).href);
+const widgetData = await import(pathToFileURL(join(tmp, 'WidgetData.mts')).href);
 const highlight = await import(pathToFileURL(join(tmp, 'CodeHighlight.mts')).href);
 const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
 const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
@@ -1524,6 +1526,21 @@ test('MCP OAuth token bodies include secret and resource only when set', () => {
     'r t', 'cid', '', 'https://mcp.example.com');
   assert.equal(refresh, 'grant_type=refresh_token&refresh_token=r%20t' +
     '&client_id=cid&resource=https%3A%2F%2Fmcp.example.com');
+});
+
+test('widget snapshots clamp, flatten and survive corrupt input', () => {
+  assert.equal(widgetData.widgetExcerpt('  a\n\nb\t c  ', 20), 'a b c');
+  assert.equal(widgetData.widgetExcerpt('x'.repeat(30), 10), 'xxxxxxxxxx…');
+  const fallback = widgetData.defaultWidgetSnapshot();
+  assert.equal(fallback.title, 'Minis');
+  assert.equal(widgetData.parseWidgetSnapshot(''), null);
+  assert.equal(widgetData.parseWidgetSnapshot('not json'), null);
+  const parsed = widgetData.parseWidgetSnapshot(
+    widgetData.widgetSnapshotJson({ title: '', body: 'hi', hint: '生成中', updatedAt: 5 }));
+  assert.equal(parsed.title, 'Minis');
+  assert.equal(parsed.body, 'hi');
+  assert.equal(parsed.hint, '生成中');
+  assert.equal(parsed.updatedAt, 5);
 });
 
 test('MCP OAuth config normalization and defaults', () => {

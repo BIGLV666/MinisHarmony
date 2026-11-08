@@ -23,6 +23,22 @@
     {
       "name": "permission_location_reason",
       "value": "用于在模型调用 location 或 weather 工具时获取当前位置"
+    },
+    {
+      "name": "EntryFormAbility_desc",
+      "value": "在桌面显示最近一次对话"
+    },
+    {
+      "name": "EntryFormAbility_label",
+      "value": "Minis 对话卡片"
+    },
+    {
+      "name": "widget_display_name",
+      "value": "Minis 对话"
+    },
+    {
+      "name": "widget_desc",
+      "value": "显示最近一次对话的标题与摘要，点按打开应用"
     }
   ]
 }

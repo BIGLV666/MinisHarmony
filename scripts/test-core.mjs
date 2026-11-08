@@ -61,6 +61,7 @@ copyCore('DeepLink');
 copyCore('Types', ['ModelOverride', 'McpProtocol']);
 copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
 copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
+copyCore('GeminiProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -102,6 +103,10 @@ markTypeOnly('AnthropicProtocol', 'Types', ['ChatMessage']);
 markTypeOnly('AnthropicProtocol', 'ToolProtocol', ['ImageResolver']);
 markTypeOnly('AnthropicProtocol', 'ToolTypes', ['ToolDefinition']);
 markTypeOnly('AnthropicProtocol', 'SseParser', ['DeltaResult', 'ToolCallDelta']);
+markTypeOnly('GeminiProtocol', 'Types', ['ChatMessage']);
+markTypeOnly('GeminiProtocol', 'ToolProtocol', ['ImageResolver']);
+markTypeOnly('GeminiProtocol', 'ToolTypes', ['ToolDefinition']);
+markTypeOnly('GeminiProtocol', 'SseParser', ['DeltaResult', 'ToolCallDelta']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -168,6 +173,7 @@ const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
 const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts')).href);
+const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -1626,4 +1632,113 @@ test('Anthropic stream decoder accumulates usage and tool arguments', () => {
     type: 'error', error: { type: 'overloaded_error', message: '过载' }
   }), anthropic.newAnthropicStreamState());
   assert.equal(delta.error, '过载');
+});
+
+test('Gemini conversion uses model/user roles and functionResponse parts', () => {
+  const history = [
+    anthropicMessage('user', [anthropicPart('text', { text: '读文件' }),
+      anthropicPart('image', { uri: 'chat/a.png', mimeType: 'image/png' })]),
+    anthropicMessage('assistant', [
+      anthropicPart('text', { text: '好' }),
+      anthropicPart('tool_call', {
+        toolCallId: 'call_1', toolName: 'read_file',
+        argumentsText: '{"path":"a.txt"}', resultText: 'hello'
+      })
+    ]),
+    anthropicMessage('user', [anthropicPart('text', { text: '继续' })])
+  ];
+  const converted = gemini.buildGeminiContents(history, () =>
+    'data:image/jpeg;base64,BBBB');
+  assert.equal(converted.contents.length, 3);
+  assert.deepEqual(converted.contents.map((c) => c.role), ['user', 'model', 'user']);
+  const first = converted.contents[0].parts;
+  assert.equal(first[0].text, '读文件');
+  assert.equal(first[1].inlineData.mimeType, 'image/jpeg');
+  assert.equal(first[1].inlineData.data, 'BBBB');
+  const model = converted.contents[1].parts;
+  assert.equal(model[0].text, '好');
+  assert.equal(model[1].functionCall.name, 'read_file');
+  assert.deepEqual(model[1].functionCall.args, { path: 'a.txt' });
+  const results = converted.contents[2].parts;
+  assert.equal(results[0].functionResponse.name, 'read_file');
+  assert.equal(results[0].functionResponse.response.result, 'hello');
+  assert.equal(results[1].text, '继续');
+});
+
+test('Gemini tools, body and URLs follow generateContent shape', () => {
+  const tools = gemini.geminiTools([
+    {
+      name: 'read_file',
+      description: 'read',
+      parameters: { type: 'object', properties: {} },
+      schemaJson: '{"type":"object","properties":{"path":{"type":"string"}}}'
+    }
+  ]);
+  assert.equal(tools[0].functionDeclarations[0].parameters.properties.path.type, 'string');
+
+  const body = gemini.buildGeminiBody(
+    'gemini-2.5-pro', 8192, '系统',
+    [{ role: 'user', parts: [{ text: 'hi' }] }],
+    tools, 0.7, 0.9);
+  assert.equal(body.systemInstruction.parts[0].text, '系统');
+  assert.equal(body.generationConfig.maxOutputTokens, 8192);
+  assert.equal(body.generationConfig.temperature, 0.7);
+  assert.equal(body.generationConfig.topP, 0.9);
+  assert.equal(body.tools.length, 1);
+
+  assert.equal(
+    gemini.geminiStreamUrl('https://generativelanguage.googleapis.com/v1beta', 'gemini-2.5-pro'),
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse');
+  assert.equal(
+    gemini.geminiStreamUrl('https://proxy/v1beta/models', 'm'),
+    'https://proxy/v1beta/models/m:streamGenerateContent?alt=sse');
+  assert.equal(
+    gemini.geminiGenerateUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent', 'gemini-2.5-pro'),
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent');
+  assert.equal(
+    gemini.geminiModelsUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent'),
+    'https://generativelanguage.googleapis.com/v1beta/models');
+});
+
+test('Gemini stream decoder handles text, thought, function calls and usage', () => {
+  const state = gemini.newGeminiStreamState();
+  let delta = gemini.parseGeminiData(JSON.stringify({
+    candidates: [{
+      content: {
+        role: 'model',
+        parts: [
+          { text: '先想一下', thought: true },
+          { text: '好的' },
+          { functionCall: { name: 'read_file', args: { path: 'a.txt' } } }
+        ]
+      },
+      finishReason: 'STOP'
+    }],
+    usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 8 }
+  }), state);
+  assert.equal(delta.reasoning, '先想一下');
+  assert.equal(delta.content, '好的');
+  assert.equal(delta.finishReason, 'stop');
+  assert.equal(delta.toolCalls[0].name, 'read_file');
+  assert.equal(delta.toolCalls[0].arguments, '{"path":"a.txt"}');
+  assert.equal(delta.usage.totalTokens, 28);
+
+  delta = gemini.parseGeminiData(JSON.stringify({
+    candidates: [{
+      content: { role: 'model', parts: [{ functionCall: { name: 'list_dir' } }] },
+      finishReason: 'MAX_TOKENS'
+    }]
+  }), state);
+  assert.equal(delta.finishReason, 'length');
+  assert.equal(delta.toolCalls[0].index, 1);
+
+  delta = gemini.parseGeminiData(JSON.stringify({
+    promptFeedback: { blockReason: 'SAFETY' }
+  }), gemini.newGeminiStreamState());
+  assert.equal(delta.error.indexOf('SAFETY') >= 0, true);
+
+  delta = gemini.parseGeminiData(JSON.stringify({
+    error: { code: 429, message: '配额不足' }
+  }), gemini.newGeminiStreamState());
+  assert.equal(delta.error, '配额不足');
 });

@@ -136,8 +136,8 @@ export function parseBackupSettings(text: string): AppSettings | null {
   }
   const raw: AppSettings = root.settings;
   const base: AppSettings = defaultSettings();
-  base.preset = raw.preset === 'custom' || raw.preset === 'anthropic'
-    ? raw.preset : 'opencode';
+  base.preset = raw.preset === 'custom' || raw.preset === 'anthropic' ||
+    raw.preset === 'gemini' ? raw.preset : 'opencode';
   base.baseUrl = stringOr(raw.baseUrl, base.baseUrl);
   base.modelId = stringOr(raw.modelId, base.modelId);
   base.systemPrompt = stringOr(raw.systemPrompt, '');

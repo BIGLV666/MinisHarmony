@@ -86,7 +86,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | OpenCode Go 会话头 | `x-opencode-session` 域门控 | 已支持，含负例测试 | — |
 | - [x] | 拉取模型列表 | `/models` | 「获取」按钮 | — |
 | - [x] | Anthropic 原生协议 | Messages API + 流式 | `ProviderPreset` 增加 `anthropic`：`x-api-key` + `anthropic-version`；system 提到顶层，工具转为 `tool_use` / `tool_result` 块，图片转 base64 block；SSE 解析 `content_block_*` / `message_delta` / `message_stop`，工具参数按 `input_json_delta` 累加；`/compact` 与模型发现也走原生端点 | P2 |
-| - [ ] | Gemini 原生协议 | `generateContent` | 新增 provider 分支 | P2 |
+| - [x] | Gemini 原生协议 | `generateContent` | `ProviderPreset` 增加 `gemini`：模型 ID 拼进 URL，`x-goog-api-key` 鉴权；system 放 `systemInstruction`，工具转 `functionCall` / `functionResponse`，图片转 `inlineData`；SSE 解析 `candidates[].content.parts`、`usageMetadata` 与 `finishReason`，模型发现与 `/compact` 也走原生端点 | P2 |
 | - [ ] | OAuth 登录 | Anthropic / Copilot / Codex | 设备码或浏览器回跳 | P2 |
 | - [ ] | 模型组 | fallback / 负载均衡 | 按顺序重试 | P3 |
 | - [x] | thinking level | 逐模型推理档位 | 设置页四档（off/low/medium/high）+ `/thinking` 循环；请求体 `reasoning_effort`。全局设置，不做逐模型元数据 | P2 |
@@ -257,6 +257,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
 | 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |
 | 2026-11-08 | 逐模型参数覆盖 | `core/ModelOverride.ets` + 设置页「逐模型参数」：按模型 ID 精确匹配，覆盖 temperature / top_p / max_tokens，合并额外请求头与 extra_body；未知模型或全局参数不受影响；坏 JSON 保存时拒绝；57 项测试通过 |
+| 2026-11-08 | Gemini 原生协议 | `core/GeminiProtocol.ets`：user/model 角色，助手工具调用转 `functionCall`、结果并入紧随其后的 user `functionResponse`（含错误标记），图片转 `inlineData` base64，system 放 `systemInstruction`；设置页第 4 个预设（默认 `https://generativelanguage.googleapis.com/v1beta`）；`streamGenerateContent?alt=sse` 解析文本、`thought` 推理、函数调用（参数对象转 JSON 字符串）、`usageMetadata` 与安全检查拦截；模型发现过滤 `generateContent` 能力；`/compact` 走 `:generateContent`；70 项测试通过 |
 | 2026-11-08 | Anthropic 原生协议 | `core/AnthropicProtocol.ets`：历史转 Messages，assistant 工具调用转 `tool_use`、结果并入紧随其后的 user `tool_result`（重复 ID 自动加后缀），图片转 base64 block，system 提到顶层；设置页新增 Anthropic 预设（默认 `https://api.anthropic.com/v1`）；SSE 解码 `message_start` / `content_block_start|delta|stop` / `message_delta` / `message_stop`，累加 input/output tokens；`/compact` 与模型发现同样走 `x-api-key` 原生端点；SSE 传输层抽出 `runStream` 供两种协议共用；67 项测试通过 |
 | 2026-11-08 | 深链 | `core/DeepLink.ets` 解析 `minis://session|chat|s/<id>` 与 `minis://new`；EntryAbility 冷/热启动都路由，深链优先于分享；Index 冷启动时等 bootstrap 完成再跳转；63 项测试通过 |
 | 2026-11-08 | 输入框自动聚焦 | `ChatView` 首次布局后 350 ms 调用 `focusControl.requestFocus('composerInput')`，失败静默；与生成期间常亮一起补齐该项 |

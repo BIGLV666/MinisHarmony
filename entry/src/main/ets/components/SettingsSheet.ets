@@ -41,6 +41,10 @@ import {
   ANTHROPIC_DEFAULT_BASE,
   ANTHROPIC_DEFAULT_MODEL
 } from '../core/AnthropicProtocol';
+import {
+  GEMINI_DEFAULT_BASE,
+  GEMINI_DEFAULT_MODEL
+} from '../core/GeminiProtocol';
 
 interface ToolChoice {
   name: string;
@@ -236,19 +240,39 @@ export struct SettingsSheet {
     this.disabledTools = next;
   }
 
+  /** True when the field still holds one of the built-in preset values. */
+  private isStockBase(value: string): boolean {
+    const v: string = value.trim();
+    return v.length === 0 || v === OPENCODE_GO_BASE ||
+      v === ANTHROPIC_DEFAULT_BASE || v === GEMINI_DEFAULT_BASE;
+  }
+
+  private isStockModel(value: string): boolean {
+    const v: string = value.trim();
+    return v.length === 0 || v === OPENCODE_DEFAULT_MODEL ||
+      v === ANTHROPIC_DEFAULT_MODEL || v === GEMINI_DEFAULT_MODEL;
+  }
+
   private selectPreset(value: ProviderPreset): void {
     this.preset = value;
     if (value === 'opencode') {
       this.baseUrl = OPENCODE_GO_BASE;
-      if (this.modelId.trim().length === 0) {
+      if (this.isStockModel(this.modelId)) {
         this.modelId = OPENCODE_DEFAULT_MODEL;
       }
     } else if (value === 'anthropic') {
-      if (this.baseUrl.trim().length === 0 || this.baseUrl.trim() === OPENCODE_GO_BASE) {
+      if (this.isStockBase(this.baseUrl)) {
         this.baseUrl = ANTHROPIC_DEFAULT_BASE;
       }
-      if (this.modelId.trim().length === 0 || this.modelId === OPENCODE_DEFAULT_MODEL) {
+      if (this.isStockModel(this.modelId)) {
         this.modelId = ANTHROPIC_DEFAULT_MODEL;
+      }
+    } else if (value === 'gemini') {
+      if (this.isStockBase(this.baseUrl)) {
+        this.baseUrl = GEMINI_DEFAULT_BASE;
+      }
+      if (this.isStockModel(this.modelId)) {
+        this.modelId = GEMINI_DEFAULT_MODEL;
       }
     }
   }
@@ -772,11 +796,18 @@ export struct SettingsSheet {
 
         Scroll() {
           Column({ space: 16 }) {
-            this.sectionTitle('服务商', 'OpenCode Go 用订阅 Key；Anthropic 走原生 Messages API；自定义接任意 OpenAI 兼容服务')
-            Row({ space: 10 }) {
-              this.presetCard('OpenCode Go', '自动填写当前基址，注入会话头', 'opencode')
-              this.presetCard('Anthropic', '原生 Messages API 与工具调用', 'anthropic')
-              this.presetCard('自定义', '自建中转 / 其他兼容服务', 'custom')
+            this.sectionTitle('服务商', 'OpenCode Go 用订阅 Key；Anthropic / Gemini 走原生协议；自定义接任意 OpenAI 兼容服务')
+            Column({ space: 10 }) {
+              Row({ space: 10 }) {
+                this.presetCard('OpenCode Go', '自动填写当前基址，注入会话头', 'opencode')
+                this.presetCard('Anthropic', '原生 Messages API 与工具调用', 'anthropic')
+              }
+              .width('100%')
+              Row({ space: 10 }) {
+                this.presetCard('Gemini', '原生 generateContent 与函数调用', 'gemini')
+                this.presetCard('自定义', '自建中转 / 其他兼容服务', 'custom')
+              }
+              .width('100%')
             }
             .width('100%')
 

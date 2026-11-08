@@ -41,6 +41,18 @@ import {
   newAnthropicStreamState,
   parseAnthropicData
 } from '../core/AnthropicProtocol';
+import {
+  GeminiRequestBody,
+  GeminiStreamState,
+  buildGeminiBody,
+  buildGeminiContents,
+  geminiGenerateUrl,
+  geminiModelsUrl,
+  geminiStreamUrl,
+  geminiTools,
+  newGeminiStreamState,
+  parseGeminiData
+} from '../core/GeminiProtocol';
 
 const USER_AGENT: string = 'MinisHarmony/1.0 (HarmonyOS tablet)';
 const SUMMARY_INSTRUCTION: string = '你是对话压缩器。把给出的对话压缩成简洁的中文摘要，保留：' +
@@ -89,6 +101,16 @@ interface ModelEntry {
 
 interface ModelsEnvelope {
   data?: ModelEntry[];
+  error?: OpenAiErrorDetail;
+}
+
+interface GeminiModelEntry {
+  name?: string;
+  supportedGenerationMethods?: string[];
+}
+
+interface GeminiModelsEnvelope {
+  models?: GeminiModelEntry[];
   error?: OpenAiErrorDetail;
 }
 
@@ -146,6 +168,23 @@ interface AnthropicSummaryRequestBody {
   temperature: number;
   system: string;
   messages: SummaryMessage[];
+}
+
+interface GeminiSummaryPart {
+  text?: string;
+}
+
+interface GeminiSummaryContent {
+  parts?: GeminiSummaryPart[];
+}
+
+interface GeminiSummaryCandidate {
+  content?: GeminiSummaryContent;
+}
+
+interface GeminiSummaryEnvelope {
+  candidates?: GeminiSummaryCandidate[];
+  error?: OpenAiErrorDetail;
 }
 
 /**
@@ -457,6 +496,11 @@ export function startChatStream(
       settings, history, tools, memoryContext, callbacks, resolveImage, handle);
     return handle;
   }
+  if (settings.preset === 'gemini') {
+    startGeminiStream(
+      settings, history, tools, memoryContext, callbacks, resolveImage, handle);
+    return handle;
+  }
 
   const caps = capsForModel(settings.modelId);
   const body: ChatRequestBody = {
@@ -585,6 +629,142 @@ function startAnthropicStream(
     (data: string): DeltaResult => parseAnthropicData(data, state));
 }
 
+/**
+ * Gemini `streamGenerateContent` path. The model id is part of the URL, the
+ * key travels in `x-goog-api-key`, and tool results are functionResponse
+ * parts rather than dedicated messages.
+ */
+function startGeminiStream(
+  settings: AppSettings,
+  history: ChatMessage[],
+  tools: ToolDefinition[],
+  memoryContext: string,
+  callbacks: ChatCallbacks,
+  resolveImage: ImageResolver | null,
+  handle: ChatStreamHandle
+): void {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const apiKey: string = settings.apiKey.trim();
+  if (baseUrl.length === 0) {
+    callbacks.onError('请先在设置中填写 API 地址');
+    return;
+  }
+  if (apiKey.length === 0) {
+    callbacks.onError('请先在设置中填写 API Key');
+    return;
+  }
+  const caps = capsForModel(settings.modelId);
+  let temperature: number = settings.temperature;
+  let topP: number = 0;
+  let maxTokens: number = clampMaxTokens(settings.maxTokens, caps);
+  const overrides: ModelOverride[] = settings.modelOverrides !== undefined ? settings.modelOverrides : [];
+  const override: ModelOverride | null = findModelOverride(overrides, settings.modelId);
+  if (override !== null) {
+    if (override.temperature >= 0) {
+      temperature = override.temperature;
+    }
+    if (override.topP >= 0) {
+      topP = override.topP;
+    }
+    if (override.maxTokens > 0) {
+      maxTokens = clampMaxTokens(override.maxTokens, caps);
+    }
+  }
+
+  const parts = buildGeminiContents(history, resolveImage);
+  const body: GeminiRequestBody = buildGeminiBody(
+    settings.modelId,
+    maxTokens,
+    buildSystemPrompt(settings, memoryContext),
+    parts.contents,
+    geminiTools(tools),
+    temperature,
+    topP
+  );
+
+  let headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'text/event-stream',
+    'x-goog-api-key': apiKey,
+    'User-Agent': USER_AGENT
+  };
+  if (override !== null) {
+    headers = mergeExtraHeaders(headers, override.extraHeaders);
+  }
+  const payload: string = override !== null
+    ? applyExtraBody(JSON.stringify(body), override.extraBody)
+    : JSON.stringify(body);
+
+  const state: GeminiStreamState = newGeminiStreamState();
+  runStream(geminiStreamUrl(baseUrl, settings.modelId), headers, payload, handle, callbacks,
+    (data: string): DeltaResult => parseGeminiData(data, state));
+}
+
+/** Non-streaming `/compact` request for Gemini. */
+async function summarizeGemini(
+  settings: AppSettings,
+  transcript: string
+): Promise<SummaryResult> {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const body: GeminiRequestBody = {
+    contents: [{ role: 'user', parts: [{ text: transcript }] }],
+    systemInstruction: { parts: [{ text: SUMMARY_INSTRUCTION }] },
+    generationConfig: { maxOutputTokens: 1500, temperature: 0.2 }
+  };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'x-goog-api-key': settings.apiKey.trim(),
+    'User-Agent': USER_AGENT
+  };
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.POST,
+    header: headers,
+    extraData: JSON.stringify(body),
+    connectTimeout: 20000,
+    readTimeout: 180000,
+    usingCache: false,
+    expectDataType: http.HttpDataType.STRING
+  };
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(
+      geminiGenerateUrl(baseUrl, settings.modelId), options
+    );
+    const raw: string = response.result as string;
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      return {
+        ok: false,
+        text: '',
+        message: httpErrorText(response.responseCode, raw)
+      };
+    }
+    const envelope: GeminiSummaryEnvelope = JSON.parse(raw) as GeminiSummaryEnvelope;
+    let text: string = '';
+    if (envelope.candidates !== undefined && envelope.candidates.length > 0) {
+      const candidate: GeminiSummaryCandidate = envelope.candidates[0];
+      if (candidate.content !== undefined && candidate.content.parts !== undefined) {
+        for (let i = 0; i < candidate.content.parts.length; i++) {
+          const part: GeminiSummaryPart = candidate.content.parts[i];
+          if (part.text !== undefined) {
+            text += part.text;
+          }
+        }
+      }
+    }
+    text = text.trim();
+    if (text.length === 0) {
+      return { ok: false, text: '', message: '模型没有返回摘要' };
+    }
+    return { ok: true, text: text, message: '已生成摘要' };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return { ok: false, text: '', message: describeNetworkError(error) };
+  } finally {
+    request.destroy();
+  }
+}
+
 /** Non-streaming `/compact` request for the Messages API. */
 async function summarizeAnthropic(
   settings: AppSettings,
@@ -676,6 +856,9 @@ export async function summarizeConversation(
   if (settings.preset === 'anthropic') {
     return await summarizeAnthropic(settings, transcript);
   }
+  if (settings.preset === 'gemini') {
+    return await summarizeGemini(settings, transcript);
+  }
 
   const body: SummaryRequestBody = {
     model: settings.modelId,
@@ -752,6 +935,64 @@ export async function summarizeConversation(
  * gateway's models path (`/zen/go/v1/models` for the canonical base) rather
  * than the inference path.
  */
+async function fetchGeminiModelIds(settings: AppSettings): Promise<ModelsResult> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    'x-goog-api-key': settings.apiKey.trim(),
+    'User-Agent': USER_AGENT
+  };
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.GET,
+    header: headers,
+    connectTimeout: 15000,
+    readTimeout: 30000,
+    usingCache: false,
+    expectDataType: http.HttpDataType.STRING
+  };
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(
+      geminiModelsUrl(settings.baseUrl) + '?pageSize=1000', options);
+    const raw: string = response.result as string;
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      return {
+        ok: false,
+        models: [],
+        message: httpErrorText(response.responseCode, raw)
+      };
+    }
+    const envelope: GeminiModelsEnvelope = JSON.parse(raw) as GeminiModelsEnvelope;
+    const list: string[] = [];
+    if (envelope.models !== undefined) {
+      for (let i = 0; i < envelope.models.length; i++) {
+        const entry: GeminiModelEntry = envelope.models[i];
+        if (entry.name === undefined || entry.name.length === 0) {
+          continue;
+        }
+        if (entry.supportedGenerationMethods !== undefined &&
+          entry.supportedGenerationMethods.indexOf('generateContent') < 0) {
+          continue;
+        }
+        const id: string = entry.name.indexOf('models/') === 0
+          ? entry.name.substring('models/'.length) : entry.name;
+        if (id.length > 0 && list.indexOf(id) < 0) {
+          list.push(id);
+        }
+      }
+    }
+    list.sort();
+    if (list.length === 0) {
+      return { ok: true, models: [], message: '连接成功，但服务没有返回模型列表' };
+    }
+    return { ok: true, models: list, message: '连接成功，发现 ' + list.length + ' 个模型' };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return { ok: false, models: [], message: describeNetworkError(error) };
+  } finally {
+    request.destroy();
+  }
+}
+
 async function fetchAnthropicModelIds(settings: AppSettings): Promise<ModelsResult> {
   const headers: Record<string, string> = {
     'Accept': 'application/json',
@@ -809,6 +1050,9 @@ export async function fetchModelIds(settings: AppSettings): Promise<ModelsResult
   }
   if (settings.preset === 'anthropic') {
     return await fetchAnthropicModelIds(settings);
+  }
+  if (settings.preset === 'gemini') {
+    return await fetchGeminiModelIds(settings);
   }
   const headers: Record<string, string> = {
     'Accept': 'application/json',

@@ -42,6 +42,7 @@
 | Android 前台服务 / iOS background task | `service/BackgroundGuard.ets` | `dataTransfer` 长时任务，仅生成期间持有；失败静默回退 |
 | OpenMinis 生成通知 | `service/Notify.ets` + `Index` 生命周期 | 后台生成常驻通知、完成替换、前台清除；点按经 `wantAgent` 回应用；未授权时静默 |
 | 消息内链接 | `core/Markdown.ets#isOpenableUrl` + `MarkdownView` | 裸 URL 与 Markdown 链接可点；协议白名单；经系统浏览器打开 |
+| OpenMinis 每会话参数 | `core/SessionParams.ets` + 会话操作弹窗 | 模型/思考/追加提示词覆盖；空串继承全局；撤销即恢复全局 |
 | OpenMinis `read_image`（原生视觉分支） | `core/ToolProtocol.ets` + `LocalToolRuntime.imageDataUrl()` | tool 消息后追加合成 user `image_url` 消息；无 Vision Group 文本回退 |
 | OpenMinis `/memory` `/thinking` | `Index.handleCommand()` | 记忆为全局开关；思考映射到 `reasoning_effort`，无模型元数据 |
 | Android `ToolJsonRepair.kt` | `core/ToolArgs.ets` | 覆盖围栏/截断/尾逗号；未做类型强转与字段名模糊匹配 |

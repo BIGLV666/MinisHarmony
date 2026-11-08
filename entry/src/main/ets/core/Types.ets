@@ -167,6 +167,10 @@ export interface SessionMeta {
   pinned: boolean;
   /** Archived sessions are hidden unless the sidebar toggle is on. */
   archived: boolean;
+  /** Per-session overrides; empty strings mean "follow the global setting". */
+  modelOverride?: string;
+  thinkingOverride?: string;
+  promptOverride?: string;
 }
 
 export interface StoredSession {

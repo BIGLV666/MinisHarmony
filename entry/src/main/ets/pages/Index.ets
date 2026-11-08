@@ -20,6 +20,11 @@ import {
 } from '../core/Types';
 import { ToolRuntime } from '../core/ToolTypes';
 import {
+  applySessionParams,
+  clearSessionParams,
+  effectiveSettings
+} from '../core/SessionParams';
+import {
   COMPACT_DEFAULT_KEEP_TURNS,
   CompactPlan,
   SUMMARY_TRANSCRIPT_LIMIT,
@@ -79,6 +84,10 @@ struct Index {
   @State unlocking: boolean = false;
   @State deleteId: string = '';
   @State actionId: string = '';
+  @State paramsId: string = '';
+  @State paramModel: string = '';
+  @State paramThinking: string = '';
+  @State paramPrompt: string = '';
   @State rewindId: string = '';
   @State showArchived: boolean = false;
   @State ready: boolean = false;
@@ -434,7 +443,10 @@ struct Index {
       modelId: source.meta.modelId,
       messageCount: source.messages.length,
       pinned: false,
-      archived: false
+      archived: false,
+      modelOverride: source.meta.modelOverride,
+      thinkingOverride: source.meta.thinkingOverride,
+      promptOverride: source.meta.promptOverride
     };
     const copied: ChatMessage[] =
       JSON.parse(JSON.stringify(source.messages)) as ChatMessage[];
@@ -446,6 +458,44 @@ struct Index {
     this.mobileChat = true;
     this.persistSoon();
     this.toast('已复制为新会话');
+  }
+
+  private openSessionParams(id: string): void {
+    const session: StoredSession | null = this.findSession(id);
+    this.actionId = '';
+    if (session === null) {
+      return;
+    }
+    this.paramsId = id;
+    this.paramModel = session.meta.modelOverride !== undefined ? session.meta.modelOverride : '';
+    this.paramThinking = session.meta.thinkingOverride !== undefined ? session.meta.thinkingOverride : '';
+    this.paramPrompt = session.meta.promptOverride !== undefined ? session.meta.promptOverride : '';
+  }
+
+  private saveSessionParams(): void {
+    const session: StoredSession | null = this.findSession(this.paramsId);
+    this.paramsId = '';
+    if (session === null) {
+      return;
+    }
+    applySessionParams(session.meta, this.paramModel, this.paramThinking, this.paramPrompt);
+    session.meta.updatedAt = Date.now();
+    this.refreshSessions();
+    this.persistSoon();
+    this.toast('会话参数已保存');
+  }
+
+  private resetSessionParams(): void {
+    const session: StoredSession | null = this.findSession(this.paramsId);
+    this.paramsId = '';
+    if (session === null) {
+      return;
+    }
+    clearSessionParams(session.meta);
+    session.meta.updatedAt = Date.now();
+    this.refreshSessions();
+    this.persistSoon();
+    this.toast('已恢复为全局设置');
   }
 
   private performDelete(): void {
@@ -513,20 +563,21 @@ struct Index {
       session.meta.title = titleFrom(text);
     }
     session.meta.updatedAt = Date.now();
-    session.meta.modelId = this.settings.modelId;
+    session.meta.modelId = effectiveSettings(this.settings, session.meta).modelId;
 
     this.draft = '';
     this.runAgent(session, text, true);
   }
 
   private runAgent(session: StoredSession, userText: string, fresh: boolean): void {
-    const runtime: ToolRuntime = this.makeToolRuntime();
+    const effective: AppSettings = effectiveSettings(this.settings, session.meta);
+    const runtime: ToolRuntime = this.makeToolRuntime(effective);
     this.streaming = true;
-    if (this.settings.backgroundEnabled) {
+    if (effective.backgroundEnabled) {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       BackgroundGuard.begin(context).catch((error: Error) => {});
     }
-    this.agent = new AgentRuntime(this.settings, runtime, session, {
+    this.agent = new AgentRuntime(effective, runtime, session, {
       onUpdate: (messages: ChatMessage[], running: boolean) => {
         this.messages = messages;
         this.streaming = running;
@@ -547,7 +598,7 @@ struct Index {
       onError: (message: string) => {
         this.toast(message);
       }
-    }, this.settings.confirmWriteTools
+    }, effective.confirmWriteTools
       ? (name: string, argumentsText: string) =>
         this.askToolPermission(name, argumentsText)
       : null);
@@ -673,7 +724,7 @@ struct Index {
     this.compacting = true;
     this.toast('正在生成摘要…');
     const result: SummaryResult = await summarizeConversation(
-      this.settings, session.meta.id, transcript
+      effectiveSettings(this.settings, session.meta), session.meta.id, transcript
     );
     this.compacting = false;
     if (!result.ok) {
@@ -778,26 +829,26 @@ struct Index {
     this.persistSoon();
   }
 
-  private makeToolRuntime(): ToolRuntime {
-    if (this.settings.sandboxMode === 'remote') {
+  private makeToolRuntime(settings: AppSettings): ToolRuntime {
+    if (settings.sandboxMode === 'remote') {
       return new RemoteToolRuntime(
-        this.settings.sandboxUrl,
-        this.settings.sandboxToken,
-        this.settings.allowWriteTools,
-        this.settings.disabledTools
+        settings.sandboxUrl,
+        settings.sandboxToken,
+        settings.allowWriteTools,
+        settings.disabledTools
       );
     }
     return new LocalToolRuntime(
       this.workspaceRoot,
-      this.settings.allowWriteTools,
-      this.settings.memoryEnabled,
-      this.settings.imageToolsEnabled,
+      settings.allowWriteTools,
+      settings.memoryEnabled,
+      settings.imageToolsEnabled,
       new SubagentRunner(
-        this.settings,
+        settings,
         this.workspaceRoot,
-        this.settings.allowWriteTools
+        settings.allowWriteTools
       ),
-      this.settings.disabledTools
+      settings.disabledTools
     );
   }
 
@@ -947,6 +998,14 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.forkSession(this.actionId))
+          Text('会话参数')
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => this.openSessionParams(this.actionId))
           Text('导出为 Markdown')
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
@@ -989,6 +1048,140 @@ struct Index {
       }
       .width('82%')
       .constraintSize({ maxWidth: 360 })
+      .padding(18)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  private thinkingLabel(value: string): string {
+    if (value === 'low') {
+      return '低';
+    }
+    if (value === 'medium') {
+      return '中';
+    }
+    if (value === 'high') {
+      return '高';
+    }
+    if (value === 'off') {
+      return '关闭';
+    }
+    return '跟随全局';
+  }
+
+  @Builder
+  sessionParamsDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+        .onClick(() => {
+          this.paramsId = '';
+        })
+      Column({ space: 10 }) {
+        Text('会话参数')
+          .fontSize(17)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .width('100%')
+        Text('只影响当前对话；留空或「跟随全局」即继承设置。')
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+
+        Text('模型 ID')
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+        TextInput({ text: this.paramModel, placeholder: '留空则使用全局模型' })
+          .width('100%')
+          .height(40)
+          .fontSize(13)
+          .fontColor($r('app.color.text_primary'))
+          .placeholderColor($r('app.color.text_secondary'))
+          .backgroundColor($r('app.color.surface_alt'))
+          .borderRadius(10)
+          .onChange((value: string) => {
+            this.paramModel = value;
+          })
+
+        Text('思考档位')
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+        Row({ space: 6 }) {
+          ForEach(['', 'off', 'low', 'medium', 'high'], (value: string) => {
+            Text(this.thinkingLabel(value))
+              .fontSize(12)
+              .fontColor(this.paramThinking === value
+                ? $r('app.color.on_accent')
+                : $r('app.color.text_primary'))
+              .padding({ left: 10, right: 10, top: 7, bottom: 7 })
+              .borderRadius(9)
+              .backgroundColor(this.paramThinking === value
+                ? $r('app.color.accent')
+                : $r('app.color.surface_alt'))
+              .onClick(() => {
+                this.paramThinking = value;
+              })
+          })
+        }
+        .width('100%')
+
+        Text('追加系统提示词')
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+        TextArea({ text: this.paramPrompt, placeholder: '只在本会话追加，留空则不加' })
+          .width('100%')
+          .height(84)
+          .fontSize(13)
+          .fontColor($r('app.color.text_primary'))
+          .placeholderColor($r('app.color.text_secondary'))
+          .backgroundColor($r('app.color.surface_alt'))
+          .borderRadius(10)
+          .onChange((value: string) => {
+            this.paramPrompt = value;
+          })
+
+        Row({ space: 8 }) {
+          Button('恢复全局', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
+            .onClick(() => this.resetSessionParams())
+          Button('取消', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+            .backgroundColor(Color.Transparent)
+            .onClick(() => {
+              this.paramsId = '';
+            })
+          Button('保存', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.on_accent'))
+            .backgroundColor($r('app.color.accent'))
+            .borderRadius(11)
+            .onClick(() => this.saveSessionParams())
+        }
+        .width('100%')
+        .margin({ top: 4 })
+      }
+      .width('86%')
+      .constraintSize({ maxWidth: 440 })
       .padding(18)
       .backgroundColor($r('app.color.surface'))
       .borderRadius(18)
@@ -1351,6 +1544,10 @@ struct Index {
 
       if (this.actionId.length > 0) {
         this.sessionActionsDialog()
+      }
+
+      if (this.paramsId.length > 0) {
+        this.sessionParamsDialog()
       }
 
       if (this.deleteId.length > 0) {

@@ -201,7 +201,10 @@ function normalizeSession(source: StoredSession): StoredSession | null {
       modelId: source.meta.modelId !== undefined ? source.meta.modelId : '',
       messageCount: messages.length,
       pinned: source.meta.pinned === true,
-      archived: source.meta.archived === true
+      archived: source.meta.archived === true,
+      modelOverride: source.meta.modelOverride !== undefined ? source.meta.modelOverride : '',
+      thinkingOverride: source.meta.thinkingOverride !== undefined ? source.meta.thinkingOverride : '',
+      promptOverride: source.meta.promptOverride !== undefined ? source.meta.promptOverride : ''
     },
     messages: messages
   };

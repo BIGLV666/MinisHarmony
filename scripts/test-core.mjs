@@ -48,6 +48,7 @@ copyCore('ToolArgs');
 copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
 copyCore('FileListing');
+copyCore('SessionParams', ['Types']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -61,6 +62,7 @@ function markTypeOnly(name, from, names) {
 
 markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'ToolProperty']);
 markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'MessagePart', 'StoredSession']);
+markTypeOnly('SessionParams', 'Types', ['AppSettings', 'SessionMeta', 'ThinkingLevel']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -115,6 +117,7 @@ const toolArgs = await import(pathToFileURL(join(tmp, 'ToolArgs.mts')).href);
 const toolLoop = await import(pathToFileURL(join(tmp, 'ToolLoop.mts')).href);
 const sessionExport = await import(pathToFileURL(join(tmp, 'SessionExport.mts')).href);
 const listing = await import(pathToFileURL(join(tmp, 'FileListing.mts')).href);
+const sessionParams = await import(pathToFileURL(join(tmp, 'SessionParams.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -245,6 +248,45 @@ test('Markdown bare URLs keep punctuation and reject unsafe schemes', () => {
   assert.equal(md.isOpenableUrl('mailto:a@b.c'), true);
   assert.equal(md.isOpenableUrl('javascript:alert(1)'), false);
   assert.equal(md.isOpenableUrl('file:///etc/passwd'), false);
+});
+
+test('session params merge over global settings', () => {
+  const settings = types.defaultSettings();
+  settings.modelId = 'global-model';
+  settings.systemPrompt = 'base prompt';
+  settings.thinkingLevel = 'medium';
+  const meta = {
+    id: 's1', title: 't', updatedAt: 0, modelId: '', messageCount: 0,
+    pinned: false, archived: false
+  };
+  assert.equal(sessionParams.hasSessionOverride(meta), false);
+  assert.equal(sessionParams.effectiveSettings(settings, meta).modelId, 'global-model');
+  assert.equal(sessionParams.sessionParamSummary(meta), '');
+
+  sessionParams.applySessionParams(meta, ' mini ', 'high', ' be brief ');
+  assert.deepEqual(
+    [meta.modelOverride, meta.thinkingOverride, meta.promptOverride],
+    ['mini', 'high', 'be brief']
+  );
+  assert.equal(sessionParams.hasSessionOverride(meta), true);
+  const eff = sessionParams.effectiveSettings(settings, meta);
+  assert.equal(eff.modelId, 'mini');
+  assert.equal(eff.thinkingLevel, 'high');
+  assert.equal(eff.systemPrompt, 'base prompt\n\nbe brief');
+  assert.equal(settings.modelId, 'global-model');
+  assert.equal(sessionParams.sessionParamSummary(meta), 'mini · 思考 high · 追加指令');
+
+  sessionParams.applySessionParams(meta, '', 'sometimes', '');
+  assert.equal(meta.modelOverride, '');
+  assert.equal(meta.thinkingOverride, '');
+  assert.equal(sessionParams.effectiveSettings(settings, meta).thinkingLevel, 'medium');
+
+  sessionParams.applySessionParams(meta, 'x', 'off', '');
+  assert.equal(sessionParams.effectiveSettings(settings, meta).thinkingLevel, 'off');
+  sessionParams.clearSessionParams(meta);
+  assert.equal(sessionParams.hasSessionOverride(meta), false);
+  assert.equal(sessionParams.effectiveSettings(settings, meta).modelId, 'global-model');
+  assert.equal(sessionParams.effectiveSettings(settings, null).modelId, 'global-model');
 });
 
 test('defaults target the canonical Go endpoint and enable tools', () => {

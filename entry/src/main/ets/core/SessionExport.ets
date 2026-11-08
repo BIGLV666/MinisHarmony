@@ -72,7 +72,10 @@ export function sessionExportJson(session: StoredSession, now: Date): string {
         modelId: session.meta.modelId,
         messageCount: messages.length,
         pinned: session.meta.pinned,
-        archived: session.meta.archived
+        archived: session.meta.archived,
+        modelOverride: session.meta.modelOverride,
+        thinkingOverride: session.meta.thinkingOverride,
+        promptOverride: session.meta.promptOverride
       },
       messages: messages
     }
@@ -121,6 +124,9 @@ interface RawMeta {
   modelId?: string;
   pinned?: boolean;
   archived?: boolean;
+  modelOverride?: string;
+  thinkingOverride?: string;
+  promptOverride?: string;
 }
 
 interface RawSession {
@@ -251,7 +257,10 @@ export function parseSessionExport(
         modelId: raw.meta.modelId !== undefined ? raw.meta.modelId : '',
         messageCount: messages.length,
         pinned: false,
-        archived: false
+        archived: false,
+        modelOverride: raw.meta.modelOverride !== undefined ? raw.meta.modelOverride : '',
+        thinkingOverride: raw.meta.thinkingOverride !== undefined ? raw.meta.thinkingOverride : '',
+        promptOverride: raw.meta.promptOverride !== undefined ? raw.meta.promptOverride : ''
       },
       messages: messages
     }

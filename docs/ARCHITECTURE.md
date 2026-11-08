@@ -502,6 +502,15 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 重复提醒。所有调用先检查 `isNotificationEnabled()`，失败一律静默——通知被用户关闭
 或设备不支持时，对话本身不受影响。
 
+## 每会话参数
+
+`SessionMeta` 上有三个可选覆盖：`modelOverride`、`thinkingOverride`、`promptOverride`，
+空串表示继承全局。`core/SessionParams.ets#effectiveSettings()` 复制全局设置后逐项覆盖
+（追加提示词非空时拼在全局提示词之后，中间空一行）。发送消息、`/compact` 摘要、
+子代理运行时都使用合并后的设置，子代理因此继承父会话的模型与提示词。会话操作弹窗
+写入覆盖，「恢复全局」清空；导出 JSON 携带这三个字段，导入与 fork 会保留。全局设置
+页仍保持独立，修改全局值不会影响已覆盖的会话。
+
 ## 首次引导
 
 `components/OnboardingView.ets` 只在 `settings.onboardingDone === false` 且 API Key
@@ -533,6 +542,6 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 
 ## 可测试性
 
-`core/` 十七个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 十八个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

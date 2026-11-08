@@ -172,7 +172,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [ ] | 主题色 / 字号 | 主题、字体缩放 | `AppStorage` + 主题表 | P2 |
 | - [ ] | 多语言 | 18 种 | `resources/base/element/string.json` 扩展 | P2 |
 | - [x] | 首次引导 | 配置 provider / 沙箱 | 首次启动且无 Key 时显示三步引导（欢迎 → 填 Key → 完成），可跳过；`onboardingDone` 持久化，不再打扰 | P2 |
-| - [ ] | 每会话参数 | 模型、思考档位、系统提示词 | `SessionMeta` 扩展 | P2 |
+| - [x] | 每会话参数 | 模型、思考档位、系统提示词 | 长按会话「会话参数」：模型 ID、五档思考（含跟随全局）、追加系统提示词；`effectiveSettings()` 在发送/压缩/子代理时合并 | P2 |
 | - [ ] | 应用图标切换 | 备用图标 | 鸿蒙不支持动态图标 | - |
 | - [ ] | 快捷指令 / 小组件 | iOS Widget / Shortcuts | 服务卡片 | P3 |
 | - [x] | 回车键行为 | Enter 发送或换行 | 设置项「Enter 键发送」；输入框切换 `EnterKeyType.Send` / `NEW_LINE`，`onSubmit` 仅在可发送时触发 | P2 |
@@ -244,3 +244,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 应用锁 | 启动锁；`service/AppLock.ets` 调用系统认证，取消后显示锁定页可重试；设备无认证时 fail-open |
 | 2026-11-08 | 生成状态通知 | `service/Notify.ets`：后台生成常驻通知 + 完成提醒，`wantAgent` 点按回应用；前台不打扰，通知关闭时静默跳过 |
 | 2026-11-08 | 消息内链接 | Markdown 链接与裸 URL 均可点击；尾部标点保留；`isOpenableUrl()` 只放行安全协议；46 项测试通过 |
+| 2026-11-08 | 每会话参数 | `SessionMeta` 增模型/思考/追加提示词覆盖；会话操作弹窗编辑；发送、`/compact`、子代理均用合并后的设置；导出/导入与 fork 保留；47 项测试通过 |

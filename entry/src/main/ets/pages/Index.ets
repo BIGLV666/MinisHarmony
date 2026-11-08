@@ -68,6 +68,7 @@ import { BACKUP_MIN_PASSWORD, isEncryptedBackup } from '../core/BackupCrypto';
 import { decryptBackupText, DecryptOutcome } from '../service/BackupCrypto';
 import { SettingsImageGen } from '../service/ImageGen';
 import { DeviceTools } from '../service/DeviceTools';
+import { OAuthService } from '../service/OAuth';
 import { ScreenshotOutcome, saveShareCard } from '../service/Screenshot';
 import { shareCardFileName } from '../core/ShareCard';
 import { shareCardView } from '../components/ShareCardView';
@@ -476,6 +477,7 @@ struct Index {
     AttachmentStore.init(context.filesDir + '/attachments');
     try {
       await LocalStore.init(context);
+      await OAuthService.init();
       await SubagentRunner.restore();
     } catch (e) {
       this.toast('本地存储初始化失败，本次会话不会保存');
@@ -1278,10 +1280,12 @@ struct Index {
       this.handleCommand(text);
       return;
     }
-    if (this.settings.apiKey.trim().length === 0) {
+    const claudeLogin: boolean =
+      this.settings.preset === 'anthropic' && OAuthService.hasClaudeToken();
+    if (this.settings.apiKey.trim().length === 0 && !claudeLogin) {
       this.pendingSkillBody = '';
       this.showSettings = true;
-      this.toast('请先填写 API Key');
+      this.toast('请先填写 API Key 或登录 Claude 账号');
       return;
     }
     if (this.settings.baseUrl.trim().length === 0) {
@@ -1320,13 +1324,16 @@ struct Index {
     this.runAgent(session, text, true, attachments);
   }
 
-  private runAgent(
+  private async runAgent(
     session: StoredSession,
     userText: string,
     fresh: boolean,
     attachments: ChatAttachment[] = []
-  ): void {
-    const effective: AppSettings = effectiveSettings(this.settings, session.meta);
+  ): Promise<void> {
+    let effective: AppSettings = effectiveSettings(this.settings, session.meta);
+    // Resolve/refresh the OAuth token before the first request; API-key users
+    // get the settings back unchanged.
+    effective = await OAuthService.decorate(effective);
     const skills: string = SkillStore.block(effective.enabledSkills);
     if (skills.length > 0) {
       effective.systemPrompt = effective.systemPrompt.trim().length > 0
@@ -1505,8 +1512,10 @@ struct Index {
       transcriptForSummary(plan.head, SUMMARY_TRANSCRIPT_LIMIT);
     this.compacting = true;
     this.toast('正在生成摘要…');
+    const summarySettings: AppSettings =
+      await OAuthService.decorate(effectiveSettings(this.settings, session.meta));
     const result: SummaryResult = await summarizeConversation(
-      effectiveSettings(this.settings, session.meta), session.meta.id, transcript
+      summarySettings, session.meta.id, transcript
     );
     this.compacting = false;
     if (!result.ok) {

@@ -126,6 +126,11 @@ export interface AppSettings {
   webDavAutoSync: boolean;
   /** Epoch ms of the last successful sync; 0 when never synced. */
   webDavLastSyncAt: number;
+  /**
+   * Runtime-only access token from an OAuth login. Never persisted and never
+   * exported; request builders switch to `Authorization: Bearer` when set.
+   */
+  oauthToken?: string;
 }
 
 export const DEFAULT_ACCENT_COLOR: string = '#2F6BFF';
@@ -572,6 +577,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     webDavUser: source.webDavUser !== undefined ? source.webDavUser : '',
     webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : '',
     webDavAutoSync: source.webDavAutoSync === true,
+    oauthToken: source.oauthToken !== undefined ? source.oauthToken : '',
     webDavLastSyncAt: source.webDavLastSyncAt !== undefined &&
       source.webDavLastSyncAt > 0 ? source.webDavLastSyncAt : 0
   };

@@ -29,6 +29,7 @@ import { SOUL_PRESETS, SoulPreset } from '../core/Soul';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
+import { ClaudeLoginStart, OAuthOutcome, OAuthService } from '../service/OAuth';
 import {
   ModelOverride,
   OVERRIDE_INHERIT,
@@ -175,6 +176,13 @@ export struct SettingsSheet {
   @State webDavAutoSync: boolean = false;
   @State webDavLastSyncAt: number = 0;
   @State showWebDavPassword: boolean = false;
+  @State claudeLoggedIn: boolean = false;
+  @State claudeMask: string = '';
+  @State oauthExpanded: boolean = false;
+  @State oauthBusy: boolean = false;
+  @State oauthVerifier: string = '';
+  @State oauthState: string = '';
+  @State oauthPaste: string = '';
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -220,6 +228,60 @@ export struct SettingsSheet {
     this.webDavPassword = copy.webDavPassword;
     this.webDavAutoSync = copy.webDavAutoSync;
     this.webDavLastSyncAt = copy.webDavLastSyncAt;
+    this.claudeLoggedIn = OAuthService.hasClaudeToken();
+    this.claudeMask = OAuthService.claudeMaskedToken();
+  }
+
+  private async startClaudeLogin(): Promise<void> {
+    if (this.oauthBusy) {
+      return;
+    }
+    this.oauthBusy = true;
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const start: ClaudeLoginStart | null = await OAuthService.beginClaudeLogin(context);
+    this.oauthBusy = false;
+    if (start === null) {
+      this.onToast('无法打开浏览器，请稍后重试');
+      return;
+    }
+    this.oauthVerifier = start.verifier;
+    this.oauthState = start.state;
+    this.oauthExpanded = true;
+    this.onToast('已打开浏览器，完成授权后复制回调地址');
+  }
+
+  private async completeClaudeLogin(): Promise<void> {
+    if (this.oauthBusy) {
+      return;
+    }
+    const pasted: string = this.oauthPaste.trim();
+    if (pasted.length === 0) {
+      this.onToast('请先粘贴回调地址或授权码');
+      return;
+    }
+    this.oauthBusy = true;
+    const outcome: OAuthOutcome = await OAuthService.completeClaudeLogin(
+      this.oauthVerifier, this.oauthState, pasted);
+    this.oauthBusy = false;
+    this.onToast(outcome.message);
+    if (outcome.ok) {
+      this.oauthPaste = '';
+      this.oauthExpanded = false;
+      this.claudeLoggedIn = OAuthService.hasClaudeToken();
+      this.claudeMask = OAuthService.claudeMaskedToken();
+      if (this.baseUrl.trim().length === 0 || this.isStockBase(this.baseUrl)) {
+        this.baseUrl = ANTHROPIC_DEFAULT_BASE;
+      }
+    }
+  }
+
+  private async logoutClaude(): Promise<void> {
+    await OAuthService.forgetClaude();
+    this.claudeLoggedIn = false;
+    this.claudeMask = '';
+    this.oauthExpanded = false;
+    this.oauthPaste = '';
+    this.onToast('已退出 Claude 账号');
   }
 
   private toolEnabled(name: string): boolean {
@@ -662,7 +724,11 @@ export struct SettingsSheet {
     }
     this.probing = true;
     this.probeMessage = '正在连接…';
-    const result: ModelsResult = await fetchModelIds(this.draftSettings());
+    const draft: AppSettings = this.draftSettings();
+    if (draft.preset === 'anthropic') {
+      draft.oauthToken = await OAuthService.validClaudeToken();
+    }
+    const result: ModelsResult = await fetchModelIds(draft);
     this.probing = false;
     this.probeMessage = result.message;
     if (result.ok && result.models.length > 0) {
@@ -693,6 +759,97 @@ export struct SettingsSheet {
       }
     }
     this.onSave(next);
+  }
+
+  @Builder
+  claudeOAuthCard() {
+    Column({ space: 8 }) {
+      Row({ space: 6 }) {
+        Text(this.claudeLoggedIn ? '已登录 Claude 账号' : 'Claude 账号登录（Pro / Max）')
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+        if (this.claudeLoggedIn) {
+          Text('退出')
+            .fontSize(11)
+            .fontColor($r('app.color.danger'))
+            .padding({ left: 6, right: 2 })
+            .onClick(() => {
+              this.logoutClaude();
+            })
+        }
+      }
+      .width('100%')
+
+      if (this.claudeLoggedIn) {
+        Text('令牌 ' + this.claudeMask)
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+        Text('登录态保存在系统 Asset Store；API Key 保持清空即可使用该账号。')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+      } else {
+        Text('浏览器完成授权后，回调会停在 localhost:54545，复制地址栏里的完整地址粘贴回来。')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+        if (this.oauthExpanded) {
+          TextInput({ text: this.oauthPaste, placeholder: 'http://localhost:54545/callback?code=…' })
+            .width('100%')
+            .height(42)
+            .fontSize(12)
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(10)
+            .onChange((value: string) => {
+              this.oauthPaste = value;
+            })
+          Row({ space: 8 }) {
+            Button(this.oauthBusy ? '登录中…' : '完成登录')
+              .layoutWeight(1)
+              .height(38)
+              .fontSize(12)
+              .fontColor($r('app.color.on_accent'))
+              .backgroundColor($r('app.color.accent'))
+              .borderRadius(10)
+              .enabled(!this.oauthBusy)
+              .onClick(() => {
+                this.completeClaudeLogin();
+              })
+            Button('重新打开')
+              .height(38)
+              .fontSize(12)
+              .fontColor($r('app.color.accent'))
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(10)
+              .enabled(!this.oauthBusy)
+              .onClick(() => {
+                this.startClaudeLogin();
+              })
+          }
+          .width('100%')
+        } else {
+          Button(this.oauthBusy ? '正在打开…' : '打开浏览器登录')
+            .width('100%')
+            .height(38)
+            .fontSize(12)
+            .fontColor($r('app.color.accent'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(10)
+            .enabled(!this.oauthBusy)
+            .onClick(() => {
+              this.startClaudeLogin();
+            })
+        }
+      }
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor($r('app.color.surface_alt'))
+    .borderRadius(12)
+    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
@@ -932,6 +1089,10 @@ export struct SettingsSheet {
             }
             .width('100%')
             .alignItems(HorizontalAlign.Start)
+
+            if (this.preset === 'anthropic') {
+              this.claudeOAuthCard()
+            }
 
             Column() {
               this.fieldLabel('模型 ID')

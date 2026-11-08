@@ -1,0 +1,352 @@
+import { cryptoFramework } from '@kit.CryptoArchitectureKit';
+import { common } from '@kit.AbilityKit';
+import { http } from '@kit.NetworkKit';
+import { util } from '@kit.ArkTS';
+import { AppSettings, cloneSettings } from '../core/Types';
+import {
+  CLAUDE_CLI_USER_AGENT,
+  CLAUDE_OAUTH_BETAS,
+  JwtClaims,
+  OAuthProvider,
+  OAuthToken,
+  RedirectCode,
+  authorizeUrl,
+  extractRedirectCode,
+  jwtClaimsFromPayloadJson,
+  jwtPayloadSegment,
+  maskToken,
+  oauthStateFromBytes,
+  parseTokenJson,
+  pkceChallengeFromDigest,
+  pkceVerifierFromBytes,
+  tokenFromJson,
+  tokenJson,
+  tokenNeedsRefresh
+} from '../core/OAuth';
+import { SecureStore } from './SecureStore';
+
+const encoder: util.TextEncoder = new util.TextEncoder();
+const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
+const base64: util.Base64Helper = new util.Base64Helper();
+
+const ALIAS_CLAUDE: string = 'MinisHarmony.oauth.claude';
+const ALIAS_CODEX: string = 'MinisHarmony.oauth.codex';
+const ALIAS_COPILOT: string = 'MinisHarmony.oauth.copilot';
+
+const TOKEN_TIMEOUT_MS: number = 30000;
+
+export interface ClaudeLoginStart {
+  url: string;
+  verifier: string;
+  state: string;
+}
+
+export interface OAuthOutcome {
+  ok: boolean;
+  message: string;
+}
+
+interface OAuthHttpResult extends OAuthOutcome {
+  text: string;
+}
+
+function aliasFor(provider: OAuthProvider): string {
+  if (provider === 'codex') {
+    return ALIAS_CODEX;
+  }
+  if (provider === 'copilot') {
+    return ALIAS_COPILOT;
+  }
+  return ALIAS_CLAUDE;
+}
+
+function decode(bytes: Uint8Array): string {
+  return decoder.decodeToString(bytes);
+}
+
+function cliHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': CLAUDE_CLI_USER_AGENT,
+    'X-Stainless-Lang': 'js',
+    'X-Stainless-Package-Version': '0.106.0',
+    'X-Stainless-OS': 'Linux',
+    'X-Stainless-Arch': 'arm64',
+    'X-Stainless-Runtime': 'node',
+    'X-Stainless-Runtime-Version': 'v24.18.0',
+    'X-Stainless-Retry-Count': '0',
+    'X-Stainless-Timeout': '600',
+    'X-App': 'cli',
+    'Anthropic-Dangerous-Direct-Browser-Access': 'true'
+  };
+  return headers;
+}
+
+/** Headers for an Anthropic Messages request made with an OAuth token. */
+export function claudeOAuthRequestHeaders(): Record<string, string> {
+  const headers: Record<string, string> = cliHeaders();
+  headers['anthropic-beta'] = CLAUDE_OAUTH_BETAS.join(',');
+  return headers;
+}
+
+async function postJson(
+  url: string,
+  body: string,
+  extraHeaders: Record<string, string>
+): Promise<OAuthHttpResult> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  };
+  const keys: string[] = Object.keys(extraHeaders);
+  for (let i = 0; i < keys.length; i++) {
+    headers[keys[i]] = extraHeaders[keys[i]];
+  }
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.POST,
+    header: headers,
+    extraData: body,
+    connectTimeout: 20000,
+    readTimeout: TOKEN_TIMEOUT_MS,
+    expectDataType: http.HttpDataType.STRING,
+    usingCache: false
+  };
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(url, options);
+    const text: string = typeof response.result === 'string' ? response.result : '';
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      let detail: string = text;
+      if (detail.length > 200) {
+        detail = detail.substring(0, 200);
+      }
+      return {
+        ok: false,
+        message: '登录失败：HTTP ' + response.responseCode.toString() +
+          (detail.length > 0 ? '（' + detail + '）' : ''),
+        text: ''
+      };
+    }
+    return { ok: true, message: '', text: text };
+  } catch (e) {
+    const error: Error = e as Error;
+    return { ok: false, message: '登录失败：' + error.message, text: '' };
+  } finally {
+    request.destroy();
+  }
+}
+
+/**
+ * OAuth token lifecycle. Tokens live in the Asset Store under a per-provider
+ * alias; only a masked form is ever shown in the UI. The in-memory copy makes
+ * request-time lookups synchronous, and refresh is single-flight because the
+ * providers rotate refresh tokens (two concurrent refreshes would invalidate
+ * each other).
+ */
+export class OAuthService {
+  private static claudeToken: OAuthToken | null = null;
+  private static codexToken: OAuthToken | null = null;
+  private static loaded: boolean = false;
+  private static refreshing: Promise<string> | null = null;
+
+  static async init(): Promise<void> {
+    if (OAuthService.loaded) {
+      return;
+    }
+    OAuthService.loaded = true;
+    const claude: string | null = await SecureStore.get(ALIAS_CLAUDE);
+    if (claude !== null && claude.length > 0) {
+      OAuthService.claudeToken = parseTokenJson(claude);
+    }
+    const codex: string | null = await SecureStore.get(ALIAS_CODEX);
+    if (codex !== null && codex.length > 0) {
+      OAuthService.codexToken = parseTokenJson(codex);
+    }
+  }
+
+  static hasClaudeToken(): boolean {
+    return OAuthService.claudeToken !== null;
+  }
+
+  static claudeMaskedToken(): string {
+    const token: OAuthToken | null = OAuthService.claudeToken;
+    return token === null ? '' : maskToken(token.accessToken);
+  }
+
+  static async forgetClaude(): Promise<void> {
+    OAuthService.claudeToken = null;
+    await SecureStore.remove(ALIAS_CLAUDE);
+  }
+
+  private static async saveClaude(token: OAuthToken): Promise<void> {
+    OAuthService.claudeToken = token;
+    await SecureStore.set(ALIAS_CLAUDE, tokenJson(token));
+  }
+
+  /** A valid token if one is cached and not near expiry, otherwise ''. */
+  static cachedClaudeToken(): string {
+    const token: OAuthToken | null = OAuthService.claudeToken;
+    if (token === null) {
+      return '';
+    }
+    if (tokenNeedsRefresh(token, Date.now())) {
+      return '';
+    }
+    return token.accessToken;
+  }
+
+  /**
+   * Returns a usable access token, refreshing it when close to expiry. Returns
+   * '' when the user has not signed in or the refresh token was rejected.
+   */
+  static async validClaudeToken(): Promise<string> {
+    const token: OAuthToken | null = OAuthService.claudeToken;
+    if (token === null) {
+      return '';
+    }
+    if (!tokenNeedsRefresh(token, Date.now())) {
+      return token.accessToken;
+    }
+    if (OAuthService.refreshing !== null) {
+      return OAuthService.refreshing;
+    }
+    OAuthService.refreshing = OAuthService.refreshClaude(token);
+    try {
+      return await OAuthService.refreshing;
+    } finally {
+      OAuthService.refreshing = null;
+    }
+  }
+
+  private static async refreshClaude(stale: OAuthToken): Promise<string> {
+    if (stale.refreshToken.length === 0) {
+      return stale.accessToken;
+    }
+    const body: string = JSON.stringify({
+      grant_type: 'refresh_token',
+      client_id: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+      refresh_token: stale.refreshToken
+    });
+    const result: OAuthHttpResult = await postJson(
+      'https://claude.ai/v1/oauth/token', body, cliHeaders());
+    if (!result.ok) {
+      // Keep the old token: a transient network failure must not log the user
+      // out. The next request will try again.
+      return stale.accessToken;
+    }
+    const fresh: OAuthToken | null = tokenFromJson(result.text, Date.now());
+    if (fresh === null) {
+      return stale.accessToken;
+    }
+    if (fresh.refreshToken.length === 0) {
+      fresh.refreshToken = stale.refreshToken;
+    }
+    await OAuthService.saveClaude(fresh);
+    return fresh.accessToken;
+  }
+
+  /**
+   * Build the authorization URL and open the system browser. The verifier and
+   * state stay in the sheet so the callback can be pasted back; nothing is
+   * written until the exchange succeeds.
+   */
+  static async beginClaudeLogin(
+    context: common.UIAbilityContext
+  ): Promise<ClaudeLoginStart | null> {
+    try {
+      const random: cryptoFramework.Random = cryptoFramework.createRandom();
+      const verifierBytes: Uint8Array = random.generateRandomSync(64).data;
+      const verifier: string = pkceVerifierFromBytes(verifierBytes);
+      const digest: Uint8Array = await OAuthService.sha256(verifier);
+      const challenge: string = pkceChallengeFromDigest(digest);
+      const state: string = oauthStateFromBytes(random.generateRandomSync(32).data);
+      const url: string = authorizeUrl('claude', challenge, state);
+      await context.openLink(url);
+      return { url: url, verifier: verifier, state: state };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Exchange the pasted callback for a token. Accepts a full redirect URL, a
+   * `code#state` pair or a bare code.
+   */
+  static async completeClaudeLogin(
+    verifier: string,
+    expectedState: string,
+    pasted: string
+  ): Promise<OAuthOutcome> {
+    const parsed: RedirectCode | null = extractRedirectCode(pasted);
+    if (parsed === null) {
+      return { ok: false, message: '没有识别到授权码，请粘贴浏览器地址栏中的回调地址或授权码' };
+    }
+    if (parsed.state.length > 0 && expectedState.length > 0 &&
+      parsed.state !== expectedState) {
+      return { ok: false, message: '授权状态不匹配，请重新发起登录' };
+    }
+    const body: string = JSON.stringify({
+      grant_type: 'authorization_code',
+      client_id: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+      code: parsed.code,
+      redirect_uri: 'http://localhost:54545/callback',
+      code_verifier: verifier,
+      state: parsed.state.length > 0 ? parsed.state : expectedState
+    });
+    const result: OAuthHttpResult = await postJson(
+      'https://claude.ai/v1/oauth/token', body, cliHeaders());
+    if (!result.ok) {
+      return result;
+    }
+    const token: OAuthToken | null = tokenFromJson(result.text, Date.now());
+    if (token === null) {
+      return { ok: false, message: '登录响应缺少 access_token' };
+    }
+    await OAuthService.saveClaude(token);
+    return { ok: true, message: '已使用 Claude 账号登录' };
+  }
+
+  /** Fill the runtime-only OAuth fields the request builders read. */
+  static async decorate(settings: AppSettings): Promise<AppSettings> {
+    const copy: AppSettings = cloneSettings(settings);
+    if (copy.preset === 'anthropic') {
+      const token: string = await OAuthService.validClaudeToken();
+      if (token.length > 0) {
+        copy.oauthToken = token;
+      }
+    }
+    return copy;
+  }
+
+  /** Synchronous variant for paths that already ran `decorate`. */
+  static cachedTokenFor(settings: AppSettings): string {
+    if (settings.preset !== 'anthropic') {
+      return '';
+    }
+    return OAuthService.cachedClaudeToken();
+  }
+
+  private static async sha256(value: string): Promise<Uint8Array> {
+    const md: cryptoFramework.Md = cryptoFramework.createMd('SHA256');
+    await md.update({ data: encoder.encodeInto(value) });
+    const digest: cryptoFramework.DataBlob = await md.digest();
+    return digest.data;
+  }
+
+  /** Decode a Codex id_token payload; exported for the future login flow. */
+  static jwtClaims(idToken: string): JwtClaims {
+    const segment: string = jwtPayloadSegment(idToken);
+    if (segment.length === 0) {
+      return jwtClaimsFromPayloadJson('{}');
+    }
+    try {
+      let padded: string = segment.replace(/-/g, '+').replace(/_/g, '/');
+      while (padded.length % 4 !== 0) {
+        padded += '=';
+      }
+      const bytes: Uint8Array = base64.decodeSync(padded);
+      return jwtClaimsFromPayloadJson(decode(bytes));
+    } catch (e) {
+      return jwtClaimsFromPayloadJson('{}');
+    }
+  }
+}

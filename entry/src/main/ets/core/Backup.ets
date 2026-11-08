@@ -53,6 +53,7 @@ export function redactedSettings(settings: AppSettings): AppSettings {
   copy.apiKey = '';
   copy.sandboxToken = '';
   copy.webDavPassword = '';
+  copy.oauthToken = '';
   const overrides: ModelOverride[] = [];
   for (let i = 0; i < copy.modelOverrides.length; i++) {
     const item: ModelOverride = copy.modelOverrides[i];

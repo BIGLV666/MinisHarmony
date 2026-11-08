@@ -2,6 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { AppSettings, ChatMessage } from '../core/Types';
+import { claudeOAuthRequestHeaders } from './OAuth';
 import { soulPrompt } from '../core/Soul';
 import { capsForModel, clampMaxTokens } from '../core/ModelCaps';
 import {
@@ -562,6 +563,26 @@ export function startChatStream(
  * token budget and forbids temperature, which the generic setting does not
  * express. Users can add it through a per-model extra body instead.
  */
+/** `x-api-key` for API keys, `Bearer` + CLI profile for an OAuth login. */
+function anthropicAuthHeaders(settings: AppSettings, accept: string): Record<string, string> {
+  const token: string = settings.oauthToken !== undefined ? settings.oauthToken.trim() : '';
+  if (token.length > 0) {
+    const headers: Record<string, string> = claudeOAuthRequestHeaders();
+    headers['Content-Type'] = 'application/json';
+    headers['Accept'] = accept;
+    headers['anthropic-version'] = ANTHROPIC_VERSION;
+    headers['Authorization'] = 'Bearer ' + token;
+    return headers;
+  }
+  return {
+    'Content-Type': 'application/json',
+    'Accept': accept,
+    'x-api-key': settings.apiKey.trim(),
+    'anthropic-version': ANTHROPIC_VERSION,
+    'User-Agent': USER_AGENT
+  };
+}
+
 function startAnthropicStream(
   settings: AppSettings,
   history: ChatMessage[],
@@ -573,12 +594,14 @@ function startAnthropicStream(
 ): void {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const apiKey: string = settings.apiKey.trim();
+  const oauthToken: string = settings.oauthToken !== undefined
+    ? settings.oauthToken.trim() : '';
   if (baseUrl.length === 0) {
     callbacks.onError('请先在设置中填写 API 地址');
     return;
   }
-  if (apiKey.length === 0) {
-    callbacks.onError('请先在设置中填写 API Key');
+  if (apiKey.length === 0 && oauthToken.length === 0) {
+    callbacks.onError('请先在设置中填写 API Key，或登录 Claude 账号');
     return;
   }
   const caps = capsForModel(settings.modelId);
@@ -610,13 +633,8 @@ function startAnthropicStream(
     topP
   );
 
-  let headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'text/event-stream',
-    'x-api-key': apiKey,
-    'anthropic-version': ANTHROPIC_VERSION,
-    'User-Agent': USER_AGENT
-  };
+  let headers: Record<string, string> =
+    anthropicAuthHeaders(settings, 'text/event-stream');
   if (override !== null) {
     headers = mergeExtraHeaders(headers, override.extraHeaders);
   }
@@ -778,13 +796,8 @@ async function summarizeAnthropic(
     system: SUMMARY_INSTRUCTION,
     messages: [{ role: 'user', content: transcript }]
   };
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'x-api-key': settings.apiKey.trim(),
-    'anthropic-version': ANTHROPIC_VERSION,
-    'User-Agent': USER_AGENT
-  };
+  const headers: Record<string, string> =
+    anthropicAuthHeaders(settings, 'application/json');
   const options: http.HttpRequestOptions = {
     method: http.RequestMethod.POST,
     header: headers,
@@ -994,12 +1007,8 @@ async function fetchGeminiModelIds(settings: AppSettings): Promise<ModelsResult>
 }
 
 async function fetchAnthropicModelIds(settings: AppSettings): Promise<ModelsResult> {
-  const headers: Record<string, string> = {
-    'Accept': 'application/json',
-    'x-api-key': settings.apiKey.trim(),
-    'anthropic-version': ANTHROPIC_VERSION,
-    'User-Agent': USER_AGENT
-  };
+  const headers: Record<string, string> =
+    anthropicAuthHeaders(settings, 'application/json');
   const options: http.HttpRequestOptions = {
     method: http.RequestMethod.GET,
     header: headers,

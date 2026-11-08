@@ -53,6 +53,7 @@ copyCore('Diagnostics', ['MarkdownExport', 'EventLog']);
 copyCore('WebDav', ['BackupCrypto', 'Backup', 'SessionExport']);
 copyCore('ScheduledTask');
 copyCore('Device');
+copyCore('OAuth');
 copyCore('ToolArgs');
 copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
@@ -198,6 +199,7 @@ const webDav = await import(pathToFileURL(join(tmp, 'WebDav.mts')).href);
 const scheduled = await import(pathToFileURL(join(tmp, 'ScheduledTask.mts')).href);
 const device = await import(pathToFileURL(join(tmp, 'Device.mts')).href);
 const syncMerge = await import(pathToFileURL(join(tmp, 'SyncMerge.mts')).href);
+const oauth = await import(pathToFileURL(join(tmp, 'OAuth.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -2430,4 +2432,132 @@ test('backup parse preserves ids and timestamps for merging', () => {
   assert.equal(merged.updatedFromRemote, 0);
   assert.equal(merged.sessions.length, 1);
   assert.equal(sessionExport.parseBackupSessions('{"app":"other"}', now).ok, false);
+});
+
+test('PKCE base64url keeps the RFC alphabet without padding', () => {
+  assert.equal(oauth.base64UrlEncode(new Uint8Array([])), '');
+  assert.equal(oauth.base64UrlEncode(new Uint8Array([0])), 'AA');
+  assert.equal(oauth.base64UrlEncode(new Uint8Array([97, 98, 99])), 'YWJj');
+  assert.equal(oauth.base64UrlEncode(new Uint8Array([255, 254])), '__4');
+  assert.equal(oauth.base64UrlEncode(new Uint8Array([251, 255])), '-_8');
+  const verifier = oauth.pkceVerifierFromBytes(new Uint8Array(64).fill(7));
+  assert.equal(verifier.length, 86);
+  assert.ok(!verifier.includes('='));
+  assert.ok(!verifier.includes('+'));
+  assert.ok(!verifier.includes('/'));
+});
+
+test('authorization URL carries PKCE and provider extras', () => {
+  const claude = oauth.authorizeUrl('claude', 'CHALLENGE', 'STATE');
+  assert.ok(claude.startsWith('https://claude.ai/oauth/authorize?response_type=code'));
+  assert.ok(claude.includes('client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e'));
+  assert.ok(claude.includes('redirect_uri=http%3A%2F%2Flocalhost%3A54545%2Fcallback'));
+  assert.ok(claude.includes('code_challenge=CHALLENGE'));
+  assert.ok(claude.includes('code_challenge_method=S256'));
+  assert.ok(claude.includes('state=STATE'));
+  assert.ok(claude.includes('user%3Ainference'));
+
+  const codex = oauth.authorizeUrl('codex', 'C', 'S');
+  assert.ok(codex.includes('originator=codex_cli_rs'));
+  assert.ok(codex.includes('id_token_add_organizations=true'));
+
+  assert.equal(oauth.authorizeUrl('copilot', 'C', 'S'), '');
+});
+
+test('pasted callback accepts URL, code#state or bare code', () => {
+  const full = oauth.extractRedirectCode(
+    'http://localhost:54545/callback?code=abc%2F123&state=xyz');
+  assert.deepEqual(full, { code: 'abc/123', state: 'xyz' });
+
+  const hash = oauth.extractRedirectCode('abc123#state456');
+  assert.deepEqual(hash, { code: 'abc123', state: 'state456' });
+
+  assert.deepEqual(oauth.extractRedirectCode('  rawcode  '),
+    { code: 'rawcode', state: '' });
+  assert.equal(oauth.extractRedirectCode('http://localhost:54545/callback?error=access_denied'),
+    null);
+  assert.equal(oauth.extractRedirectCode('   '), null);
+  assert.equal(oauth.extractRedirectCode('http://localhost:54545/callback?state=x'), null);
+});
+
+test('token parsing records expiry and tolerates missing fields', () => {
+  const now = 1000000;
+  const token = oauth.tokenFromJson(JSON.stringify({
+    access_token: 'at-1',
+    refresh_token: 'rt-1',
+    expires_in: 3600
+  }), now);
+  assert.equal(token.accessToken, 'at-1');
+  assert.equal(token.refreshToken, 'rt-1');
+  assert.equal(token.expiresAt, now + 3600000);
+  assert.equal(oauth.tokenNeedsRefresh(token, now), false);
+  assert.equal(oauth.tokenNeedsRefresh(token, now + 3600000 - 60000), true);
+
+  const noExpiry = oauth.tokenFromJson('{"access_token":"at-2"}', now);
+  assert.equal(noExpiry.expiresAt, 0);
+  assert.equal(oauth.tokenNeedsRefresh(noExpiry, now + 999999999), false);
+  assert.equal(oauth.tokenFromJson('{"nope":1}', now), null);
+  assert.equal(oauth.tokenFromJson('garbage', now), null);
+
+  const roundtrip = oauth.parseTokenJson(oauth.tokenJson(token));
+  assert.equal(roundtrip.accessToken, 'at-1');
+  assert.equal(roundtrip.expiresAt, token.expiresAt);
+  assert.equal(oauth.parseTokenJson(''), null);
+});
+
+test('token masking keeps a recognisable prefix and suffix', () => {
+  assert.equal(oauth.maskToken(''), '');
+  assert.equal(oauth.maskToken('abc'), '***');
+  const masked = oauth.maskToken('sk-ant-oat01-abcdefghijklmnop');
+  assert.ok(masked.startsWith('sk-ant-oa'));
+  assert.ok(masked.endsWith('hijklmnop'));
+  assert.ok(masked.includes('**********'));
+  assert.ok(!masked.includes('abcdefghij'));
+});
+
+test('device flow and Copilot session parsing', () => {
+  const auth = oauth.parseDeviceAuthorization(JSON.stringify({
+    device_code: 'dc',
+    user_code: 'ABCD-1234',
+    verification_uri: 'https://github.com/login/device',
+    expires_in: 900,
+    interval: 5
+  }));
+  assert.equal(auth.deviceCode, 'dc');
+  assert.equal(auth.userCode, 'ABCD-1234');
+  assert.equal(auth.interval, 5);
+  assert.equal(oauth.parseDeviceAuthorization('{}'), null);
+
+  assert.equal(oauth.classifyDevicePoll('{"access_token":"gho_x"}', true).kind, 'success');
+  assert.equal(oauth.classifyDevicePoll(
+    '{"error":"authorization_pending"}', true).kind, 'pending');
+  assert.equal(oauth.classifyDevicePoll('{"error":"slow_down"}', true).kind, 'slow_down');
+  assert.equal(oauth.classifyDevicePoll('{"error":"access_denied"}', true).kind, 'denied');
+  assert.equal(oauth.classifyDevicePoll('{"error":"expired_token"}', true).kind, 'expired');
+  assert.equal(oauth.classifyDevicePoll('{"error":"unauthorized_client"}', true).kind,
+    'fatal');
+  assert.equal(oauth.classifyDevicePoll('not json', false).kind, 'fatal');
+  assert.equal(oauth.bumpedDeviceInterval(5), 10);
+
+  const session = oauth.parseCopilotSession(
+    '{"token":"copilot-session","expires_at":1700000000}', 1);
+  assert.equal(session.token, 'copilot-session');
+  assert.equal(session.expiresAt, 1700000000000);
+  const fallback = oauth.parseCopilotSession('{"token":"t"}', 1000);
+  assert.equal(fallback.expiresAt, 1000 + 25 * 60 * 1000);
+  assert.equal(oauth.parseCopilotSession('{}', 0), null);
+});
+
+test('JWT claims and payload segment extraction', () => {
+  const claims = oauth.jwtClaimsFromPayloadJson(JSON.stringify({
+    chatgpt_account_id: 'acc-1',
+    chatgpt_plan_type: 'plus',
+    email: 'a@b.c'
+  }));
+  assert.equal(claims.chatgptAccountId, 'acc-1');
+  assert.equal(claims.chatgptPlanType, 'plus');
+  assert.equal(claims.email, 'a@b.c');
+  assert.equal(oauth.jwtPayloadSegment('a.b.c'), 'b');
+  assert.equal(oauth.jwtPayloadSegment('nodots'), '');
+  assert.equal(oauth.jwtClaimsFromPayloadJson('bad').chatgptAccountId, '');
 });

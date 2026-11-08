@@ -133,7 +133,9 @@ function normalizeSettings(source: AppSettings): AppSettings {
     webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : '',
     webDavAutoSync: source.webDavAutoSync === true,
     webDavLastSyncAt: source.webDavLastSyncAt !== undefined &&
-      source.webDavLastSyncAt > 0 ? source.webDavLastSyncAt : 0
+      source.webDavLastSyncAt > 0 ? source.webDavLastSyncAt : 0,
+    // OAuth access tokens are runtime-only; the Asset Store is the only home.
+    oauthToken: ''
   };
 }
 
@@ -339,6 +341,7 @@ export class LocalStore {
       return;
     }
     const stored: AppSettings = cloneSettings(settings);
+    stored.oauthToken = '';
 
     // Only strip a secret from preferences once the Asset Store accepted it.
     // On devices where the kit is unavailable the old behaviour is retained.

@@ -9,6 +9,15 @@ import {
   parseMarkdown
 } from '../core/Markdown';
 import { scaleFont } from '../core/Types';
+import {
+  CodeSegment,
+  TOKEN_COMMENT,
+  TOKEN_FUNCTION,
+  TOKEN_KEYWORD,
+  TOKEN_NUMBER,
+  TOKEN_STRING,
+  highlightCode
+} from '../core/CodeHighlight';
 
 @Component
 export struct MarkdownView {
@@ -23,6 +32,25 @@ export struct MarkdownView {
 
   onTextChanged(): void {
     this.blocks = parseMarkdown(this.text);
+  }
+
+  private syntaxColor(kind: string): ResourceColor {
+    if (kind === TOKEN_KEYWORD) {
+      return $r('app.color.syntax_keyword');
+    }
+    if (kind === TOKEN_STRING) {
+      return $r('app.color.syntax_string');
+    }
+    if (kind === TOKEN_COMMENT) {
+      return $r('app.color.syntax_comment');
+    }
+    if (kind === TOKEN_NUMBER) {
+      return $r('app.color.syntax_number');
+    }
+    if (kind === TOKEN_FUNCTION) {
+      return $r('app.color.syntax_function');
+    }
+    return $r('app.color.text_primary');
   }
 
   private headingSize(level: number): number {
@@ -158,14 +186,20 @@ export struct MarkdownView {
       .width('100%')
       .padding({ left: 12, right: 12, top: 8, bottom: 6 })
 
-      Text(block.text)
-        .fontSize(scaleFont(13, this.fontScale))
-        .fontFamily('monospace')
-        .fontColor($r('app.color.text_primary'))
-        .lineHeight(scaleFont(20, this.fontScale))
-        .width('100%')
-        .padding({ left: 12, right: 12, bottom: 12 })
-        .copyOption(CopyOptions.LocalDevice)
+      Text() {
+        ForEach(highlightCode(block.text, block.lang), (segment: CodeSegment) => {
+          Span(segment.text)
+            .fontColor(this.syntaxColor(segment.kind))
+        }, (segment: CodeSegment, index: number) =>
+          index.toString() + ':' + segment.kind + ':' + segment.text.length.toString())
+      }
+      .fontSize(scaleFont(13, this.fontScale))
+      .fontFamily('monospace')
+      .fontColor($r('app.color.text_primary'))
+      .lineHeight(scaleFont(20, this.fontScale))
+      .width('100%')
+      .padding({ left: 12, right: 12, bottom: 12 })
+      .copyOption(CopyOptions.LocalDevice)
     }
     .width('100%')
     .backgroundColor($r('app.color.code_bg'))

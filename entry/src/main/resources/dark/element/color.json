@@ -63,6 +63,26 @@
     {
       "name": "quote_bar",
       "value": "#3A4558"
+    },
+    {
+      "name": "syntax_keyword",
+      "value": "#C792EA"
+    },
+    {
+      "name": "syntax_string",
+      "value": "#A5D6A7"
+    },
+    {
+      "name": "syntax_comment",
+      "value": "#7F848E"
+    },
+    {
+      "name": "syntax_number",
+      "value": "#F0B37E"
+    },
+    {
+      "name": "syntax_function",
+      "value": "#82AAFF"
     }
   ]
 }

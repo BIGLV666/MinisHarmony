@@ -500,6 +500,15 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 空消息。`read_image` 与用户附件共用同一条 `image_url` 通路，但开关互不影响。
 模型能力表未标记视觉时只提示，不阻止发送。
 
+## 代码高亮
+
+`core/CodeHighlight.ets` 是一个字符扫描器：按语言选择行注释符（`//` 或 `#`）、
+是否支持块注释以及关键字表，然后依次识别块注释、行注释、字符串（含转义）、
+数字与标识符；标识符后紧跟 `(` 视为函数调用。相邻同类型片段合并，渲染时
+`MarkdownView` 用 `Text { ForEach(Span) }` 输出，每类给一个资源颜色（浅/深色
+各一组）。未知语言、空文本或超过 20000 字符的代码直接返回单个纯文本片段，
+避免流式生成时反复分词拖慢渲染。
+
 ## 整库备份
 
 `core/Backup.ets` 在 `sessionBundleJson()` 的信封上增加 `kind: "backup"` 与

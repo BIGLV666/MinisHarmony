@@ -29,13 +29,13 @@
 | - [x] | 会话置顶 / 归档 / 分组 | 侧栏分组与置顶 | 置顶、归档（含「显示已归档」开关）、按 置顶/今天/昨天/最近 7 天/更早 分组 | P1 |
 | - [x] | 全文搜索 | 搜消息正文、工具结果 | 侧栏搜索覆盖标题、模型、正文、工具参数与结果 | P0 |
 | - [x] | 多选导出 | 选中多个会话导出 zip | 侧栏「选择会话」多选，导出为单个 `sessions` JSON bundle；不打包 zip（无附件） | P2 |
-| - [ ] | 消息时间戳 | 相对时间 | 已有 `formatRelative` | — |
+| - [x] | 消息时间戳 | 相对时间 | 用户与助手气泡底部显示 `formatRelative`；会话列表同样显示相对更新时间 | — |
 | - [x] | token 用量显示 | 每条回复的输入/输出 token | 解析流式 `usage` 并持久化到消息 | P0 |
 | - [x] | 上下文压力提示 | 接近窗口上限变色 | 顶栏显示 `上下文 12.3k`（最近一次 prompt+completion） | P0 |
 | - [x] | 失败重试 | 一键重发上一条 | 错误回复显示「重试」，复用重新生成 | P1 |
 | - [x] | 斜杠命令 | `/clear` `/compact` `/memory` `/thinking` | `/new` `/clear` `/compact` `/memory` `/thinking` `/help`；记忆开关为全局而非每会话，思考用请求级 `reasoning_effort`（无模型元数据） | P1 |
 | - [x] | 消息内图片预览 | 附件缩略图、点开大图 | 用户气泡显示缩略图，点按全屏 `bindContentCover` 查看；图片副本存应用私有目录 | P2 |
-| - [~] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | GFM 表格已支持（表头、对齐分隔行、缺列补空）；代码高亮与 LaTeX 仍仅等宽/原文显示 | P2 |
+| - [~] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | GFM 表格已支持（表头、对齐分隔行、缺列补空）；代码块按语言着色（JS/TS/ETS/Python/Shell/JSON/Kotlin/Go/Rust 的关键字、字符串、注释、数字、函数调用，未知语言纯文本）；LaTeX 仍未做 | P2 |
 | - [x] | 消息内链接点击 | 内置浏览器打开 | Markdown 链接与裸 URL 可点击，经 `Want`（viewData + browsable）拉起系统浏览器；仅允许 http/https/mailto/tel | P2 |
 
 ## 2. Agent 运行时
@@ -66,7 +66,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 读文件 | `file_read` offset/limit | `read_file` | — |
 | - [x] | 写文件 | `file_write` 覆盖 | `write_file`（默认关闭） | — |
 | - [x] | 精确编辑 | `file_edit` 字符串替换 | `file_edit`：唯一锚点 / `replace_all`，纯逻辑可测 | P0 |
-| - [ ] | 列目录 | 通过 shell `ls` | 已有 `list_dir` | — |
+| - [x] | 列目录 | 通过 shell `ls` | `list_dir`：目录优先排序、大小与修改时间、路径 jail、跳过符号链接 | — |
 | - [x] | 搜索文本 | 通过 shell `grep` | `search_text` | — |
 | - [x] | HTTP 抓取 | 浏览器引擎 `fetch` | `fetch_url` | — |
 | - [x] | 当前时间 | 通过 shell `date` | `now` | — |
@@ -257,5 +257,6 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
 | 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |
 | 2026-11-08 | 逐模型参数覆盖 | `core/ModelOverride.ets` + 设置页「逐模型参数」：按模型 ID 精确匹配，覆盖 temperature / top_p / max_tokens，合并额外请求头与 extra_body；未知模型或全局参数不受影响；坏 JSON 保存时拒绝；57 项测试通过 |
+| 2026-11-08 | 代码语法高亮 | `core/CodeHighlight.ets` 轻量分词：C 系/JS/Python/Shell/JSON/Go/Rust 关键字、字符串、注释、数字与函数调用；未知语言或超 20k 字符退纯文本；浅/深色各一组配色；61 项测试通过 |
 | 2026-11-08 | 整库备份 / 恢复 | 侧栏「备份整库」导出 `minis-backup-日期.json`：全部会话 + 设置快照，密钥类字段（API Key、沙箱 Token、MCP/模型请求头）写盘前清空；「导入」同时识别备份与普通会话包，恢复设置时保留本机密钥；无加密；60 项测试通过 |
 | 2026-11-08 | MCP HTTP 工具 | 设置页「MCP 工具」可增删服务（URL + 请求头 JSON + 启用开关）；启动与保存设置时后台发现，手动刷新强制重查；`initialize` → `notifications/initialized` → `tools/list`，调用走 `tools/call`；响应支持 JSON 与 SSE；工具名 `mcp_服务_工具`，JSON Schema 原样透传；无 stdio / OAuth；59 项测试通过 |

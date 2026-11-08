@@ -55,6 +55,7 @@ copyCore('SkillDoc');
 copyCore('ModelCaps');
 copyCore('ModelOverride');
 copyCore('McpProtocol');
+copyCore('CodeHighlight');
 copyCore('Types', ['ModelOverride', 'McpProtocol']);
 copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
 
@@ -155,6 +156,7 @@ const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
+const highlight = await import(pathToFileURL(join(tmp, 'CodeHighlight.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
@@ -1353,6 +1355,33 @@ test('whole-library backup strips secrets and restores non-secret settings', () 
 
   assert.equal(backup.parseBackupSettings('{"app":"MinisHarmony"}'), null);
   assert.equal(backup.parseBackupSettings('not json'), null);
+});
+
+test('code highlighting segments cover the source without losing characters', () => {
+  const js = 'const x = run(42); // note\nlet s = "hi";';
+  const segments = highlight.highlightCode(js, 'ts');
+  assert.equal(segments.map((s) => s.text).join(''), js);
+  assert.ok(segments.some((s) => s.text === 'const' && s.kind === 'keyword'));
+  assert.ok(segments.some((s) => s.text === 'run' && s.kind === 'function'));
+  assert.ok(segments.some((s) => s.text === '42' && s.kind === 'number'));
+  assert.ok(segments.some((s) => s.text === '"hi"' && s.kind === 'string'));
+  assert.ok(segments.some((s) => s.kind === 'comment' && s.text.indexOf('// note') === 0));
+
+  const py = 'def f(x):\n    # comment\n    return None';
+  const pySegments = highlight.highlightCode(py, 'python');
+  assert.equal(pySegments.map((s) => s.text).join(''), py);
+  assert.ok(pySegments.some((s) => s.text === 'def' && s.kind === 'keyword'));
+  assert.ok(pySegments.some((s) => s.text === 'None' && s.kind === 'keyword'));
+  assert.ok(pySegments.some((s) => s.kind === 'comment'));
+
+  const block = 'a /* one\n two */ b';
+  const blockSegments = highlight.highlightCode(block, 'js');
+  assert.equal(blockSegments.map((s) => s.text).join(''), block);
+  assert.ok(blockSegments.some((s) => s.text === '/* one\n two */' && s.kind === 'comment'));
+
+  const plain = highlight.highlightCode('text here', 'unknown-lang');
+  assert.deepEqual(plain, [{ text: 'text here', kind: 'plain' }]);
+  assert.deepEqual(highlight.highlightCode('', 'js'), [{ text: '', kind: 'plain' }]);
 });
 
 test('workspace listing sorts directories first and formats sizes', () => {

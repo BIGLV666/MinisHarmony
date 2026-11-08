@@ -266,6 +266,11 @@ export class SandboxIsh {
     SandboxIsh.outputPath = dir + '/ish-daemon-output.txt';
     SandboxIsh.commandPath = dir + '/ish-daemon-command.txt';
     SandboxIsh.requestPath = dir + '/ish-daemon-request.txt';
+    // A previous daemon may still be alive (a timeout or reset happened while
+    // this call was queued). Tell it to stop and give its 80 ms poll loop time
+    // to see the request; deleting the command file first would strand it.
+    SandboxIsh.stopDaemon();
+    await SandboxIsh.sleep(300);
     SandboxIsh.remove(SandboxIsh.outputPath);
     SandboxIsh.remove(SandboxIsh.commandPath);
     SandboxIsh.startError = '';

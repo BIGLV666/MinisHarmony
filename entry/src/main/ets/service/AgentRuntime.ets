@@ -18,6 +18,12 @@ import {
 import { TokenUsage, ToolCallDelta } from '../core/SseParser';
 import { ToolResult, ToolRuntime } from '../core/ToolTypes';
 import { BudgetResult, fitHistoryToBudget } from '../core/ContextBudget';
+import { repairToolArguments } from '../core/ToolArgs';
+import {
+  TOOL_LOOP_THRESHOLD,
+  ToolLoopGuard,
+  toolLoopWarning
+} from '../core/ToolLoop';
 import { truncateText } from '../core/Workspace';
 import {
   EVENT_AGENT_FINISH,
@@ -81,6 +87,7 @@ export class AgentRuntime {
   private agentStartedAt: number = 0;
   private requestStartedAt: number = 0;
   private toolCount: number = 0;
+  private loopGuard: ToolLoopGuard = new ToolLoopGuard();
 
   constructor(
     settings: AppSettings,
@@ -367,13 +374,23 @@ export class AgentRuntime {
       call.status = TOOL_RUNNING;
       const toolStartedAt: number = Date.now();
       this.log(EVENT_TOOL_START, LOG_INFO, this.step, call.toolName, true, 0, '');
-      const args: string = call.argumentsText.length > 0 ? call.argumentsText : '{}';
+      const repaired = repairToolArguments(call.argumentsText);
+      const args: string = repaired.text.length > 0 ? repaired.text : '{}';
+      if (repaired.changed) {
+        // Persist the repaired form so retry/regenerate sends valid JSON too.
+        call.argumentsText = args;
+      }
+      const repeat: number = this.loopGuard.observe(call.toolName, args);
       const job: Promise<void> = this.tools.execute(call.toolName, args).then(
         (result: ToolResult) => {
           if (!this.running || this.cancelled) {
             return;
           }
-          call.resultText = truncateText(result.content, MAX_TOOL_RESULT);
+          let content: string = result.content;
+          if (repeat >= TOOL_LOOP_THRESHOLD) {
+            content = toolLoopWarning(call.toolName, repeat) + '\n\n' + content;
+          }
+          call.resultText = truncateText(content, MAX_TOOL_RESULT);
           call.status = result.ok ? TOOL_DONE : TOOL_ERROR;
           call.isError = !result.ok;
           if (result.imageUri !== undefined && result.imageUri.length > 0) {
@@ -386,7 +403,8 @@ export class AgentRuntime {
           this.log(
             EVENT_TOOL_DONE, result.ok ? LOG_INFO : LOG_WARN, this.step,
             call.toolName, result.ok, Date.now() - toolStartedAt,
-            'resultChars=' + call.resultText.length.toString()
+            'resultChars=' + call.resultText.length.toString() +
+              (repeat >= TOOL_LOOP_THRESHOLD ? ' loop=' + repeat.toString() : '')
           );
           this.emit();
         }

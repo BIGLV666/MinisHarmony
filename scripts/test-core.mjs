@@ -44,6 +44,8 @@ copyCore('EditPatch');
 copyCore('Memory');
 copyCore('ContextBudget', ['Types']);
 copyCore('MarkdownExport', ['Types']);
+copyCore('ToolArgs');
+copyCore('ToolLoop');
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -106,6 +108,8 @@ const catalog = await import(pathToFileURL(join(tmp, 'ToolCatalog.mts')).href);
 const memory = await import(pathToFileURL(join(tmp, 'Memory.mts')).href);
 const budget = await import(pathToFileURL(join(tmp, 'ContextBudget.mts')).href);
 const exporter = await import(pathToFileURL(join(tmp, 'MarkdownExport.mts')).href);
+const toolArgs = await import(pathToFileURL(join(tmp, 'ToolArgs.mts')).href);
+const toolLoop = await import(pathToFileURL(join(tmp, 'ToolLoop.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -324,6 +328,42 @@ test('read_image pixels follow the tool message as a synthetic user turn', () =>
 
   const plain = proto.toApiMessages([assistant]);
   assert.equal(plain.length, 2);
+});
+
+test('tool argument repair handles fences, truncation and trailing commas', () => {
+  const valid = toolArgs.repairToolArguments('{"path":"a.txt"}');
+  assert.equal(valid.text, '{"path":"a.txt"}');
+  assert.equal(valid.changed, false);
+
+  const fenced = toolArgs.repairToolArguments('```json\n{"path":"a.txt"}\n```');
+  assert.equal(JSON.parse(fenced.text).path, 'a.txt');
+  assert.equal(fenced.changed, true);
+  assert.equal(fenced.strategy, 'fence');
+
+  const cut = toolArgs.repairToolArguments('{"path":"a.txt"');
+  assert.equal(JSON.parse(cut.text).path, 'a.txt');
+  assert.match(cut.strategy, /^truncation/);
+
+  const comma = toolArgs.repairToolArguments('{"path":"a.txt",}');
+  assert.equal(JSON.parse(comma.text).path, 'a.txt');
+  assert.equal(comma.strategy, 'trailing-comma');
+
+  const bad = toolArgs.repairToolArguments('not json');
+  assert.equal(bad.text, 'not json');
+  assert.equal(bad.changed, false);
+  assert.equal(toolArgs.repairToolArguments('').text, '{}');
+});
+
+test('tool loop guard counts only consecutive identical calls', () => {
+  const guard = new toolLoop.ToolLoopGuard();
+  assert.equal(guard.observe('read_file', '{"path":"a"}'), 1);
+  assert.equal(guard.observe('read_file', '{"path":"a"}'), 2);
+  assert.equal(guard.observe('read_file', '{"path":"b"}'), 1);
+  assert.equal(guard.observe('read_file', '{"path":"a"}'), 1);
+  assert.equal(guard.observe('read_file', '{"path":"a"}'), 2);
+  assert.equal(guard.observe('read_file', '{"path":"a"}'), 3);
+  assert.equal(toolLoop.TOOL_LOOP_THRESHOLD, 3);
+  assert.match(toolLoop.toolLoopWarning('read_file', 3), /read_file/);
 });
 
 test('interrupted tool calls get a synthetic result', () => {

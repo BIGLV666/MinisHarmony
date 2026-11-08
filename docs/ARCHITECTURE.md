@@ -365,6 +365,17 @@ filesDir/memory/
 `fileSuffixChoices` 限定 `.md`），再用 `fileIo` 写入返回的 URI。因此不需要
 申请宽泛的存储权限，也不会上传到应用之外，除非用户自己选择云盘目录。
 
+## 工具参数修复与循环检测
+
+每个工具调用执行前，`core/ToolArgs.ets` 的 `repairToolArguments()` 会尝试三种修复：
+去掉 Markdown 代码围栏、为被截断的对象补闭合符号、删除对象/数组尾逗号。只有修复结果
+能被 `JSON.parse` 接受才采用，并把修复后的 JSON 写回 part，保证重试与重新生成
+发送的是同一份有效参数；全部失败时保留原文，让工具照常报解析错误。
+
+`core/ToolLoop.ets` 的 `ToolLoopGuard` 只统计**连续**相同的 `name + arguments`
+调用。达到 3 次时，`AgentRuntime` 在该次工具结果前追加一条警告，提示模型换方法
+或直接回答。交替调用不同工具不会被误判，守卫随每次用户轮次新建。
+
 ## 斜杠命令与思考档位
 
 `Index.handleCommand()` 在发送前拦截以 `/` 开头的输入。`/new` `/clear` `/compact`

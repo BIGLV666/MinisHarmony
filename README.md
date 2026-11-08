@@ -298,9 +298,11 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - Markdown 导出：角色、思考、工具块与文件名清洗；
 - 视觉输入：`read_image` 的 data URL 作为合成 user 消息紧跟工具结果；
 - 侧栏分组：置顶与今天 / 昨天 / 最近 7 天 / 更早；
+- 工具参数修复：围栏、截断闭合、尾逗号；
+- 循环检测：只统计连续相同调用；
 - Markdown 块级与行内解析。
 
-当前结果：**40 项全部通过**。
+当前结果：**42 项全部通过**。
 
 另外做了静态与编译检查：
 

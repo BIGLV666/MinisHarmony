@@ -72,18 +72,24 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
 
 - **入口**：`libishsandbox.so` 导出 `Main(NativeChildProcess_Args)`，由 ArkTS
   `childProcessManager.startNativeChildProcess('libishsandbox.so:Main', ...)` 启动。
-- **通信**：不依赖 PTY（HarmonyOS 没有可用的 `/dev/ptmx` 保证）。用
-  `ChildProcessArgs.fds` 传一对 socketpair/pipe，协议为长度前缀 JSON：
-  `exec {command,timeout,cwd}` / `stdout` / `stderr` / `exit`；stdin 可选。
+- **通信**：不依赖 PTY（HarmonyOS 没有可用的 `/dev/ptmx` 保证）。请求文件
+  （`rootfs=` / `output=` / `commands=` / `workspace=` / `memory=`，一行一个键）
+  由 ArkTS 写一次；命令文件 `id=<n>\n<命令>` 每次原子替换（临时文件 + rename）。
+  harness 把它包成 `{ … }; printf "\n[sandbox exit=%d id=<n>]\n" "$?"` 写进
+  guest shell 的 stdin 管道，输出与标记都追加到 output 文件，应用按字符游标
+  增量读取。标记由 shell 自己打印：guest PID 1 退出会带走整个原生进程。
 - **文件系统**：Alpine minirootfs 以 `rawfile/ish-rootfs.zip` 随 HAP 分发，
   首次启动用 `@ohos.zlib.decompressFile` 解到应用私有目录 `filesDir/ish-rootfs/`；
   不把 rootfs 放在 `/data/local/tmp`，避免 `debug_hap` 域访问
   `data_local_tmp` 的 SELinux 限制，应用也天然拥有 rootfs 的读写权限。
   workspace、memory、skills、attachments 后续映射进 guest 的 `/var/minis/*`。
-- **隔离边界**：iSH 内核本身是边界：guest 只能看见 rootfs 和显式挂载的目录；
-  网络默认共享宿主（与 OpenMinis 一致），后续可加开关。
-- **生命周期**：每个应用进程一个沙箱内核，多条命令共享同一个 guest；命令级
-  超时由宿主定时器 + guest `SIGKILL` 保证。
+- **隔离边界**：iSH 内核本身是边界：guest 只能看见 rootfs 和显式挂载的目录。
+  当前 iSH 构建没有 slirp 网卡，guest 内没有外网；需要联网的数据由宿主
+  `fetch_url` 获取，设置页文案不承诺沙箱内可联网。
+- **生命周期**：每个应用进程一个常驻沙箱内核（`SandboxIsh` 单例），`/bin/sh`
+  作为 PID 1 从 stdin 管道读命令，`cd`、环境变量在多次调用之间保留。
+  应用侧命令队列串行执行；超时无法在 guest 内中断，直接停掉整个 daemon，
+  下一条命令重新启动内核。
 - **安全**：工具仍受 `toolsEnabled`、`allowWriteTools`、逐工具开关约束；
   guest 内不能访问应用私有目录以外的宿主路径（fakefs 只挂载显式目录）。
 - **许可**：iSH 为 GPLv2，随应用分发时需要保留版权与源码获取方式；在
@@ -111,6 +117,11 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       60 秒、应用侧轮询 150 秒作为兜底。）
 - [ ] M3 工具接入：本机模式新增 `shell_execute`，超时/输出上限/取消；
       工作区与记忆目录挂载。
+      （2026-11-08 已实现：常驻 daemon 客户端、`ShellTool`、目录 realfs 挂载、
+      输出上限 20000 字符、默认 900 秒 / 上限 3600 秒、超时停 daemon；
+      主代理与子代理共用同一 handler，HAP 与核心单测通过。
+      **待平板实机**跑 `--ps sandboxIsh true` 的两条连续命令冒烟：第二条应看到
+      第一条设置的 `$MINIS_SMOKE` 和 `pwd=/tmp`，且总耗时明显低于两次冷启动。）
 - [ ] M4 稳定性：连续命令、并发、长输出、Python/Node 冒烟；
       应用退后台与子进程回收。
 - [ ] M5 体验：设置页沙箱状态、首次解压进度、磁盘占用、重置 rootfs。

@@ -29,7 +29,7 @@ export const TOOL_DONE: string = 'done';
 export const TOOL_ERROR: string = 'error';
 
 export type ProviderPreset =
-  'opencode' | 'custom' | 'anthropic' | 'gemini' | 'copilot';
+  'opencode' | 'custom' | 'anthropic' | 'gemini' | 'copilot' | 'codex';
 export type SandboxMode = 'local' | 'remote';
 /** Request-level reasoning effort; `off` omits the field entirely. */
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
@@ -136,6 +136,8 @@ export interface AppSettings {
    * exported; request builders switch to `Authorization: Bearer` when set.
    */
   oauthToken?: string;
+  /** ChatGPT account id for the Codex OAuth route; runtime-only like the token. */
+  oauthAccountId?: string;
 }
 
 export const DEFAULT_ACCENT_COLOR: string = '#2F6BFF';
@@ -606,6 +608,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : '',
     webDavAutoSync: source.webDavAutoSync === true,
     oauthToken: source.oauthToken !== undefined ? source.oauthToken : '',
+    oauthAccountId: source.oauthAccountId !== undefined ? source.oauthAccountId : '',
     webDavLastSyncAt: source.webDavLastSyncAt !== undefined &&
       source.webDavLastSyncAt > 0 ? source.webDavLastSyncAt : 0
   };

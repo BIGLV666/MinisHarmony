@@ -54,6 +54,20 @@ import {
   newGeminiStreamState,
   parseGeminiData
 } from '../core/GeminiProtocol';
+import {
+  CODEX_CLIENT_VERSION,
+  CODEX_FALLBACK_MODELS,
+  CODEX_USER_AGENT,
+  ResponsesRequestBody,
+  ResponsesStreamState,
+  buildResponsesInput,
+  buildResponsesTools,
+  codexModelsUrl,
+  newResponsesStreamState,
+  parseResponsesData,
+  promptCacheKey,
+  responsesUrl
+} from '../core/ResponsesProtocol';
 
 const USER_AGENT: string = 'MinisHarmony/1.0 (HarmonyOS tablet)';
 const SUMMARY_INSTRUCTION: string = '你是对话压缩器。把给出的对话压缩成简洁的中文摘要，保留：' +
@@ -144,6 +158,47 @@ interface SummaryChoice {
 
 interface SummaryEnvelope {
   choices?: SummaryChoice[];
+  error?: OpenAiErrorDetail;
+}
+
+interface ResponsesSummaryRequestItem {
+  role: string;
+  content: string;
+}
+
+interface ResponsesSummaryRequest {
+  model: string;
+  instructions: string;
+  input: ResponsesSummaryRequestItem[];
+  stream: boolean;
+  store: boolean;
+}
+
+interface ResponsesSummaryContent {
+  type?: string;
+  text?: string;
+}
+
+interface ResponsesSummaryItem {
+  type?: string;
+  content?: ResponsesSummaryContent[];
+}
+
+interface ResponsesSummaryEnvelope {
+  output_text?: string;
+  output?: ResponsesSummaryItem[];
+  error?: OpenAiErrorDetail;
+}
+
+interface CodexModelEntry {
+  slug?: string;
+  id?: string;
+  visibility?: string;
+}
+
+interface CodexModelsEnvelope {
+  models?: CodexModelEntry[];
+  data?: CodexModelEntry[];
   error?: OpenAiErrorDetail;
 }
 
@@ -510,6 +565,11 @@ export function startChatStream(
       settings, history, tools, memoryContext, callbacks, resolveImage, handle);
     return handle;
   }
+  if (settings.preset === 'codex') {
+    startResponsesStream(
+      settings, history, tools, memoryContext, callbacks, resolveImage, handle);
+    return handle;
+  }
 
   const caps = capsForModel(settings.modelId);
   const body: ChatRequestBody = {
@@ -639,6 +699,98 @@ function anthropicAuthHeaders(settings: AppSettings, accept: string): Record<str
     'anthropic-version': ANTHROPIC_VERSION,
     'User-Agent': USER_AGENT
   };
+}
+
+/**
+ * ChatGPT Codex identity. The backend gates account access on this exact
+ * client fingerprint (`codex_cli_rs`), so these headers are not arbitrary:
+ * a different name or version is refused even with a valid token.
+ */
+function codexHeaders(settings: AppSettings, accept: string): Record<string, string> {
+  const token: string = settings.oauthToken !== undefined ? settings.oauthToken.trim() : '';
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': accept,
+    'Authorization': 'Bearer ' + token,
+    'Version': CODEX_CLIENT_VERSION,
+    'Openai-Beta': 'responses=experimental',
+    'User-Agent': CODEX_USER_AGENT,
+    'Originator': 'codex_cli_rs'
+  };
+  const account: string = settings.oauthAccountId !== undefined
+    ? settings.oauthAccountId.trim() : '';
+  if (account.length > 0) {
+    headers['Chatgpt-Account-Id'] = account;
+  }
+  return headers;
+}
+
+/**
+ * The Responses API path used by a ChatGPT-account login. Same SSE transport
+ * as the other protocols; only the body shape and event decoder differ.
+ *
+ * The Codex backend refuses a request without a `reasoning` object, so the
+ * level is clamped to `low` when the user has thinking off rather than being
+ * omitted. `summary: auto` is what makes human-readable reasoning stream back;
+ * without it only encrypted content is returned.
+ */
+function startResponsesStream(
+  settings: AppSettings,
+  history: ChatMessage[],
+  tools: ToolDefinition[],
+  memoryContext: string,
+  callbacks: ChatCallbacks,
+  resolveImage: ImageResolver | null,
+  handle: ChatStreamHandle
+): void {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  if (baseUrl.length === 0) {
+    callbacks.onError('请先在设置中填写 API 地址');
+    return;
+  }
+  const token: string = settings.oauthToken !== undefined ? settings.oauthToken.trim() : '';
+  if (token.length === 0) {
+    callbacks.onError('请先登录 ChatGPT 账号');
+    return;
+  }
+  const messages: ApiMessage[] = toApiMessages(history, resolveImage);
+  const instructions: string = buildSystemPrompt(settings, memoryContext);
+  const body: ResponsesRequestBody = {
+    model: settings.modelId,
+    input: buildResponsesInput(messages),
+    stream: true,
+    store: false,
+    parallel_tool_calls: true,
+    include: ['reasoning.encrypted_content'],
+    reasoning: {
+      effort: settings.thinkingLevel !== 'off' ? settings.thinkingLevel : 'low',
+      summary: 'auto'
+    }
+  };
+  if (instructions.length > 0) {
+    body.instructions = instructions;
+  }
+  if (tools.length > 0) {
+    body.tools = buildResponsesTools(tools);
+    body.tool_choice = 'auto';
+  }
+  const cacheKey: string = promptCacheKey(messages);
+  if (cacheKey.length > 0) {
+    body.prompt_cache_key = cacheKey;
+  }
+
+  const overrides: ModelOverride[] = settings.modelOverrides !== undefined ? settings.modelOverrides : [];
+  const override: ModelOverride | null = findModelOverride(overrides, settings.modelId);
+  let headers: Record<string, string> = codexHeaders(settings, 'text/event-stream');
+  if (override !== null) {
+    headers = mergeExtraHeaders(headers, override.extraHeaders);
+  }
+  const payload: string = override !== null
+    ? applyExtraBody(JSON.stringify(body), override.extraBody)
+    : JSON.stringify(body);
+  const state: ResponsesStreamState = newResponsesStreamState();
+  runStream(responsesUrl(baseUrl), headers, payload, handle, callbacks,
+    (data: string): DeltaResult => parseResponsesData(data, state));
 }
 
 function startAnthropicStream(
@@ -901,6 +1053,69 @@ async function summarizeAnthropic(
   }
 }
 
+/** Non-streaming `/compact` request for the Responses API. */
+async function summarizeResponses(
+  settings: AppSettings,
+  transcript: string
+): Promise<SummaryResult> {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const body: ResponsesSummaryRequest = {
+    model: settings.modelId,
+    instructions: SUMMARY_INSTRUCTION,
+    input: [{ role: 'user', content: transcript }],
+    stream: false,
+    store: false
+  };
+  const headers: Record<string, string> = codexHeaders(settings, 'application/json');
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.POST,
+    header: headers,
+    extraData: JSON.stringify(body),
+    connectTimeout: 20000,
+    readTimeout: 180000,
+    usingCache: false,
+    expectDataType: http.HttpDataType.STRING
+  };
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(responsesUrl(baseUrl), options);
+    const raw: string = response.result as string;
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      return {
+        ok: false,
+        text: '',
+        message: httpErrorText(response.responseCode, raw)
+      };
+    }
+    const envelope: ResponsesSummaryEnvelope = JSON.parse(raw) as ResponsesSummaryEnvelope;
+    let text: string = typeof envelope.output_text === 'string' ? envelope.output_text : '';
+    if (text.length === 0 && envelope.output !== undefined) {
+      for (let i = 0; i < envelope.output.length; i++) {
+        const item: ResponsesSummaryItem = envelope.output[i];
+        if (item.content === undefined) {
+          continue;
+        }
+        for (let j = 0; j < item.content.length; j++) {
+          const block: ResponsesSummaryContent = item.content[j];
+          if (block.type === 'output_text' && block.text !== undefined) {
+            text += block.text;
+          }
+        }
+      }
+    }
+    text = text.trim();
+    if (text.length === 0) {
+      return { ok: false, text: '', message: '模型没有返回摘要' };
+    }
+    return { ok: true, text: text, message: '已生成摘要' };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return { ok: false, text: '', message: describeNetworkError(error) };
+  } finally {
+    request.destroy();
+  }
+}
+
 /**
  * Ask the model to summarise an old transcript for `/compact`.
  *
@@ -929,6 +1144,9 @@ export async function summarizeConversation(
   }
   if (settings.preset === 'gemini') {
     return await summarizeGemini(settings, transcript);
+  }
+  if (settings.preset === 'codex') {
+    return await summarizeResponses(settings, transcript);
   }
 
   const body: SummaryRequestBody = {
@@ -1112,6 +1330,73 @@ async function fetchAnthropicModelIds(settings: AppSettings): Promise<ModelsResu
   }
 }
 
+function codexFallback(message: string): ModelsResult {
+  return { ok: true, models: CODEX_FALLBACK_MODELS.slice(), message: message };
+}
+
+/**
+ * The Codex backend has its own discovery route; the regular `/v1/models`
+ * path rejects an OAuth token. A network or parse failure falls back to the
+ * known-good list instead of leaving the picker empty, while a rejected
+ * credential is reported as such so the user signs in again.
+ */
+async function fetchCodexModelIds(settings: AppSettings): Promise<ModelsResult> {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const token: string = settings.oauthToken !== undefined ? settings.oauthToken.trim() : '';
+  if (token.length === 0) {
+    return { ok: false, models: [], message: '请先登录 ChatGPT 账号' };
+  }
+  const headers: Record<string, string> = codexHeaders(settings, 'application/json');
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.GET,
+    header: headers,
+    connectTimeout: 15000,
+    readTimeout: 30000,
+    usingCache: false,
+    expectDataType: http.HttpDataType.STRING
+  };
+  const url: string = codexModelsUrl(baseUrl) + '?client_version=' + CODEX_CLIENT_VERSION;
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(url, options);
+    const raw: string = response.result as string;
+    if (response.responseCode === 401 || response.responseCode === 403) {
+      return { ok: false, models: [], message: 'ChatGPT 登录已失效，请重新登录' };
+    }
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      return codexFallback('连接失败（HTTP ' + response.responseCode.toString() + '），已使用内置模型列表');
+    }
+    const envelope: CodexModelsEnvelope = JSON.parse(raw) as CodexModelsEnvelope;
+    const entries: CodexModelEntry[] | undefined =
+      envelope.models !== undefined ? envelope.models : envelope.data;
+    const list: string[] = [];
+    if (entries !== undefined) {
+      for (let i = 0; i < entries.length; i++) {
+        const entry: CodexModelEntry = entries[i];
+        const visibility: string = entry.visibility !== undefined
+          ? entry.visibility.trim().toLowerCase() : '';
+        if (visibility === 'hide' || visibility === 'hidden') {
+          continue;
+        }
+        const id: string = entry.slug !== undefined && entry.slug.length > 0
+          ? entry.slug : (entry.id !== undefined ? entry.id : '');
+        if (id.length > 0 && list.indexOf(id) < 0) {
+          list.push(id);
+        }
+      }
+    }
+    if (list.length === 0) {
+      return codexFallback('账号没有返回可用模型，已使用内置模型列表');
+    }
+    return { ok: true, models: list, message: '连接成功，发现 ' + list.length + ' 个模型' };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return codexFallback(describeNetworkError(error) + '，已使用内置模型列表');
+  } finally {
+    request.destroy();
+  }
+}
+
 export async function fetchModelIds(settings: AppSettings): Promise<ModelsResult> {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   if (baseUrl.length === 0) {
@@ -1122,6 +1407,9 @@ export async function fetchModelIds(settings: AppSettings): Promise<ModelsResult
   }
   if (settings.preset === 'gemini') {
     return await fetchGeminiModelIds(settings);
+  }
+  if (settings.preset === 'codex') {
+    return await fetchCodexModelIds(settings);
   }
   const headers: Record<string, string> = settings.preset === 'copilot'
     ? copilotHeaders(settings, 'application/json', [])

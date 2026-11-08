@@ -6,6 +6,9 @@ import { AppSettings, cloneSettings } from '../core/Types';
 import {
   CLAUDE_CLI_USER_AGENT,
   CLAUDE_OAUTH_BETAS,
+  CODEX_CLIENT_ID,
+  CODEX_REDIRECT_URI,
+  CODEX_TOKEN_URL,
   COPILOT_ACCESS_TOKEN_URL,
   COPILOT_CLIENT_ID,
   COPILOT_DEVICE_CODE_URL,
@@ -58,6 +61,16 @@ export interface ClaudeLoginStart {
 
 export interface CopilotLoginStart {
   device: DeviceAuthorization;
+}
+
+export interface CodexLoginStart {
+  url: string;
+  verifier: string;
+  state: string;
+}
+
+interface RawCodexToken {
+  id_token?: string;
 }
 
 export interface OAuthOutcome {
@@ -154,6 +167,50 @@ async function postJson(
   }
 }
 
+/** Token refresh endpoints accept form encoding; the code exchange is JSON. */
+async function postForm(url: string, body: string): Promise<OAuthHttpResult> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Accept': 'application/json'
+  };
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.POST,
+    header: headers,
+    extraData: body,
+    connectTimeout: 20000,
+    readTimeout: TOKEN_TIMEOUT_MS,
+    expectDataType: http.HttpDataType.STRING,
+    usingCache: false
+  };
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(url, options);
+    const text: string = typeof response.result === 'string' ? response.result : '';
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      let detail: string = text;
+      if (detail.length > 200) {
+        detail = detail.substring(0, 200);
+      }
+      return {
+        ok: false,
+        message: '刷新登录失败：HTTP ' + response.responseCode.toString() +
+          (detail.length > 0 ? '（' + detail + '）' : ''),
+        text: text
+      };
+    }
+    return { ok: true, message: '', text: text };
+  } catch (e) {
+    const error: Error = e as Error;
+    return { ok: false, message: '刷新登录失败：' + error.message, text: '' };
+  } finally {
+    request.destroy();
+  }
+}
+
+function formEncode(value: string): string {
+  return encodeURIComponent(value);
+}
+
 async function delay(ms: number): Promise<void> {
   await new Promise<void>((resolve: (value: void) => void) => {
     setTimeout(() => resolve(), ms);
@@ -173,6 +230,7 @@ export class OAuthService {
   private static copilot: CopilotStorage | null = null;
   private static loaded: boolean = false;
   private static refreshing: Promise<string> | null = null;
+  private static codexRefreshing: Promise<string> | null = null;
   private static copilotRefreshing: Promise<string> | null = null;
 
   static async init(): Promise<void> {
@@ -336,6 +394,157 @@ export class OAuthService {
     return { ok: true, message: '已使用 Claude 账号登录' };
   }
 
+  // MARK: - ChatGPT Codex (PKCE, Responses API)
+
+  static hasCodexToken(): boolean {
+    return OAuthService.codexToken !== null;
+  }
+
+  static codexMaskedToken(): string {
+    const token: OAuthToken | null = OAuthService.codexToken;
+    return token === null ? '' : maskToken(token.accessToken);
+  }
+
+  static codexPlan(): string {
+    const token: OAuthToken | null = OAuthService.codexToken;
+    return token === null ? '' : token.planType;
+  }
+
+  static codexAccountId(): string {
+    const token: OAuthToken | null = OAuthService.codexToken;
+    return token === null ? '' : token.accountId;
+  }
+
+  static async forgetCodex(): Promise<void> {
+    OAuthService.codexToken = null;
+    await SecureStore.remove(ALIAS_CODEX);
+  }
+
+  private static async saveCodex(token: OAuthToken): Promise<void> {
+    OAuthService.codexToken = token;
+    await SecureStore.set(ALIAS_CODEX, tokenJson(token));
+  }
+
+  /**
+   * Same PKCE start as Claude: open the system browser and keep the verifier
+   * and state in the sheet. The Codex redirect points at localhost:1455, which
+   * nothing listens on, so the user copies the callback URL back.
+   */
+  static async beginCodexLogin(
+    context: common.UIAbilityContext
+  ): Promise<CodexLoginStart | null> {
+    try {
+      const random: cryptoFramework.Random = cryptoFramework.createRandom();
+      const verifier: string = pkceVerifierFromBytes(random.generateRandomSync(64).data);
+      const digest: Uint8Array = await OAuthService.sha256(verifier);
+      const challenge: string = pkceChallengeFromDigest(digest);
+      const state: string = oauthStateFromBytes(random.generateRandomSync(32).data);
+      const url: string = authorizeUrl('codex', challenge, state);
+      if (url.length === 0) {
+        return null;
+      }
+      await context.openLink(url);
+      return { url: url, verifier: verifier, state: state };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static async completeCodexLogin(
+    verifier: string,
+    expectedState: string,
+    pasted: string
+  ): Promise<OAuthOutcome> {
+    const parsed: RedirectCode | null = extractRedirectCode(pasted);
+    if (parsed === null) {
+      return { ok: false, message: '没有识别到授权码，请粘贴浏览器地址栏中的回调地址或授权码' };
+    }
+    if (parsed.state.length > 0 && expectedState.length > 0 &&
+      parsed.state !== expectedState) {
+      return { ok: false, message: '授权状态不匹配，请重新发起登录' };
+    }
+    const body: string = JSON.stringify({
+      grant_type: 'authorization_code',
+      client_id: CODEX_CLIENT_ID,
+      code: parsed.code,
+      redirect_uri: CODEX_REDIRECT_URI,
+      code_verifier: verifier
+    });
+    const result: OAuthHttpResult = await postJson(CODEX_TOKEN_URL, body, {});
+    if (!result.ok) {
+      return result;
+    }
+    const token: OAuthToken | null = tokenFromJson(result.text, Date.now());
+    if (token === null) {
+      return { ok: false, message: '登录响应缺少 access_token' };
+    }
+    OAuthService.applyCodexClaims(token, result.text);
+    await OAuthService.saveCodex(token);
+    return { ok: true, message: '已使用 ChatGPT 账号登录' };
+  }
+
+  /** Account id and plan live in the id_token; decode, never verify. */
+  private static applyCodexClaims(token: OAuthToken, rawJson: string): void {
+    let raw: RawCodexToken;
+    try {
+      raw = JSON.parse(rawJson) as RawCodexToken;
+    } catch (e) {
+      return;
+    }
+    if (raw === null || raw === undefined || typeof raw.id_token !== 'string' ||
+      raw.id_token.length === 0) {
+      return;
+    }
+    const claims: JwtClaims = OAuthService.jwtClaims(raw.id_token);
+    token.accountId = claims.chatgptAccountId;
+    token.planType = claims.chatgptPlanType;
+  }
+
+  static async validCodexToken(): Promise<string> {
+    const token: OAuthToken | null = OAuthService.codexToken;
+    if (token === null) {
+      return '';
+    }
+    if (!tokenNeedsRefresh(token, Date.now())) {
+      return token.accessToken;
+    }
+    if (OAuthService.codexRefreshing !== null) {
+      return OAuthService.codexRefreshing;
+    }
+    OAuthService.codexRefreshing = OAuthService.refreshCodex(token);
+    try {
+      return await OAuthService.codexRefreshing;
+    } finally {
+      OAuthService.codexRefreshing = null;
+    }
+  }
+
+  private static async refreshCodex(stale: OAuthToken): Promise<string> {
+    if (stale.refreshToken.length === 0) {
+      return stale.accessToken;
+    }
+    const body: string = 'grant_type=refresh_token' +
+      '&client_id=' + formEncode(CODEX_CLIENT_ID) +
+      '&refresh_token=' + formEncode(stale.refreshToken);
+    const result: OAuthHttpResult = await postForm(CODEX_TOKEN_URL, body);
+    if (!result.ok) {
+      // Keep the old token: a transient network failure must not sign out.
+      return stale.accessToken;
+    }
+    const fresh: OAuthToken | null = tokenFromJson(result.text, Date.now());
+    if (fresh === null) {
+      return stale.accessToken;
+    }
+    if (fresh.refreshToken.length === 0) {
+      fresh.refreshToken = stale.refreshToken;
+    }
+    fresh.accountId = stale.accountId;
+    fresh.planType = stale.planType;
+    OAuthService.applyCodexClaims(fresh, result.text);
+    await OAuthService.saveCodex(fresh);
+    return fresh.accessToken;
+  }
+
   // MARK: - GitHub Copilot (RFC 8628 device flow)
 
   static hasCopilotToken(): boolean {
@@ -492,6 +701,13 @@ export class OAuthService {
       const token: string = await OAuthService.validClaudeToken();
       if (token.length > 0) {
         copy.oauthToken = token;
+      }
+    } else if (copy.preset === 'codex') {
+      const token: string = await OAuthService.validCodexToken();
+      if (token.length > 0) {
+        copy.oauthToken = token;
+        const stored: OAuthToken | null = OAuthService.codexToken;
+        copy.oauthAccountId = stored !== null ? stored.accountId : '';
       }
     } else if (copy.preset === 'copilot') {
       const token: string = await OAuthService.validCopilotSessionToken();

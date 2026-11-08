@@ -49,6 +49,7 @@ import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
 import {
   ClaudeLoginStart,
+  CodexLoginStart,
   CopilotLoginStart,
   OAuthOutcome,
   OAuthService
@@ -72,8 +73,10 @@ import {
   GEMINI_DEFAULT_BASE,
   GEMINI_DEFAULT_MODEL
 } from '../core/GeminiProtocol';
+import { CODEX_API_BASE } from '../core/ResponsesProtocol';
 
 const COPILOT_DEFAULT_MODEL: string = 'gpt-4o';
+const CODEX_DEFAULT_MODEL: string = 'gpt-5.5';
 
 interface ToolChoice {
   name: string;
@@ -239,6 +242,11 @@ export struct SettingsSheet {
   @State copilotVerifyUri: string = '';
   @State copilotBusy: boolean = false;
   private copilotDevice: DeviceAuthorization | null = null;
+  @State codexLoggedIn: boolean = false;
+  @State codexMask: string = '';
+  @State codexPlan: string = '';
+  @State codexVerifier: string = '';
+  @State codexState: string = '';
 
   aboutToAppear(): void {
     // UIContext is not attached yet during aboutToAppear; read status on the
@@ -293,6 +301,9 @@ export struct SettingsSheet {
     this.claudeMask = OAuthService.claudeMaskedToken();
     this.copilotLoggedIn = OAuthService.hasCopilotToken();
     this.copilotMask = OAuthService.copilotMaskedToken();
+    this.codexLoggedIn = OAuthService.hasCodexToken();
+    this.codexMask = OAuthService.codexMaskedToken();
+    this.codexPlan = OAuthService.codexPlan();
   }
 
   private async startClaudeLogin(): Promise<void> {
@@ -345,6 +356,65 @@ export struct SettingsSheet {
     this.oauthExpanded = false;
     this.oauthPaste = '';
     this.onToast('已退出 Claude 账号');
+  }
+
+  private async startCodexLogin(): Promise<void> {
+    if (this.oauthBusy) {
+      return;
+    }
+    this.oauthBusy = true;
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const start: CodexLoginStart | null = await OAuthService.beginCodexLogin(context);
+    this.oauthBusy = false;
+    if (start === null) {
+      this.onToast('无法打开浏览器，请稍后重试');
+      return;
+    }
+    this.codexVerifier = start.verifier;
+    this.codexState = start.state;
+    this.oauthExpanded = true;
+    this.onToast('已打开浏览器，完成授权后复制回调地址');
+  }
+
+  private async completeCodexLogin(): Promise<void> {
+    if (this.oauthBusy) {
+      return;
+    }
+    const pasted: string = this.oauthPaste.trim();
+    if (pasted.length === 0) {
+      this.onToast('请先粘贴回调地址或授权码');
+      return;
+    }
+    this.oauthBusy = true;
+    const outcome: OAuthOutcome = await OAuthService.completeCodexLogin(
+      this.codexVerifier, this.codexState, pasted);
+    this.oauthBusy = false;
+    this.onToast(outcome.message);
+    if (outcome.ok) {
+      this.oauthPaste = '';
+      this.oauthExpanded = false;
+      this.codexLoggedIn = OAuthService.hasCodexToken();
+      this.codexMask = OAuthService.codexMaskedToken();
+      this.codexPlan = OAuthService.codexPlan();
+      if (this.baseUrl.trim().length === 0 || this.isStockBase(this.baseUrl)) {
+        this.baseUrl = CODEX_API_BASE;
+      }
+      if (this.isStockModel(this.modelId)) {
+        this.modelId = CODEX_DEFAULT_MODEL;
+      }
+    }
+  }
+
+  private async logoutCodex(): Promise<void> {
+    await OAuthService.forgetCodex();
+    this.codexLoggedIn = false;
+    this.codexMask = '';
+    this.codexPlan = '';
+    this.codexVerifier = '';
+    this.codexState = '';
+    this.oauthExpanded = false;
+    this.oauthPaste = '';
+    this.onToast('已退出 ChatGPT 账号');
   }
 
   private async startCopilotLogin(): Promise<void> {
@@ -459,14 +529,14 @@ export struct SettingsSheet {
     const v: string = value.trim();
     return v.length === 0 || v === OPENCODE_GO_BASE ||
       v === ANTHROPIC_DEFAULT_BASE || v === GEMINI_DEFAULT_BASE ||
-      v === COPILOT_API_BASE;
+      v === COPILOT_API_BASE || v === CODEX_API_BASE;
   }
 
   private isStockModel(value: string): boolean {
     const v: string = value.trim();
     return v.length === 0 || v === OPENCODE_DEFAULT_MODEL ||
       v === ANTHROPIC_DEFAULT_MODEL || v === GEMINI_DEFAULT_MODEL ||
-      v === COPILOT_DEFAULT_MODEL;
+      v === COPILOT_DEFAULT_MODEL || v === CODEX_DEFAULT_MODEL;
   }
 
   private selectPreset(value: ProviderPreset): void {
@@ -496,6 +566,13 @@ export struct SettingsSheet {
       }
       if (this.isStockModel(this.modelId)) {
         this.modelId = COPILOT_DEFAULT_MODEL;
+      }
+    } else if (value === 'codex') {
+      if (this.isStockBase(this.baseUrl)) {
+        this.baseUrl = CODEX_API_BASE;
+      }
+      if (this.isStockModel(this.modelId)) {
+        this.modelId = CODEX_DEFAULT_MODEL;
       }
     }
   }
@@ -1066,6 +1143,9 @@ export struct SettingsSheet {
       draft.oauthToken = await OAuthService.validClaudeToken();
     } else if (draft.preset === 'copilot') {
       draft.oauthToken = await OAuthService.validCopilotSessionToken();
+    } else if (draft.preset === 'codex') {
+      draft.oauthToken = await OAuthService.validCodexToken();
+      draft.oauthAccountId = OAuthService.codexAccountId();
     }
     const result: ModelsResult = await fetchModelIds(draft);
     this.probing = false;
@@ -1278,6 +1358,103 @@ export struct SettingsSheet {
   }
 
   @Builder
+  codexOAuthCard() {
+    Column({ space: 8 }) {
+      Row({ space: 6 }) {
+        Text(this.codexLoggedIn ? '已登录 ChatGPT 账号' : 'ChatGPT 账号登录（Plus / Pro）')
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+        if (this.codexLoggedIn) {
+          Text('退出')
+            .fontSize(11)
+            .fontColor($r('app.color.danger'))
+            .padding({ left: 6, right: 2 })
+            .onClick(() => {
+              this.logoutCodex();
+            })
+        }
+      }
+      .width('100%')
+
+      if (this.codexLoggedIn) {
+        Text('令牌 ' + this.codexMask)
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+        if (this.codexPlan.length > 0) {
+          Text('订阅：' + this.codexPlan)
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+            .width('100%')
+        }
+        Text('走 Codex Responses API；登录态保存在系统 Asset Store，API Key 保持清空即可。')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+      } else {
+        Text('浏览器完成授权后，回调会停在 localhost:1455，复制地址栏里的完整地址粘贴回来。')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+        if (this.oauthExpanded) {
+          TextInput({ text: this.oauthPaste, placeholder: 'http://localhost:1455/auth/callback?code=…' })
+            .width('100%')
+            .height(42)
+            .fontSize(12)
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(10)
+            .onChange((value: string) => {
+              this.oauthPaste = value;
+            })
+          Row({ space: 8 }) {
+            Button(this.oauthBusy ? '登录中…' : '完成登录')
+              .layoutWeight(1)
+              .height(38)
+              .fontSize(12)
+              .fontColor($r('app.color.on_accent'))
+              .backgroundColor($r('app.color.accent'))
+              .borderRadius(10)
+              .enabled(!this.oauthBusy)
+              .onClick(() => {
+                this.completeCodexLogin();
+              })
+            Button('重新打开')
+              .height(38)
+              .fontSize(12)
+              .fontColor($r('app.color.accent'))
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(10)
+              .enabled(!this.oauthBusy)
+              .onClick(() => {
+                this.startCodexLogin();
+              })
+          }
+          .width('100%')
+        } else {
+          Button(this.oauthBusy ? '正在打开…' : '打开浏览器登录')
+            .width('100%')
+            .height(38)
+            .fontSize(12)
+            .fontColor($r('app.color.accent'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(10)
+            .enabled(!this.oauthBusy)
+            .onClick(() => {
+              this.startCodexLogin();
+            })
+        }
+      }
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor($r('app.color.surface_alt'))
+    .borderRadius(12)
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
   sectionTitle(title: string, subtitle: string) {
     Column({ space: 2 }) {
       Text(title)
@@ -1473,6 +1650,7 @@ export struct SettingsSheet {
               .width('100%')
               Row({ space: 10 }) {
                 this.presetCard('GitHub Copilot', '设备码登录 · 非官方接入', 'copilot')
+                this.presetCard('ChatGPT Codex', '账号登录 · Responses API', 'codex')
               }
               .width('100%')
             }
@@ -1530,6 +1708,9 @@ export struct SettingsSheet {
             }
             if (this.preset === 'copilot') {
               this.copilotOAuthCard()
+            }
+            if (this.preset === 'codex') {
+              this.codexOAuthCard()
             }
 
             Column() {

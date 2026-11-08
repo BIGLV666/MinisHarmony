@@ -1369,7 +1369,10 @@ struct Index {
       this.settings.preset === 'anthropic' && OAuthService.hasClaudeToken();
     const copilotLogin: boolean =
       this.settings.preset === 'copilot' && OAuthService.hasCopilotToken();
-    if (this.settings.apiKey.trim().length === 0 && !claudeLogin && !copilotLogin) {
+    const codexLogin: boolean =
+      this.settings.preset === 'codex' && OAuthService.hasCodexToken();
+    if (this.settings.apiKey.trim().length === 0 && !claudeLogin &&
+      !copilotLogin && !codexLogin) {
       this.pendingSkillBody = '';
       this.showSettings = true;
       this.toast('请先填写 API Key 或登录账号');

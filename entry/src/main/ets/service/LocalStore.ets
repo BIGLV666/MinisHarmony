@@ -71,7 +71,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
   const fallback: AppSettings = defaultSettings();
   let preset: ProviderPreset = 'opencode';
   if (source.preset === 'custom' || source.preset === 'anthropic' ||
-    source.preset === 'gemini' || source.preset === 'copilot') {
+    source.preset === 'gemini' || source.preset === 'copilot' ||
+    source.preset === 'codex') {
     preset = source.preset;
   }
   const baseUrl: string = source.baseUrl !== undefined && source.baseUrl.length > 0

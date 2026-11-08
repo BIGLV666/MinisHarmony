@@ -76,6 +76,7 @@ copyCore('BackupCrypto', ['Backup', 'SessionExport']);
 copyCore('ImageGen', ['OpenCodeRules']);
 copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 copyCore('GeminiProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
+copyCore('ResponsesProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -123,6 +124,9 @@ markTypeOnly('GeminiProtocol', 'ToolProtocol', ['ImageResolver']);
 markTypeOnly('GeminiProtocol', 'ToolTypes', ['ToolDefinition']);
 markTypeOnly('GeminiProtocol', 'SseParser', ['DeltaResult', 'ToolCallDelta']);
 markTypeOnly('Markdown', 'Latex', ['GroupResult']);
+markTypeOnly('ResponsesProtocol', 'ToolProtocol', ['ApiContentPart', 'ApiMessage', 'ApiToolCall']);
+markTypeOnly('ResponsesProtocol', 'ToolTypes', ['ToolDefinition']);
+markTypeOnly('ResponsesProtocol', 'SseParser', ['DeltaResult', 'TokenUsage', 'ToolCallDelta']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -194,6 +198,7 @@ const backupCrypto = await import(pathToFileURL(join(tmp, 'BackupCrypto.mts')).h
 const imageGen = await import(pathToFileURL(join(tmp, 'ImageGen.mts')).href);
 const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts')).href);
 const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href);
+const responses = await import(pathToFileURL(join(tmp, 'ResponsesProtocol.mts')).href);
 const latex = await import(pathToFileURL(join(tmp, 'Latex.mts')).href);
 const jobs = await import(pathToFileURL(join(tmp, 'SubagentJob.mts')).href);
 const webUrl = await import(pathToFileURL(join(tmp, 'WebUrl.mts')).href);
@@ -2768,4 +2773,278 @@ test('sandbox request payload is one key per line', () => {
   assert.equal(payload,
     'rootfs=/r\noutput=/o\ncommands=/c\nworkspace=/w\nmemory=/m\nattachments=/a\n' +
     'skills=/s\n');
+});
+
+test('responses url derivation', () => {
+  assert.equal(responses.responsesUrl('https://chatgpt.com/backend-api/codex'),
+    'https://chatgpt.com/backend-api/codex/responses');
+  // Trailing slashes and an already-complete route are left alone.
+  assert.equal(responses.responsesUrl('https://proxy.example/v1/responses/'),
+    'https://proxy.example/v1/responses');
+  assert.equal(responses.responsesUrl('  https://proxy.example/v1///  '),
+    'https://proxy.example/v1/responses');
+  assert.equal(responses.codexModelsUrl('https://chatgpt.com/backend-api/codex'),
+    'https://chatgpt.com/backend-api/codex/models');
+  // Discovery hangs off the base, not the inference route.
+  assert.equal(responses.codexModelsUrl('https://chatgpt.com/backend-api/codex/responses'),
+    'https://chatgpt.com/backend-api/codex/models');
+  assert.equal(responses.codexModelsUrl('https://proxy.example/models'),
+    'https://proxy.example/models');
+});
+
+test('responses tool ids carry call_id and item_id', () => {
+  assert.equal(responses.combineResponsesIds('call_1', 'fc_1'), 'call_1|fc_1');
+  assert.equal(responses.combineResponsesIds('call_1', ''), 'call_1');
+  assert.equal(responses.callIdPart('call_1|fc_1'), 'call_1');
+  assert.equal(responses.callIdPart('call_1'), 'call_1');
+  // An id that already contains a bar keeps only the prefix.
+  assert.equal(responses.callIdPart('a|b|c'), 'a');
+});
+
+test('responses input conversion', () => {
+  const messages = [
+    { role: 'system', content: 'You are Minis.' },
+    { role: 'system', content: 'Be terse.' },
+    { role: 'user', content: 'hello' },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'look' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+        { type: 'text', text: '' }
+      ]
+    },
+    {
+      role: 'assistant',
+      content: 'running',
+      tool_calls: [{
+        id: 'call_9|fc_9',
+        function: { name: 'shell', arguments: '{"command":"ls"}' }
+      }]
+    },
+    { role: 'tool', tool_call_id: 'call_9|fc_9', content: 'a.txt' }
+  ];
+  assert.equal(responses.responsesInstructions(messages), 'You are Minis.\n\nBe terse.');
+  const input = responses.buildResponsesInput(messages);
+  // System turns are hoisted into `instructions`, not repeated as items.
+  assert.deepEqual(input[0], { role: 'user', content: 'hello' });
+  assert.deepEqual(input[1], {
+    role: 'user',
+    content: [
+      { type: 'input_text', text: 'look' },
+      { type: 'input_image', image_url: 'data:image/png;base64,AAA' }
+    ]
+  });
+  assert.deepEqual(input[2], { role: 'assistant', content: 'running' });
+  assert.deepEqual(input[3], {
+    type: 'function_call',
+    id: 'fc_9',
+    call_id: 'call_9',
+    name: 'shell',
+    arguments: '{"command":"ls"}'
+  });
+  // Tool output echoes the bare call id, not the combined form.
+  assert.deepEqual(input[4], {
+    type: 'function_call_output',
+    call_id: 'call_9',
+    output: 'a.txt'
+  });
+});
+
+test('responses synthesises item ids for imported tool calls', () => {
+  const input = responses.buildResponsesInput([{
+    role: 'assistant',
+    content: '',
+    tool_calls: [{ id: 'call_x', function: { name: 'read', arguments: '' } }]
+  }]);
+  // Empty arguments still need valid JSON for replays.
+  assert.deepEqual(input[0], {
+    type: 'function_call',
+    id: 'fc_syn_call_x',
+    call_id: 'call_x',
+    name: 'read',
+    arguments: '{}'
+  });
+});
+
+test('responses tools are flat objects', () => {
+  const tools = responses.buildResponsesTools([{
+    name: 'shell',
+    description: 'Run a command',
+    parameters: { type: 'object', properties: { command: { type: 'string' } } },
+    schemaJson: '{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}'
+  }]);
+  assert.equal(tools[0].type, 'function');
+  assert.equal(tools[0].name, 'shell');
+  assert.equal(tools[0].strict, false);
+  // `schemaJson` wins over the pre-parsed object, keeping `required`.
+  assert.deepEqual(tools[0].parameters.required, ['command']);
+  const broken = responses.buildResponsesTools([{
+    name: 't', description: 'd', parameters: { type: 'object' }, schemaJson: '{oops'
+  }]);
+  assert.deepEqual(broken[0].parameters, { type: 'object' });
+});
+
+test('responses prompt cache key follows the first user turn', () => {
+  const a = responses.promptCacheKey([
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'first question' },
+    { role: 'user', content: 'second' }
+  ]);
+  const b = responses.promptCacheKey([
+    { role: 'system', content: 'different' },
+    { role: 'user', content: 'first question' }
+  ]);
+  const c = responses.promptCacheKey([{ role: 'user', content: 'another chat' }]);
+  assert.match(a, /^minis-[0-9a-f]+$/);
+  assert.equal(a, b);
+  assert.notEqual(a, c);
+  assert.equal(responses.promptCacheKey([{ role: 'assistant', content: 'x' }]), '');
+});
+
+test('responses stream decoder handles text and reasoning', () => {
+  const state = responses.newResponsesStreamState();
+  let delta = responses.parseResponsesData(
+    JSON.stringify({ type: 'response.output_text.delta', delta: 'Hi' }), state);
+  assert.equal(delta.content, 'Hi');
+  assert.equal(delta.done, false);
+  delta = responses.parseResponsesData(
+    JSON.stringify({ type: 'response.reasoning_summary_text.delta', delta: 'think' }), state);
+  assert.equal(delta.reasoning, 'think');
+  // Unknown events and blank lines are ignored without error.
+  delta = responses.parseResponsesData(
+    JSON.stringify({ type: 'response.created' }), state);
+  assert.equal(delta.content, '');
+  assert.equal(delta.error, '');
+  delta = responses.parseResponsesData('   ', state);
+  assert.equal(delta.done, false);
+});
+
+test('responses stream decoder assembles a tool call', () => {
+  const state = responses.newResponsesStreamState();
+  const added = responses.parseResponsesData(JSON.stringify({
+    type: 'response.output_item.added',
+    item: { id: 'fc_1', type: 'function_call', call_id: 'call_1', name: 'shell' }
+  }), state);
+  assert.equal(added.toolCalls.length, 1);
+  assert.equal(added.toolCalls[0].index, 0);
+  assert.equal(added.toolCalls[0].id, 'call_1|fc_1');
+  assert.equal(added.toolCalls[0].name, 'shell');
+
+  const args = responses.parseResponsesData(JSON.stringify({
+    type: 'response.function_call_arguments.delta',
+    item_id: 'fc_1',
+    delta: '{"command":'
+  }), state);
+  assert.equal(args.toolCalls[0].index, 0);
+  assert.equal(args.toolCalls[0].name, '');
+  assert.equal(args.toolCalls[0].arguments, '{"command":');
+
+  const done = responses.parseResponsesData(JSON.stringify({
+    type: 'response.output_item.done',
+    item: {
+      id: 'fc_1', type: 'function_call', call_id: 'call_1', name: 'shell',
+      arguments: '{"command":"ls"}'
+    }
+  }), state);
+  // The name was already sent; only the missing argument suffix is replayed.
+  assert.equal(done.toolCalls[0].name, '');
+  assert.equal(done.toolCalls[0].arguments, '"ls"}');
+  assert.equal(done.toolCalls[0].id, 'call_1|fc_1');
+});
+
+test('responses stream decoder replays args for relays that do not stream them', () => {
+  const state = responses.newResponsesStreamState();
+  const done = responses.parseResponsesData(JSON.stringify({
+    type: 'response.output_item.done',
+    item: {
+      id: 'fc_2', type: 'function_call', call_id: 'call_2', name: 'read',
+      arguments: '{"path":"a"}'
+    }
+  }), state);
+  assert.equal(done.toolCalls[0].name, 'read');
+  assert.equal(done.toolCalls[0].arguments, '{"path":"a"}');
+
+  // A second item gets the next index, and its item id is not folded in twice.
+  const second = responses.parseResponsesData(JSON.stringify({
+    type: 'response.output_item.added',
+    item: { id: 'fc_3', type: 'function_call', call_id: 'call_3', name: 'write' }
+  }), state);
+  assert.equal(second.toolCalls[0].index, 1);
+});
+
+test('responses completed event reports usage and finish reason', () => {
+  const state = responses.newResponsesStreamState();
+  responses.parseResponsesData(JSON.stringify({
+    type: 'response.output_text.delta', delta: 'hello'
+  }), state);
+  const completed = responses.parseResponsesData(JSON.stringify({
+    type: 'response.completed',
+    response: { usage: { input_tokens: 10, output_tokens: 4 } }
+  }), state);
+  assert.equal(completed.done, true);
+  assert.equal(completed.finishReason, 'stop');
+  assert.equal(completed.usage.promptTokens, 10);
+  assert.equal(completed.usage.completionTokens, 4);
+  assert.equal(completed.usage.totalTokens, 14);
+  assert.equal(completed.usage.present, true);
+
+  // A turn that ended in tool calls reports that as the reason.
+  const toolState = responses.newResponsesStreamState();
+  responses.parseResponsesData(JSON.stringify({
+    type: 'response.output_item.added',
+    item: { id: 'fc_4', type: 'function_call', call_id: 'call_4', name: 'shell' }
+  }), toolState);
+  const toolDone = responses.parseResponsesData(
+    JSON.stringify({ type: 'response.completed', response: {} }), toolState);
+  assert.equal(toolDone.finishReason, 'tool_calls');
+  // No usage block leaves zeros but still marks the turn done.
+  assert.equal(toolDone.usage.present, false);
+  assert.equal(toolDone.done, true);
+});
+
+test('responses failures and incomplete turns surface errors', () => {
+  const state = responses.newResponsesStreamState();
+  const failed = responses.parseResponsesData(JSON.stringify({
+    type: 'response.failed',
+    response: { error: { code: 'rate_limit', message: 'slow down' } }
+  }), state);
+  assert.equal(failed.error, '[rate_limit] slow down');
+  assert.equal(failed.done, false);
+
+  const errored = responses.parseResponsesData(JSON.stringify({
+    type: 'error', code: 'auth', message: 'token expired'
+  }), state);
+  assert.equal(errored.error, '[auth] token expired');
+
+  const nested = responses.parseResponsesData(JSON.stringify({
+    type: 'error', error: { message: 'nested detail' }
+  }), state);
+  assert.equal(nested.error, 'nested detail');
+
+  const unparsable = responses.parseResponsesData('{oops', state);
+  assert.equal(unparsable.error, '无法解析流式响应');
+
+  // With partial text, `incomplete` keeps it and flags `length`.
+  const partial = responses.newResponsesStreamState();
+  responses.parseResponsesData(JSON.stringify({
+    type: 'response.output_text.delta', delta: 'half'
+  }), partial);
+  const cut = responses.parseResponsesData(
+    JSON.stringify({ type: 'response.incomplete' }), partial);
+  assert.equal(cut.done, true);
+  assert.equal(cut.finishReason, 'length');
+  assert.equal(cut.error, '');
+
+  // With nothing generated, the same event is an error.
+  const empty = responses.newResponsesStreamState();
+  const nothing = responses.parseResponsesData(
+    JSON.stringify({ type: 'response.incomplete' }), empty);
+  assert.equal(nothing.error, '模型输出被截断');
+});
+
+test('responses sends [DONE] as completion', () => {
+  const state = responses.newResponsesStreamState();
+  const done = responses.parseResponsesData('[DONE]', state);
+  assert.equal(done.done, true);
 });

@@ -224,7 +224,7 @@ OpenMinis 的 Agent 循环使用 `MAX_AGENT_TURNS = 200`（`ChatViewModel.kt` �
 ```jsonc
 {"ts":1762531200000,"event":"model_done","level":"info","session":"12345678",
  "model":"kimi-k3","step":3,"tool":"","ok":true,"durationMs":4210,
- "detail":"finish=stop chars=812 calls=2"}
+ "detail":"finish=stop chars=812 calls=2","req":"ab12cd34"}
 ```
 
 覆盖事件：`agent_start` / `agent_finish` / `model_start` / `model_done` /
@@ -234,7 +234,9 @@ OpenMinis 的 Agent 循环使用 `MAX_AGENT_TURNS = 200`（`ChatViewModel.kt` �
 
 - **不记录**对话内容、系统提示词、工具参数、API Key 或沙箱 Token；
 - 错误详情会经过 `redactSecrets()`（`sk-*`、`Bearer *`、`token=` 等）；
-- 会话 ID 只保留前 8 位，用于把同一次运行的事件串起来；
+- 会话 ID 只保留前 8 位，用于把同一次运行的事件串起来；每次 HTTP 请求另有 8 位 `req`，
+  用于把 `model_start` / `model_done` / 同轮工具事件对上；
+- 日志查看器会在时间/事件后显示 `req=`；
 - 按本地日期每天一个文件，保留 14 天，单日上限 8 MB；
 - 设置页提供「查看事件日志」（最近 200 条，格式化为时间/事件/耗时）与「清空事件日志」；
   日志写失败不会影响对话。

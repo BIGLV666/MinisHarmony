@@ -190,7 +190,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [ ] | 应用锁 | Face ID / 生物识别 | `userIAM.userAuth` | P2 |
 | - [ ] | 加密备份 | `BackupCrypto` | AES-GCM + 口令派生 | P3 |
 | - [ ] | 崩溃 / 诊断导出 | 诊断包 | `hiAppEvent` + 日志打包 | P3 |
-| - [ ] | 请求检查器 | LLM 请求日志 | 日志增加 request id（不含正文） | P2 |
+| - [x] | 请求检查器 | LLM 请求日志 | 每次模型请求生成 8 位 `req`，写入 `model_start/done/error` 与同轮工具事件；日志查看器显示 `req=`，不含正文 | P2 |
 
 ## 12. 平台特性（不可移植 / 需替代）
 
@@ -237,3 +237,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 导入会话 JSON | 侧栏「导入会话 JSON」；校验 app/version、重建 parts、新 ID、标题后缀、未完成工具转 error；8 MB 上限；44 项测试通过 |
 | 2026-11-08 | 逐工具开关 | `disabledTools` 持久化 + 设置页 8 个工具开关；本机/远程 runtime 过滤定义并拒绝直接调用，子代理继承 |
 | 2026-11-08 | 写入前确认 | `AgentRuntime.runTool()` 在写工具前 await 回调；UI 弹窗含参数预览，拒绝写成工具错误；停止生成会结算为拒绝 |
+| 2026-11-08 | 请求检查器 | 每次请求生成 8 位 req，写入同轮模型与工具事件；查看器显示；`turn_cap` 等非请求事件为空 |

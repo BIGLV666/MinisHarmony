@@ -542,6 +542,7 @@ test('event log serializes JSONL with a short session tag', () => {
   event.ok = true;
   event.durationMs = 42;
   event.detail = 'finish=stop token=abc';
+  event.req = 'ab12cd34';
   const line = log.serializeEvent(event);
   assert.equal(line.endsWith('\n'), true);
   assert.equal(line.trim().split('\n').length, 1);
@@ -549,6 +550,7 @@ test('event log serializes JSONL with a short session tag', () => {
   assert.equal(parsed.event, 'model_done');
   assert.equal(parsed.session, '12345678');
   assert.equal(parsed.durationMs, 42);
+  assert.equal(parsed.req, 'ab12cd34');
   assert.equal(parsed.detail.includes('abc'), false);
   assert.equal(parsed.detail.includes('***'), true);
 
@@ -558,6 +560,7 @@ test('event log serializes JSONL with a short session tag', () => {
   const viewed = log.formatEventLine(line);
   assert.match(viewed, /11-08 \d\d:\d\d:\d\d model_done/);
   assert.match(viewed, /42ms/);
+  assert.match(viewed, /req=ab12cd34/);
   assert.equal(log.formatEventLine('garbage'), 'garbage');
   assert.equal(log.formatEventLine('  '), '');
 });

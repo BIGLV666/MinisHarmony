@@ -39,6 +39,8 @@ export interface LogEvent {
   durationMs: number;
   /** Short, redacted, non-content detail (error text, status, counts). */
   detail: string;
+  /** First 8 characters of the request id, so one HTTP call can be traced. */
+  req: string;
 }
 
 /** Session ids are routing hints, not secrets, but logs do not need the full id. */
@@ -83,6 +85,7 @@ interface RawEventLine {
   ok?: boolean;
   durationMs?: number;
   detail?: string;
+  req?: string;
 }
 
 function two(value: number): string {
@@ -115,6 +118,10 @@ export function formatEventLine(line: string): string {
     if (duration > 0) {
       text += ' ' + duration.toString() + 'ms';
     }
+    const req: string = raw.req !== undefined ? raw.req : '';
+    if (req.length > 0) {
+      text += ' · req=' + req;
+    }
     const detail: string = raw.detail !== undefined ? raw.detail : '';
     if (detail.length > 0) {
       text += ' · ' + detail;
@@ -136,7 +143,8 @@ export function newLogEvent(event: string, level: string): LogEvent {
     tool: '',
     ok: true,
     durationMs: 0,
-    detail: ''
+    detail: '',
+    req: ''
   };
 }
 
@@ -152,7 +160,8 @@ export function serializeEvent(event: LogEvent): string {
     tool: event.tool,
     ok: event.ok,
     durationMs: event.durationMs,
-    detail: sanitizeDetail(event.detail)
+    detail: sanitizeDetail(event.detail),
+    req: event.req
   };
   return JSON.stringify(safe) + '\n';
 }

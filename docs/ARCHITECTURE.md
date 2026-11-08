@@ -312,6 +312,10 @@ AgentRuntime / Settings
 - **绝不写入** prompt、消息正文、工具参数、API Key、沙箱 Token；
 - `detail` 只允许短状态串，序列化前经过 `redactSecrets()` 与 300 字符截断；
 - 会话 ID 只出现前 8 位（`sessionTag()`）；
+- 每次模型请求生成 8 位 `req`（UUID 前缀），写进 `model_start` / `model_done` /
+  `model_error` 与同轮工具事件；`turn_cap`、`cancelled` 等没有对应请求的行留空。
+  查看器把它显示在事件名后（`req=`），用来判断一次慢请求是模型还是工具造成的；
+  它由随机 UUID 派生，不包含任何请求正文；
 - 日志 I/O 失败会把 logger 置为 broken 并静默降级，不打断对话。
 
 ## 用量与上下文压力

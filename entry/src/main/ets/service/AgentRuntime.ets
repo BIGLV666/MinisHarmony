@@ -95,6 +95,7 @@ export class AgentRuntime {
   private agentStartedAt: number = 0;
   private requestStartedAt: number = 0;
   private toolCount: number = 0;
+  private requestId: string = '';
   private loopGuard: ToolLoopGuard = new ToolLoopGuard();
 
   constructor(
@@ -201,6 +202,7 @@ export class AgentRuntime {
       this.finish();
       return;
     }
+    this.requestId = '';
     if (this.step >= this.maxTurns) {
       if (this.lastAssistant !== null) {
         appendText(
@@ -239,6 +241,9 @@ export class AgentRuntime {
       ? MemoryStore.context()
       : '';
     this.requestStartedAt = Date.now();
+    // Correlates the start/done/error lines of this one HTTP call; never
+    // derived from content and safe to show in the log viewer.
+    this.requestId = util.generateRandomUUID(true).substring(0, 8);
     this.log(
       EVENT_MODEL_START, LOG_INFO, this.step, '', true, 0,
       'messages=' + history.length.toString() +
@@ -572,6 +577,7 @@ export class AgentRuntime {
     record.ok = ok;
     record.durationMs = durationMs;
     record.detail = detail;
+    record.req = this.requestId;
     AppLogger.log(record);
   }
 

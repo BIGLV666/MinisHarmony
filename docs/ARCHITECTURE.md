@@ -419,7 +419,8 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 
 `Index.handleCommand()` 在发送前拦截以 `/` 开头的输入。`/new` `/clear` `/compact`
 `/help` 是本地操作；`/memory` 翻转 `settings.memoryEnabled` 并立即落盘；
-`/thinking` 在 `off` 与 `medium` 之间切换 `settings.thinkingLevel`。
+`/thinking` 用 `cycleThinkingLevel()` 在 `off → low → medium → high → off` 之间循环，
+设置页也有同样的四档按钮，两者写同一份 `settings.thinkingLevel`。
 
 `thinkingLevel` 不为 `off` 时，`ChatApi` 在请求体里带 `reasoning_effort`
 （`low` / `medium` / `high`）。这是一个通用 OpenAI 兼容字段，不是所有模型都支持：

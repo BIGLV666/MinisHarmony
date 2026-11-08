@@ -37,6 +37,20 @@ export function normalizeThinkingLevel(value: string | undefined): ThinkingLevel
   return 'off';
 }
 
+/** `/thinking` cycles off → low → medium → high → off. */
+export function cycleThinkingLevel(value: ThinkingLevel): ThinkingLevel {
+  if (value === 'off') {
+    return 'low';
+  }
+  if (value === 'low') {
+    return 'medium';
+  }
+  if (value === 'medium') {
+    return 'high';
+  }
+  return 'off';
+}
+
 export interface AppSettings {
   preset: ProviderPreset;
   baseUrl: string;

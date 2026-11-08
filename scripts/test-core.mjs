@@ -258,6 +258,10 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(types.normalizeThinkingLevel('high'), 'high');
   assert.equal(types.normalizeThinkingLevel('bogus'), 'off');
   assert.equal(types.normalizeThinkingLevel(undefined), 'off');
+  assert.equal(types.cycleThinkingLevel('off'), 'low');
+  assert.equal(types.cycleThinkingLevel('low'), 'medium');
+  assert.equal(types.cycleThinkingLevel('medium'), 'high');
+  assert.equal(types.cycleThinkingLevel('high'), 'off');
   const legacy = types.cloneSettings({
     ...settings,
     backgroundEnabled: undefined,

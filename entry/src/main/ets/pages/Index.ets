@@ -9,6 +9,7 @@ import {
   StoredSession,
   ThinkingLevel,
   cloneSettings,
+  cycleThinkingLevel,
   defaultSettings,
   newChatMessage,
   rewindMessages,
@@ -669,7 +670,7 @@ struct Index {
           '/clear — 清空当前对话\n' +
           '/compact — 用模型摘要较早的对话，保留最近几轮\n' +
           '/memory — 开启/关闭持久记忆与记忆工具\n' +
-          '/thinking — 开启/关闭思考（reasoning_effort=medium）\n' +
+          '/thinking — 循环切换思考档位（off → low → medium → high）\n' +
           '/help — 显示本帮助\n\n' +
           '长对话接近上下文预算时，发送前会自动裁剪较早的工具结果。'
       );
@@ -703,17 +704,16 @@ struct Index {
       return;
     }
     if (command === '/thinking') {
-      const next: ThinkingLevel = this.settings.thinkingLevel === 'off'
-        ? 'medium'
-        : 'off';
+      const next: ThinkingLevel = cycleThinkingLevel(this.settings.thinkingLevel);
       this.settings.thinkingLevel = next;
       LocalStore.saveSettings(this.settings).catch((error: Error) => {
         this.toast('设置保存失败');
       });
-      this.toast(next === 'off' ? '思考已关闭' : '思考强度：medium');
+      this.toast(next === 'off' ? '思考已关闭' : '思考强度：' + next);
       this.appendLocalNotice(next === 'off'
         ? '已关闭思考：请求不再携带 reasoning_effort。部分模型仍可能返回推理内容。'
-        : '已开启思考：请求携带 reasoning_effort=medium。若模型不支持该参数，请再次输入 /thinking 关闭。');
+        : '已设置思考强度：reasoning_effort=' + next +
+          '。再次输入 /thinking 会切换到下一档；到 high 后再切换即关闭。');
       return;
     }
     this.toast('未知命令，输入 /help 查看');

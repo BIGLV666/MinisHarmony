@@ -4,6 +4,7 @@ import {
   OPENCODE_GO_BASE,
   ProviderPreset,
   SandboxMode,
+  ThinkingLevel,
   clampContextBudget,
   clampMaxTurns,
   cloneSettings,
@@ -20,6 +21,18 @@ interface ToolChoice {
   name: string;
   label: string;
 }
+
+interface ThinkingChoice {
+  value: ThinkingLevel;
+  label: string;
+}
+
+const THINKING_CHOICES: ThinkingChoice[] = [
+  { value: 'off', label: '关闭' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' }
+];
 
 /**
  * Switches with their own settings (write access, memory, read_image) are not
@@ -72,6 +85,7 @@ export struct SettingsSheet {
   @State imageToolsEnabled: boolean = false;
   @State backgroundEnabled: boolean = true;
   @State enterToSend: boolean = false;
+  @State thinkingLevel: ThinkingLevel = 'off';
   @State disabledTools: string[] = [];
   @State showLogs: boolean = false;
   @State logLines: string[] = [];
@@ -102,6 +116,7 @@ export struct SettingsSheet {
     this.imageToolsEnabled = copy.imageToolsEnabled;
     this.backgroundEnabled = copy.backgroundEnabled;
     this.enterToSend = copy.enterToSend;
+    this.thinkingLevel = copy.thinkingLevel;
     this.disabledTools = copy.disabledTools.slice();
   }
 
@@ -161,7 +176,7 @@ export struct SettingsSheet {
       imageToolsEnabled: this.imageToolsEnabled,
       confirmWriteTools: this.confirmWriteTools,
       backgroundEnabled: this.backgroundEnabled,
-      thinkingLevel: this.settings.thinkingLevel,
+      thinkingLevel: this.thinkingLevel,
       enterToSend: this.enterToSend,
       disabledTools: this.disabledTools.slice(),
       onboardingDone: this.settings.onboardingDone
@@ -634,6 +649,43 @@ export struct SettingsSheet {
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)
                 .width('100%')
+
+              Column({ space: 6 }) {
+                Text('思考档位')
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width('100%')
+                Row({ space: 6 }) {
+                  ForEach(THINKING_CHOICES, (choice: ThinkingChoice) => {
+                    Text(choice.label)
+                      .layoutWeight(1)
+                      .height(32)
+                      .fontSize(11)
+                      .textAlign(TextAlign.Center)
+                      .fontColor(this.thinkingLevel === choice.value
+                        ? $r('app.color.on_accent')
+                        : $r('app.color.text_secondary'))
+                      .backgroundColor(this.thinkingLevel === choice.value
+                        ? $r('app.color.accent')
+                        : $r('app.color.surface'))
+                      .borderRadius(8)
+                      .onClick(() => {
+                        this.thinkingLevel = choice.value;
+                      })
+                  }, (choice: ThinkingChoice) => choice.value + ':' +
+                    (this.thinkingLevel === choice.value ? '1' : '0'))
+                }
+                .width('100%')
+                Text('非「关闭」时，请求体带 reasoning_effort。不是所有模型都支持；不支持时会由服务端忽略或报错，可随时改回关闭。')
+                  .fontSize(9)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .lineHeight(14)
+                  .width('100%')
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {

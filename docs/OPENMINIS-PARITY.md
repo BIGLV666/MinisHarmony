@@ -89,7 +89,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [ ] | Gemini 原生协议 | `generateContent` | 新增 provider 分支 | P2 |
 | - [ ] | OAuth 登录 | Anthropic / Copilot / Codex | 设备码或浏览器回跳 | P2 |
 | - [ ] | 模型组 | fallback / 负载均衡 | 按顺序重试 | P3 |
-| - [ ] | thinking level | 逐模型推理档位 | 请求体 `reasoning_effort` 等 | P2 |
+| - [x] | thinking level | 逐模型推理档位 | 设置页四档（off/low/medium/high）+ `/thinking` 循环；请求体 `reasoning_effort`。全局设置，不做逐模型元数据 | P2 |
 | - [ ] | fast mode | 优先级队列 | 取决于上游支持 | P3 |
 | - [ ] | 逐模型参数覆盖 | temperature/top_p/headers/extra_body | `AppSettings` 增加 per-model 表 | P2 |
 | - [ ] | 模型能力元数据 | models.dev 目录、上下文长度 | 内置少量 + 拉取 | P2 |
@@ -240,3 +240,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 请求检查器 | 每次请求生成 8 位 req，写入同轮模型与工具事件；查看器显示；`turn_cap` 等非请求事件为空 |
 | 2026-11-08 | 工作区文件浏览 | 设置内入口；`WorkspaceFiles` 列表/预览，共用路径规则，跳过符号链接；排序与大小格式化纯函数可测；45 项测试通过 |
 | 2026-11-08 | 首次引导 | 无 Key 的首次启动显示三步引导，Key 写入 Asset Store，跳过即 `onboardingDone=true`；已有配置不触发 |
+| 2026-11-08 | 思考档位 UI | 设置页四档选择，`/thinking` 改为 off→low→medium→high 循环；`cycleThinkingLevel` 纯函数可测 |

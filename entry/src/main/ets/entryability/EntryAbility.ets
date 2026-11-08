@@ -3,6 +3,7 @@ import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { handleShareWant } from '../service/ShareReceiver';
+import { handleDeepLinkWant } from '../service/DeepLinkRouter';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MinisHarmony';
@@ -10,10 +11,17 @@ const TAG: string = 'MinisHarmony';
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
-    handleShareWant(want).catch((error: Error) => {});
+    this.routeWant(want);
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    this.routeWant(want);
+  }
+
+  private routeWant(want: Want): void {
+    if (handleDeepLinkWant(want)) {
+      return;
+    }
     handleShareWant(want).catch((error: Error) => {});
   }
 

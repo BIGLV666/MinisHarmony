@@ -57,6 +57,7 @@ copyCore('ModelOverride');
 copyCore('McpProtocol');
 copyCore('CodeHighlight');
 copyCore('SharePayload');
+copyCore('DeepLink');
 copyCore('Types', ['ModelOverride', 'McpProtocol']);
 copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
 
@@ -159,6 +160,7 @@ const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts'))
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
 const highlight = await import(pathToFileURL(join(tmp, 'CodeHighlight.mts')).href);
 const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
+const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
@@ -1406,6 +1408,21 @@ test('shared want payloads pick text and stream URIs defensively', () => {
   assert.equal(share.isTextualShare('text/markdown'), true);
   assert.equal(share.isTextualShare('application/json'), true);
   assert.equal(share.isTextualShare('image/png'), false);
+});
+
+test('minis deep links resolve sessions and new chats only', () => {
+  assert.deepEqual(deepLink.parseDeepLink('minis://session/abc-123'),
+    { kind: 'session', value: 'abc-123' });
+  assert.deepEqual(deepLink.parseDeepLink('MINIS://Chat/xyz?x=1#top'),
+    { kind: 'session', value: 'xyz' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://s/id'),
+    { kind: 'session', value: 'id' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://new'),
+    { kind: 'new', value: '' });
+  assert.equal(deepLink.parseDeepLink('minis://session/'), null);
+  assert.equal(deepLink.parseDeepLink('minis://file/a.txt'), null);
+  assert.equal(deepLink.parseDeepLink('https://example.com'), null);
+  assert.equal(deepLink.parseDeepLink(''), null);
 });
 
 test('workspace listing sorts directories first and formats sizes', () => {

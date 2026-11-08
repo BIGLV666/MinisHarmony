@@ -43,6 +43,19 @@
                 "type": "text/plain"
               }
             ]
+          },
+          {
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "entities": [
+              "entity.system.browsable"
+            ],
+            "uris": [
+              {
+                "scheme": "minis"
+              }
+            ]
           }
         ]
       }

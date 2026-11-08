@@ -500,6 +500,18 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 空消息。`read_image` 与用户附件共用同一条 `image_url` 通路，但开关互不影响。
 模型能力表未标记视觉时只提示，不阻止发送。
 
+## 深链
+
+`module.json5` 注册 `minis` scheme，action 为 `ohos.want.action.viewData`，并带
+`entity.system.browsable`。`EntryAbility` 先试深链再试分享：`handleDeepLinkWant()`
+只认 `minis://` 前缀，命中后写入 `AppStorage.pendingDeepLink` 并返回 true，
+避免把链接当分享文本塞进输入框。
+
+`core/DeepLink.ets` 只接受三种会话形式（`session` / `chat` / `s`）与 `new`，
+忽略查询串与片段，未知路径返回 null。UI 收到链接时清空 AppStorage；如果
+bootstrap 还没结束就先缓存，等会话列表加载完再跳转，否则冷启动会找不到目标。
+`minis://file/...` 没有实现，因为工作区预览目前只能从文件页进入。
+
 ## 接收应用分享
 
 `module.json5` 为 EntryAbility 增加一个 skill：action `ohos.want.action.sendData`、

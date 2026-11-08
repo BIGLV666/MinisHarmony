@@ -60,6 +60,7 @@ import { keepScreenOn } from '../service/ScreenWake';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { McpRegistry, McpRuntime } from '../service/McpRuntime';
 import { mergeBackupSettings } from '../core/Backup';
+import { parseDeepLink, DeepLink } from '../core/DeepLink';
 import { SubagentRunner } from '../service/SubagentRunner';
 import { titleFrom } from '../service/Format';
 import { ChatView } from '../components/ChatView';
@@ -81,6 +82,7 @@ struct Index {
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
   @StorageProp('pendingShareText') @Watch('onSharedText') sharedText: string = '';
+  @StorageProp('pendingDeepLink') @Watch('onDeepLink') deepLink: string = '';
   @State settings: AppSettings = defaultSettings();
   @State sessions: SessionMeta[] = [];
   @State searchEntries: SessionSearchEntry[] = [];
@@ -124,10 +126,45 @@ struct Index {
   private pageVisible: boolean = true;
   /** Skill body queued by a `/skill-id` command, consumed by the next run. */
   private pendingSkillBody: string = '';
+  /** Deep link received before bootstrap finished. */
+  private pendingDeepLinkUri: string = '';
 
   aboutToAppear(): void {
     this.bootstrap();
     this.onSharedText();
+    this.onDeepLink();
+  }
+
+  private onDeepLink(): void {
+    const uri: string = this.deepLink;
+    if (uri.length === 0) {
+      return;
+    }
+    AppStorage.setOrCreate<string>('pendingDeepLink', '');
+    if (!this.ready) {
+      this.pendingDeepLinkUri = uri;
+      return;
+    }
+    this.applyDeepLink(uri);
+  }
+
+  private applyDeepLink(uri: string): void {
+    const link: DeepLink | null = parseDeepLink(uri);
+    if (link === null) {
+      this.toast('无法识别的链接');
+      return;
+    }
+    if (link.kind === 'new') {
+      this.mobileChat = true;
+      this.createChat();
+      return;
+    }
+    if (this.findSession(link.value) === null) {
+      this.toast('链接指向的会话不存在');
+      return;
+    }
+    this.mobileChat = true;
+    this.selectSession(link.value);
   }
 
   /** Another app shared text: prefill the composer, never auto-send. */
@@ -200,6 +237,11 @@ struct Index {
     this.showOnboarding = !this.settings.onboardingDone &&
       this.settings.apiKey.trim().length === 0;
     this.ready = true;
+    if (this.pendingDeepLinkUri.length > 0) {
+      const uri: string = this.pendingDeepLinkUri;
+      this.pendingDeepLinkUri = '';
+      this.applyDeepLink(uri);
+    }
     if (this.settings.appLockEnabled) {
       this.lockApp();
     }

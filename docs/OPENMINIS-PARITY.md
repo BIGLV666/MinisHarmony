@@ -117,7 +117,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [ ] | 内置浏览器 | 多标签、历史、下载、Cookie | ArkWeb + 动作脚本 | P2 |
 | - [x] | 工作区文件浏览 | `minis://workspace` 文件页 | 设置 →「工作区文件 → 浏览」：目录浏览、上一级、文本预览（256 KB）、跳过符号链接；只读 | P2 |
 | - [x] | 附件命名空间 | `minis://attachments` | `filesDir/attachments/`，消息 part 存 `attachment:<文件名>`；无对外 URI scheme | P2 |
-| - [ ] | 深链 | `minis://` 打开会话/文件 | `Want` + `uris` 配置 | P3 |
+| - [x] | 深链 | `minis://` 打开会话/文件 | `module.json5` 注册 `minis` scheme（viewData + browsable）；支持 `minis://session/<id>`、`/chat/<id>`、`/s/<id>`、`minis://new`；冷启动排队到 bootstrap 后执行，未知会话提示；`minis://file/...` 未接 | P3 |
 | - [x] | 从其他应用分享进来 | Share Extension / ShareReceiver | `EntryAbility` 注册 `ohos.want.action.sendData` / `text/plain`；`onCreate` 与 `onNewWant` 解析文本参数（兼容多个历史键名）或读取首个文本文件（≤512 KB）；经 `AppStorage` 填入输入框、不自动发送；图片分享未接 | P2 |
 
 ## 7. 设备能力（Native offloads）
@@ -257,6 +257,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
 | 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |
 | 2026-11-08 | 逐模型参数覆盖 | `core/ModelOverride.ets` + 设置页「逐模型参数」：按模型 ID 精确匹配，覆盖 temperature / top_p / max_tokens，合并额外请求头与 extra_body；未知模型或全局参数不受影响；坏 JSON 保存时拒绝；57 项测试通过 |
+| 2026-11-08 | 深链 | `core/DeepLink.ets` 解析 `minis://session|chat|s/<id>` 与 `minis://new`；EntryAbility 冷/热启动都路由，深链优先于分享；Index 冷启动时等 bootstrap 完成再跳转；63 项测试通过 |
 | 2026-11-08 | 输入框自动聚焦 | `ChatView` 首次布局后 350 ms 调用 `focusControl.requestFocus('composerInput')`，失败静默；与生成期间常亮一起补齐该项 |
 | 2026-11-08 | 接收应用分享 | `core/SharePayload.ets` 兼容 `ability.params.content` 等键与 `ability.params.stream` 文件列表；`EntryAbility` 冷/热启动都接收，读文本文件上限 512 KB；内容只填入输入框，不自动发送；62 项测试通过 |
 | 2026-11-08 | 代码语法高亮 | `core/CodeHighlight.ets` 轻量分词：C 系/JS/Python/Shell/JSON/Go/Rust 关键字、字符串、注释、数字与函数调用；未知语言或超 20k 字符退纯文本；浅/深色各一组配色；61 项测试通过 |

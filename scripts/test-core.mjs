@@ -229,6 +229,17 @@ test('Markdown block parsing', () => {
   assert.equal(blocks[4].text, 'const a = 1;');
 });
 
+test('Markdown tables parse header and rows', () => {
+  const blocks = md.parseMarkdown('| A | B |\n|:--|--:|\n| 1 | 2 |\n| x | y |\n\nafter');
+  assert.equal(blocks[0].kind, 'table');
+  assert.deepEqual(blocks[0].rows, [['A', 'B'], ['1', '2'], ['x', 'y']]);
+  assert.equal(blocks[1].kind, 'paragraph');
+  const short = md.parseMarkdown('| H | I |\n|---|---|\n| only |\n\ntail');
+  assert.deepEqual(short[0].rows, [['H', 'I'], ['only', '']]);
+  const notTable = md.parseMarkdown('a | b\n---\ntext');
+  assert.equal(notTable.some((b) => b.kind === 'table'), false);
+});
+
 test('Markdown inline parsing', () => {
   const parts = md.parseInline('a **b** and `c` and [d](https://x.y)');
   assert.equal(parts.some((p) => p.text === 'b' && p.bold), true);

@@ -11,7 +11,8 @@ export enum MdBlockKind {
   Code = 'code',
   ListItem = 'list',
   Quote = 'quote',
-  Divider = 'divider'
+  Divider = 'divider',
+  Table = 'table'
 }
 
 export interface MdBlock {
@@ -21,6 +22,8 @@ export interface MdBlock {
   lang: string;
   ordered: boolean;
   index: number;
+  /** Present for `Table` blocks: first row is the header. */
+  rows?: string[][];
 }
 
 export interface MdInline {
@@ -55,6 +58,48 @@ function orderedIndex(line: string): number {
     return Number.parseInt(line.substring(0, i), 10);
   }
   return -1;
+}
+
+function tableCells(line: string): string[] | null {
+  const trimmed: string = line.trim();
+  if (trimmed.indexOf('|') < 0) {
+    return null;
+  }
+  let body: string = trimmed;
+  if (body.startsWith('|')) {
+    body = body.substring(1);
+  }
+  if (body.endsWith('|')) {
+    body = body.substring(0, body.length - 1);
+  }
+  const raw: string[] = body.split('|');
+  const cells: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    cells.push(raw[i].trim());
+  }
+  return cells;
+}
+
+function isTableSeparator(line: string): boolean {
+  const trimmed: string = line.trim();
+  if (trimmed.indexOf('|') < 0 || trimmed.indexOf('-') < 0) {
+    return false;
+  }
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch: string = trimmed.charAt(i);
+    if (ch !== '|' && ch !== '-' && ch !== ':' && ch !== ' ') {
+      return false;
+    }
+  }
+  return true;
+}
+
+function fitCells(cells: string[], columns: number): string[] {
+  const fitted: string[] = [];
+  for (let i = 0; i < columns; i++) {
+    fitted.push(i < cells.length ? cells[i] : '');
+  }
+  return fitted;
 }
 
 export function parseMarkdown(source: string): MdBlock[] {
@@ -108,6 +153,40 @@ export function parseMarkdown(source: string): MdBlock[] {
     if (trimmed.length === 0) {
       flushParagraph();
       continue;
+    }
+
+    // GFM-style table: a pipe row followed by a `|---|:--:|` separator.
+    if (trimmed.indexOf('|') >= 0 && i + 1 < lines.length &&
+      isTableSeparator(lines[i + 1])) {
+      const header: string[] | null = tableCells(trimmed);
+      if (header !== null && header.length > 0) {
+        flushParagraph();
+        const rows: string[][] = [header];
+        let j: number = i + 2;
+        while (j < lines.length) {
+          const rowLine: string = lines[j].trim();
+          if (rowLine.length === 0) {
+            break;
+          }
+          const cells: string[] | null = tableCells(rowLine);
+          if (cells === null) {
+            break;
+          }
+          rows.push(fitCells(cells, header.length));
+          j++;
+        }
+        blocks.push({
+          kind: MdBlockKind.Table,
+          text: '',
+          level: 0,
+          lang: '',
+          ordered: false,
+          index: 0,
+          rows: rows
+        });
+        i = j - 1;
+        continue;
+      }
     }
 
     if (trimmed === '---' || trimmed === '***' || trimmed === '___') {

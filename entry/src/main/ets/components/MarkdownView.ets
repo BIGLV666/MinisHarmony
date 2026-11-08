@@ -85,6 +85,60 @@ export struct MarkdownView {
     .copyOption(CopyOptions.LocalDevice)
   }
 
+  private tableRows(block: MdBlock): string[][] {
+    return block.rows !== undefined ? block.rows : [];
+  }
+
+  @Builder
+  tableCell(text: string, header: boolean) {
+    Text() {
+      ForEach(parseInline(text), (segment: MdInline) => {
+        Span(segment.text)
+          .fontWeight(segment.bold || header ? FontWeight.Bold : FontWeight.Normal)
+          .fontStyle(segment.italic ? FontStyle.Italic : FontStyle.Normal)
+          .fontColor(segment.code ? $r('app.color.accent') : $r('app.color.text_primary'))
+          .decoration({ type: segment.link.length > 0 ? TextDecorationType.Underline : TextDecorationType.None })
+          .onClick(() => {
+            if (segment.link.length > 0) {
+              this.openLink(segment.link);
+            }
+          })
+      })
+    }
+    .fontSize(13)
+    .fontColor($r('app.color.text_primary'))
+    .lineHeight(19)
+    .layoutWeight(1)
+    .padding({ left: 9, right: 9, top: 7, bottom: 7 })
+    .backgroundColor(header ? $r('app.color.surface_alt') : $r('app.color.surface'))
+  }
+
+  @Builder
+  tableBlock(block: MdBlock) {
+    Column() {
+      ForEach(this.tableRows(block), (row: string[], rowIndex: number) => {
+        Row() {
+          ForEach(row, (cell: string, cellIndex: number) => {
+            this.tableCell(cell, rowIndex === 0)
+          }, (cell: string, cellIndex: number) => rowIndex.toString() + '-' + cellIndex.toString())
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top)
+        if (rowIndex === 0) {
+          Divider()
+            .color($r('app.color.border'))
+        } else if (rowIndex < this.tableRows(block).length - 1) {
+          Divider()
+            .color($r('app.color.border'))
+        }
+      }, (row: string[], rowIndex: number) => rowIndex.toString() + row.join('|'))
+    }
+    .width('100%')
+    .borderRadius(10)
+    .border({ width: 1, color: $r('app.color.border') })
+    .clip(true)
+  }
+
   @Builder
   codeBlock(block: MdBlock) {
     Column() {
@@ -156,6 +210,8 @@ export struct MarkdownView {
       this.listItem(block)
     } else if (block.kind === MdBlockKind.Quote) {
       this.quoteBlock(block)
+    } else if (block.kind === MdBlockKind.Table) {
+      this.tableBlock(block)
     } else if (block.kind === MdBlockKind.Divider) {
       Divider()
         .color($r('app.color.border'))

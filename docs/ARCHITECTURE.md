@@ -381,8 +381,9 @@ filesDir/memory/
 
 ## 消息渲染与链接
 
-`core/Markdown.ets` 把回复拆成块（段落、标题、列表、引用、代码、分割线），行内再拆成
-`bold / italic / code / link` 片段。除 `[文本](url)` 外，`parseInline()` 也识别裸
+`core/Markdown.ets` 把回复拆成块（段落、标题、列表、引用、代码、分割线、表格），行内再拆成
+`bold / italic / code / link` 片段。表格要求「含 `|` 的表头行 + 只含 `|-: ` 的分隔行」；
+对齐符号被接受但不参与布局，短行自动补齐到表头列数，渲染为等宽列的只读表格。除 `[文本](url)` 外，`parseInline()` 也识别裸
 `http://` / `https://`，并在遇到空白、中文标点或右括号处截断；句末的 `.,;:!?` 会留在
 正文里，不会进入链接目标。`MarkdownView` 为链接片段加下划线并绑定 `Span.onClick`，
 点击后通过 `Want`（`ohos.want.action.viewData` + `entity.system.browsable`）交给系统

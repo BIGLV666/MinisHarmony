@@ -35,7 +35,7 @@
 | - [x] | 失败重试 | 一键重发上一条 | 错误回复显示「重试」，复用重新生成 | P1 |
 | - [x] | 斜杠命令 | `/clear` `/compact` `/memory` `/thinking` | `/new` `/clear` `/compact` `/memory` `/thinking` `/help`；记忆开关为全局而非每会话，思考用请求级 `reasoning_effort`（无模型元数据） | P1 |
 | - [ ] | 消息内图片预览 | 附件缩略图、点开大图 | 依赖附件功能 | P2 |
-| - [ ] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | 当前仅基础 Markdown | P2 |
+| - [~] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | GFM 表格已支持（表头、对齐分隔行、缺列补空）；代码高亮与 LaTeX 仍仅等宽/原文显示 | P2 |
 | - [x] | 消息内链接点击 | 内置浏览器打开 | Markdown 链接与裸 URL 可点击，经 `Want`（viewData + browsable）拉起系统浏览器；仅允许 http/https/mailto/tel | P2 |
 
 ## 2. Agent 运行时
@@ -245,3 +245,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 生成状态通知 | `service/Notify.ets`：后台生成常驻通知 + 完成提醒，`wantAgent` 点按回应用；前台不打扰，通知关闭时静默跳过 |
 | 2026-11-08 | 消息内链接 | Markdown 链接与裸 URL 均可点击；尾部标点保留；`isOpenableUrl()` 只放行安全协议；46 项测试通过 |
 | 2026-11-08 | 每会话参数 | `SessionMeta` 增模型/思考/追加提示词覆盖；会话操作弹窗编辑；发送、`/compact`、子代理均用合并后的设置；导出/导入与 fork 保留；47 项测试通过 |
+| 2026-11-08 | Markdown 表格 | 识别表头 + 对齐分隔行，渲染为等宽列表格，缺列补空；LaTeX 与代码高亮仍未做；48 项测试通过 |

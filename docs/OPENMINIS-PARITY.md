@@ -126,7 +126,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 
 | | 能力 | OpenMinis | 鸿蒙方案 | 优先级 |
 |---|---|---|---|---|
-| - [ ] | 剪贴板 | `android-clipboard` / `apple-clipboard` | `pasteboard` | P2 |
+| - [x] | 剪贴板 | `android-clipboard` / `apple-clipboard` | `clipboard_read` / `clipboard_write`，默认关闭、设置页单独开关；`pasteboard` 纯文本读写；远程沙箱不转发 | P2 |
 | - [x] | 通知 | `notification` | 后台生成时 `notificationManager` 发布「正在生成」，完成替换为「回复已完成」，点按回到应用 | P2 |
 | - [ ] | 日历 | `calendar` | `CalendarKit` | P3 |
 | - [ ] | 通讯录 | `contacts` | `ContactsKit` | P3 |
@@ -253,3 +253,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | tool call 配对加固 | 全历史重复 `tool_call_id` 追加 `_2`/`_3` 后缀并同步结果；空工具名的调用不再发送；中断调用仍回填合成结果；51 项测试通过 |
 | 2026-11-08 | Skills 斜杠命令 | 已启用技能按 id 注册为 `/命令`，大小写不敏感；正文作为本轮系统提示注入、不显示在气泡；命令后文字作为用户输入；`/help` 动态列出；52 项测试通过 |
 | 2026-11-08 | 模型能力元数据 | `core/ModelCaps.ets` 家族前缀估计上下文/最大输出/视觉/推理；顶栏显示窗口占比、模型列表显示标签；请求 `max_tokens` 夹取到模型上限；未知模型回退 128k/8k；53 项测试通过 |
+| 2026-11-08 | 剪贴板工具 | `clipboard_read` / `clipboard_write` 经 `pasteboard` 读写纯文本；默认关闭，设置页「允许访问剪贴板」；读取截断到 24k 字符、写入上限 100k；子代理继承，远程模式不暴露 |

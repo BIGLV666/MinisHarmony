@@ -57,7 +57,8 @@ export class RemoteToolRuntime implements ToolRuntime {
       if (name === 'memory_write' || name === 'memory_get') {
         continue;
       }
-      if (name === 'subagent_task' || name === 'read_image') {
+      if (name === 'subagent_task' || name === 'read_image' ||
+        name === 'clipboard_read' || name === 'clipboard_write') {
         continue;
       }
       if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {
@@ -88,6 +89,12 @@ export class RemoteToolRuntime implements ToolRuntime {
       return {
         ok: false,
         content: '子代理只在本机工作区模式下运行。'
+      };
+    }
+    if (name === 'clipboard_read' || name === 'clipboard_write') {
+      return {
+        ok: false,
+        content: '剪贴板属于平板本机能力，远程沙箱不转发。'
       };
     }
     if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {

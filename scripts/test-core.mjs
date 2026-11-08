@@ -861,6 +861,12 @@ test('tool catalogue exposes file_edit with a safe schema', () => {
   assert.notEqual(subagent, undefined);
   assert.deepEqual(subagent.parameters.required, ['prompt']);
   assert.equal(subagent.parameters.properties.label.type, 'string');
+  const readClipboard = tools.find((tool) => tool.name === 'clipboard_read');
+  assert.notEqual(readClipboard, undefined);
+  assert.deepEqual(readClipboard.parameters.required, []);
+  const writeClipboard = tools.find((tool) => tool.name === 'clipboard_write');
+  assert.notEqual(writeClipboard, undefined);
+  assert.deepEqual(writeClipboard.parameters.required, ['text']);
 });
 
 test('pinned sessions sort above recency and archive state is independent', () => {

@@ -1,5 +1,6 @@
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import {
   SubagentHandler,
@@ -23,6 +24,7 @@ const MAX_IMAGE_BYTES: number = 5 * 1024 * 1024;
 const MAX_RESULT_CHARS: number = 24000;
 const MAX_SEARCH_FILES: number = 2000;
 const MAX_SEARCH_BYTES: number = 512 * 1024;
+const MAX_CLIPBOARD_CHARS: number = 100000;
 const SKIP_DIRS: string[] = [
   '.git', '.hvigor', 'node_modules', 'oh_modules', 'build', 'dist', '.idea'
 ];
@@ -82,6 +84,10 @@ interface MemoryGetArgs {
 interface SubagentArgs {
   prompt?: string;
   label?: string;
+}
+
+interface ClipboardWriteArgs {
+  text?: string;
 }
 
 interface ReadSkillArgs {
@@ -149,6 +155,7 @@ export class LocalToolRuntime implements ToolRuntime {
   private imagesEnabled: boolean;
   private subagent: SubagentHandler | null;
   private disabledTools: string[];
+  private clipboardEnabled: boolean;
   private imageCache: Map<string, string> = new Map();
 
   constructor(
@@ -157,7 +164,8 @@ export class LocalToolRuntime implements ToolRuntime {
     memoryEnabled: boolean,
     imagesEnabled: boolean,
     subagent: SubagentHandler | null = null,
-    disabledTools: string[] = []
+    disabledTools: string[] = [],
+    clipboardEnabled: boolean = false
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
@@ -165,6 +173,7 @@ export class LocalToolRuntime implements ToolRuntime {
     this.imagesEnabled = imagesEnabled;
     this.subagent = subagent;
     this.disabledTools = disabledTools;
+    this.clipboardEnabled = clipboardEnabled;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -192,6 +201,10 @@ export class LocalToolRuntime implements ToolRuntime {
         continue;
       }
       if (name === 'read_image' && !this.imagesEnabled) {
+        continue;
+      }
+      if ((name === 'clipboard_read' || name === 'clipboard_write') &&
+        !this.clipboardEnabled) {
         continue;
       }
       if (name === 'read_skill' && SkillStore.list().length === 0) {
@@ -240,6 +253,12 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'read_skill') {
         return this.readSkill(argumentsJson);
+      }
+      if (name === 'clipboard_read') {
+        return await this.clipboardRead();
+      }
+      if (name === 'clipboard_write') {
+        return await this.clipboardWrite(argumentsJson);
       }
       if (name === 'search_text') {
         return this.searchText(argumentsJson);
@@ -640,6 +659,57 @@ export class LocalToolRuntime implements ToolRuntime {
       };
     }
     return { ok: true, content: doc.name + '\n\n' + doc.body };
+  }
+
+  private async clipboardRead(): Promise<ToolResult> {
+    try {
+      const board: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      const data: pasteboard.PasteData = await board.getData();
+      let text: string = '';
+      try {
+        text = data.getPrimaryText();
+      } catch (e) {
+        text = '';
+      }
+      if (text.length === 0) {
+        return { ok: true, content: '剪贴板中没有纯文本。' };
+      }
+      return { ok: true, content: truncateText(text, MAX_RESULT_CHARS) };
+    } catch (e) {
+      const error: Error = e as Error;
+      return {
+        ok: false,
+        content: '读取剪贴板失败：' + error.message + '（系统可能要求用户在弹窗中允许粘贴）'
+      };
+    }
+  }
+
+  private async clipboardWrite(argumentsJson: string): Promise<ToolResult> {
+    const args: ClipboardWriteArgs = JSON.parse(argumentsJson) as ClipboardWriteArgs;
+    const text: string = args.text !== undefined ? args.text : '';
+    if (text.length === 0) {
+      return { ok: false, content: 'text 不能为空。' };
+    }
+    if (text.length > MAX_CLIPBOARD_CHARS) {
+      return {
+        ok: false,
+        content: '文本过长（' + text.length.toString() + ' 字符），上限 ' +
+          MAX_CLIPBOARD_CHARS.toString() + '。'
+      };
+    }
+    try {
+      const board: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      const data: pasteboard.PasteData = pasteboard.createData(
+        pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      await board.setData(data);
+      return {
+        ok: true,
+        content: '已写入剪贴板（' + text.length.toString() + ' 字符）。'
+      };
+    } catch (e) {
+      const error: Error = e as Error;
+      return { ok: false, content: '写入剪贴板失败：' + error.message };
+    }
   }
 
   private memoryGet(argumentsJson: string): ToolResult {

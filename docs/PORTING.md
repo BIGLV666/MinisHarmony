@@ -48,6 +48,7 @@
 | OpenMinis Soul | `core/Soul.ets` + `ChatApi.buildMessages()` | 五个内置人格作为系统提示前缀；不支持载入 `SOUL.md` |
 | OpenMinis Skills | `core/SkillDoc.ets` + `service/SkillStore.ets` | 单个 SKILL.md 导入；目录注入 + `read_skill` 惰性正文；已启用技能自动成为 `/技能id` 命令；全局启用 |
 | OpenMinis 常亮 | `service/ScreenWake.ets` | 仅生成期间保持屏幕常亮；自动聚焦未做 |
+| OpenMinis 剪贴板 | `LocalToolRuntime.clipboardRead/Write()` | `pasteboard` 纯文本读写；默认关闭、24k/100k 字符上限；仅本机模式 |
 | OpenMinis `read_image`（原生视觉分支） | `core/ToolProtocol.ets` + `LocalToolRuntime.imageDataUrl()` | tool 消息后追加合成 user `image_url` 消息；无 Vision Group 文本回退 |
 | OpenMinis `/memory` `/thinking` | `Index.handleCommand()` | 记忆为全局开关；思考映射到 `reasoning_effort`，无模型元数据 |
 | Android `ToolJsonRepair.kt` | `core/ToolArgs.ets` | 覆盖围栏/截断/尾逗号；未做类型强转与字段名模糊匹配 |

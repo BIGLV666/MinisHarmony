@@ -82,6 +82,9 @@ export function builtinToolDefinitions(): ToolDefinition[] {
   const readSkillFields: FieldEntry[] = [
     field('id', 'string', '技能 id 或名称，见系统提示中的技能列表。')
   ];
+  const clipboardWriteFields: FieldEntry[] = [
+    field('text', 'string', '要写入系统剪贴板的纯文本。')
+  ];
   const subagentFields: FieldEntry[] = [
     field('prompt', 'string', '交给子代理的完整任务说明。子代理看不到当前对话，必须写清目标、输入和期望输出。'),
     field('label', 'string', '可选短标签，用于日志与子会话标题。')
@@ -143,6 +146,16 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'read_skill',
       description: '读取已启用技能的完整说明。系统提示里只列出名称与简介，需要具体步骤时调用本工具。',
       parameters: parametersOf(readSkillFields, ['id'])
+    },
+    {
+      name: 'clipboard_read',
+      description: '读取设备剪贴板中的纯文本。需要在设置中开启剪贴板工具；系统可能要求用户授权。',
+      parameters: parametersOf(noFields, [])
+    },
+    {
+      name: 'clipboard_write',
+      description: '把纯文本写入设备剪贴板，覆盖原有内容。需要在设置中开启剪贴板工具。',
+      parameters: parametersOf(clipboardWriteFields, ['text'])
     },
     {
       name: 'subagent_task',

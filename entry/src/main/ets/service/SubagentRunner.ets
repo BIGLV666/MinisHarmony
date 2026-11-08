@@ -98,7 +98,8 @@ export class SubagentRunner implements SubagentHandler {
       false,
       childSettings.imageToolsEnabled,
       nextRunner,
-      childSettings.disabledTools
+      childSettings.disabledTools,
+      childSettings.clipboardToolsEnabled
     );
 
     const title: string = label.length > 0 ? label : '子代理';

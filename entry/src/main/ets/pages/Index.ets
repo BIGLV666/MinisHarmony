@@ -899,7 +899,8 @@ struct Index {
         this.workspaceRoot,
         settings.allowWriteTools
       ),
-      settings.disabledTools
+      settings.disabledTools,
+      settings.clipboardToolsEnabled
     );
   }
 

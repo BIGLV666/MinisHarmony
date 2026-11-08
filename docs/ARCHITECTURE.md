@@ -478,6 +478,15 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 纯文本模型会拒绝 `image_url`，所以该工具默认不出现，必须由用户确认当前模型支持
 视觉后开启。
 
+## 剪贴板工具
+
+`clipboard_read` / `clipboard_write` 走 `@kit.BasicServicesKit` 的 `pasteboard`，
+只处理 `MIMETYPE_TEXT_PLAIN`。两者默认关闭（`clipboardToolsEnabled=false`）：
+剪贴板可能含密码、验证码等敏感内容，开启意味着允许模型把它送进请求。读取结果
+按 24k 字符截断，写入上限 100k 字符；系统若弹出粘贴授权而用户拒绝，`getData()`
+抛错会转成工具错误而不是崩溃。工具只在本机模式注册，`RemoteToolRuntime` 的
+定义与执行都拒绝这两个名字；子代理继承主会话开关。
+
 ## 后台生成
 
 `settings.backgroundEnabled`（默认开启）打开时，`Index.runAgent()` 在开始生成前调用

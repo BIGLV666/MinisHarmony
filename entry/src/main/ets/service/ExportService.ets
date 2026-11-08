@@ -31,7 +31,7 @@ export interface ExportOutcome {
  * Ask for a destination through the system document picker, then write the
  * text to the returned URI. No broad storage permission is needed.
  */
-async function saveText(
+export async function saveText(
   context: common.UIAbilityContext,
   fileName: string,
   suffixChoice: string,

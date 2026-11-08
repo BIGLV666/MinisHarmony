@@ -90,6 +90,9 @@ export struct SettingsSheet {
   };
   onBrowseWorkspace: () => void = () => {
   };
+  /** Host builds and saves the diagnostics bundle (needs the session store). */
+  onExportDiagnostics: () => void = () => {
+  };
 
   @State preset: ProviderPreset = 'opencode';
   @State baseUrl: string = OPENCODE_GO_BASE;
@@ -1431,6 +1434,23 @@ export struct SettingsSheet {
                   .onClick(() => this.clearLogs())
               }
               .width('100%')
+
+              Column({ space: 3 }) {
+                Button('导出诊断包')
+                  .height(34)
+                  .width('100%')
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                  .onClick(() => this.onExportDiagnostics())
+                Text('含设备/版本信息、非密钥设置摘要、会话数量、崩溃记录与事件日志；不含提示词、消息正文、API Key 或沙箱 Token。')
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .lineHeight(14)
+              }
+              .width('100%')
+              .alignItems(HorizontalAlign.Start)
 
               if (this.showLogs) {
                 Column({ space: 4 }) {

@@ -41,6 +41,8 @@ import {
 import { AgentRuntime } from '../service/AgentRuntime';
 import { SummaryResult, summarizeConversation } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
+import { CrashLog } from '../service/CrashLog';
+import { saveDiagnostics } from '../service/Diagnostics';
 import { BackgroundGuard } from '../service/BackgroundGuard';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
@@ -243,6 +245,7 @@ struct Index {
     this.settings = await LocalStore.loadSettings();
     this.applyAppearance(this.settings);
     AppLogger.init(context, this.settings.loggingEnabled);
+    CrashLog.init(context);
     // Discovery is best-effort; an offline server just contributes no tools.
     McpRegistry.refresh(this.settings.mcpServers).catch((error: Error) => {});
     const loaded: StoredSession[] = await LocalStore.loadSessions();
@@ -649,6 +652,17 @@ struct Index {
       return;
     }
     this.openPasswordDialog('encrypt', '');
+  }
+
+  /**
+   * Diagnostics: environment, non-secret settings summary, counts, collected
+   * crash/freeze records and the redacted event log. Never prompts or keys.
+   */
+  private async exportDiagnostics(): Promise<void> {
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const outcome: ExportOutcome = await saveDiagnostics(
+      context, this.settings, this.store);
+    this.toast(outcome.message);
   }
 
   /** Export every session plus a secret-free settings snapshot. */
@@ -2153,7 +2167,8 @@ struct Index {
           onToast: (message: string) => this.toast(message),
           onBrowseWorkspace: () => {
             this.showWorkspace = true;
-          }
+          },
+          onExportDiagnostics: () => this.exportDiagnostics()
         })
       }
 

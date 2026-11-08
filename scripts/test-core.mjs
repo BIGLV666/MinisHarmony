@@ -48,6 +48,7 @@ copyCore('Memory');
 copyCore('ContextBudget', ['Types']);
 copyCore('MarkdownExport', ['Types']);
 copyCore('ShareCard', ['MarkdownExport']);
+copyCore('Diagnostics', ['MarkdownExport', 'EventLog']);
 copyCore('ToolArgs');
 copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
@@ -187,6 +188,7 @@ const latex = await import(pathToFileURL(join(tmp, 'Latex.mts')).href);
 const jobs = await import(pathToFileURL(join(tmp, 'SubagentJob.mts')).href);
 const webUrl = await import(pathToFileURL(join(tmp, 'WebUrl.mts')).href);
 const shareCard = await import(pathToFileURL(join(tmp, 'ShareCard.mts')).href);
+const diagnostics = await import(pathToFileURL(join(tmp, 'Diagnostics.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -2011,4 +2013,81 @@ test('share card names, truncation and tool summary stay bounded', () => {
   const few = ['✓ a', '✕ b'];
   assert.deepEqual(shareCard.shareCardToolLines(few), ['✓ a', '✕ b']);
   assert.notEqual(shareCard.shareCardToolLines(few), few);
+});
+
+test('diagnostics bundle redacts, trims and omits secrets', () => {
+  assert.equal(
+    diagnostics.diagnosticsFileName(new Date(2026, 10, 8)),
+    'minis-diagnostics-2026-11-08.json'
+  );
+
+  const crash = JSON.parse(diagnostics.crashLine(
+    1700000000000,
+    'APP_CRASH',
+    '{"reason":"boom sk-abcdef123456 Authorization: Bearer tok_987654"}'
+  ));
+  assert.equal(crash.ts, 1700000000000);
+  assert.equal(crash.event, 'APP_CRASH');
+  assert.ok(!crash.params.includes('sk-abcdef123456'));
+  assert.ok(!crash.params.includes('tok_987654'));
+  assert.match(crash.params, /sk-\*\*\*/);
+
+  const longParams = 'x'.repeat(diagnostics.MAX_CRASH_PARAMS_CHARS + 500);
+  const capped = JSON.parse(diagnostics.crashLine(1, 'APP_FREEZE', longParams));
+  assert.equal(capped.params.length, diagnostics.MAX_CRASH_PARAMS_CHARS);
+
+  const crashes = [];
+  for (let i = 0; i < diagnostics.MAX_DIAGNOSTIC_CRASH_LINES + 5; i++) {
+    crashes.push('{"ts":' + i + '}');
+  }
+  const events = [];
+  for (let i = 0; i < diagnostics.MAX_DIAGNOSTIC_EVENT_LINES + 20; i++) {
+    events.push('{"event":"e' + i + '"}');
+  }
+  const doc = JSON.parse(diagnostics.buildDiagnostics({
+    generatedAt: Date.UTC(2026, 10, 8, 0, 0, 0),
+    environment: {
+      versionName: '1.0.0',
+      versionCode: 1000,
+      sdkApi: 20,
+      deviceModel: 'MatePad Air',
+      osVersion: 'HarmonyOS 6.0',
+      locale: 'zh'
+    },
+    counts: { sessions: 3, messages: 42 },
+    settings: {
+      preset: 'opencode',
+      modelId: 'glm-4.6',
+      thinkingLevel: 'off',
+      temperature: 0.7,
+      maxTokens: 4096,
+      fallbackModels: 1,
+      toolsEnabled: true,
+      allowWriteTools: false,
+      confirmWriteTools: true,
+      imageToolsEnabled: false,
+      imageGenEnabled: false,
+      clipboardToolsEnabled: false,
+      memoryEnabled: true,
+      backgroundEnabled: true,
+      remoteSandbox: false,
+      mcpServers: 0,
+      disabledTools: ['shell_execute'],
+      appLockEnabled: false,
+      loggingEnabled: true
+    },
+    crashLines: crashes,
+    eventLines: events
+  }));
+  assert.equal(doc.app, 'MinisHarmony');
+  assert.equal(doc.kind, 'diagnostics');
+  assert.equal(doc.generatedAt, '2026-11-08T00:00:00.000Z');
+  assert.equal(doc.counts.messages, 42);
+  assert.equal(doc.settings.modelId, 'glm-4.6');
+  assert.equal(doc.crashes.length, diagnostics.MAX_DIAGNOSTIC_CRASH_LINES);
+  assert.equal(doc.events.length, diagnostics.MAX_DIAGNOSTIC_EVENT_LINES);
+  // The settings summary has no field capable of carrying a credential.
+  assert.ok(!('apiKey' in doc.settings));
+  assert.ok(!('baseUrl' in doc.settings));
+  assert.ok(!('sandboxToken' in doc.settings));
 });

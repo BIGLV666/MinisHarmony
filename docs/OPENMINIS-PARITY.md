@@ -189,7 +189,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 密钥安全存储 | Keychain / EncryptedPrefs | `Asset Store Kit`；不可用时回退 preferences 并保留明文兼容 | P1 |
 | - [x] | 应用锁 | Face ID / 生物识别 | 设置「启动时验证系统锁屏」；启动调用 `userAuth`（PIN/人脸/指纹，ATL3），无可用认证时放行 | P2 |
 | - [x] | 加密备份 | `BackupCrypto` | AES-GCM + 口令派生 | P3 |
-| - [ ] | 崩溃 / 诊断导出 | 诊断包 | `hiAppEvent` + 日志打包 | P3 |
+| - [x] | 崩溃 / 诊断导出 | 诊断包 | 设置「导出诊断包」：单个 JSON 含设备型号 / 系统版本 / SDK API / 版本号 / 语言、非密钥设置摘要（不含 baseUrl、systemPrompt）、会话与消息数量、`hiAppEvent` 收集的最近 40 条崩溃/冻结记录、最近 300 条事件日志；崩溃参数与日志详情再次过 `redactSecrets` 并截断，明确不含提示词、消息正文、API Key、沙箱 Token；`service/CrashLog.ets` 常驻 watcher，记录落 `filesDir/diagnostics/crashes.jsonl` 并保留 40 条；经系统文档选择器保存 | P3 |
 | - [x] | 请求检查器 | LLM 请求日志 | 每次模型请求生成 8 位 `req`，写入 `model_start/done/error` 与同轮工具事件；日志查看器显示 `req=`，不含正文 | P2 |
 
 ## 12. 平台特性（不可移植 / 需替代）
@@ -276,3 +276,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 模型组 fallback | `AppSettings.fallbackModels` + `parseModelList`/`modelChain` 纯函数（分割、去空白、去重、保持顺序）；设置页「备用模型」输入；`AgentRuntime` 每轮建立主模型 + 备用链，请求失败且本步无任何输出时 `step--` 后异步重试下一个模型，切换写入事件日志（`fallback -> <id>`），已有输出则照旧报错终止；`activeModelId()` 用于请求、事件日志与用量记录；81 项测试通过、构建通过 |
 | 2026-11-08 | 图像生成 | `core/ImageGen.ets` 纯函数：端点拼接（复用 `normalizeBaseUrl`）、请求体、尺寸白名单、响应解析（b64/url/错误）、魔数识别图片格式；`service/ImageGen.ets` 走 `http` POST `/images/generations`，URL 结果二次下载，写入附件目录；新增 `generate_image` 工具与 `ImageGenHandler` 边界、设置开关 `imageGenEnabled`（默认关）；`MessageBubble` 工具卡片显示图片缩略图并复用全屏预览；远程沙箱不暴露；82 项测试通过、构建通过 |
 | 2026-11-08 | 单轮截图分享 | `components/ShareCardView.ets` 全局 `@Builder` 卡片（问题条 + Markdown 正文 + 工具摘要 + 时间/token 页脚）；`service/Screenshot.ets` 用 `UIContext.getComponentSnapshot().createFromBuilder` 离屏渲染（不受滚动位置裁剪）、`image.createImagePacker` 转 PNG、`DocumentViewPicker` 保存；`MarkdownView.plainMath` 让离屏卡片用 Unicode 公式；`core/ShareCard.ets` 负责文件名与 12000 字/12 工具的边界；`ChatView` 找到上一条用户消息一并入图；83 项测试通过、构建通过 |
+| 2026-11-08 | 崩溃 / 诊断导出 | `core/Diagnostics.ets` 定义诊断文档（环境、非密钥设置摘要、计数、崩溃、事件）与文件名，`crashLine` 对系统上报参数再次脱敏并截断到 2000 字；`service/CrashLog.ets` 用 `hiAppEvent.addWatcher` 订阅 `APP_CRASH`/`APP_FREEZE`，落 `crashes.jsonl` 保留 40 条；`service/Diagnostics.ets` 汇总 `deviceInfo`、`bundleManager`、`i18n`、`AppLogger.recent(300)` 并经文档选择器导出；设置页「导出诊断包」；84 项测试通过、构建通过 |

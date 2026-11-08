@@ -47,7 +47,7 @@
 | - [x] | 轮次上限可配置 | `MAX_AGENT_TURNS = 200` | 默认 200，1–1000，可续跑 | — |
 | - [x] | 中断工具补结果 | 避免悬空 tool_call | `interruptToolCalls` + `INTERRUPTED_RESULT` | — |
 | - [x] | 本地事件日志 | 结构化日志、脱敏 | `EventLog` + `AppLogger` | — |
-| - [~] | 子代理 `subagent_task` | 最多 3 个并行、steer/cancel/resume、10 分钟 | 独立 `AgentRuntime`、并行上限 3、10 分钟超时、嵌套 2 层；结束时子会话落库并以「子代理 · 标签」出现在侧栏，可打开继续；无运行中 steer / 专门 resume 按钮 | P1 |
+| - [x] | 子代理 `subagent_task` | 最多 3 个并行、steer/cancel/resume、10 分钟 | 独立 `AgentRuntime`、全局并行上限 3 + 排队；默认后台执行，立即返回 job_id，结果以「[后台任务结束 …]」消息送回并自动续跑父对话，`wait=true` 阻塞；`status`/`steer`/`cancel`/`resume` 均支持 job_id 前缀，steer 在子代理下一次请求前读取、不打断工具调用，turn 结束时若有待读纠正会续跑；`max_minutes` 1–60（默认 10），嵌套 2 层（嵌套强制阻塞）；结束时子会话落库为「子代理 · 标签」；崩溃遗留任务标记 `interrupted`，resume 从原始任务说明重启（无子转写可续）；未做 `progress_report` 与按对话的角色名册 | P1 |
 | - [x] | 工具并行执行 | 同一轮多个 tool_calls 并发 | `Promise.all` 并发执行，结果回到各自 part | P1 |
 | - [x] | 上下文压缩（compact） | `/compact` 摘要旧消息 | 保留最近 3 个用户轮次，旧轮次由模型摘要替换 | P1 |
 | - [x] | 工具循环检测 | 重复调用同一工具时警告 | 连续相同 `name+args` 达 3 次时在工具结果前追加警告 | P2 |
@@ -73,7 +73,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | `read_image` 读取工作区图片，工具消息后追加合成 user 图片消息；本机模式、默认关闭 | P1 |
 | - [x] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集：隐藏 Web 视图常驻，`browser_use` 支持 open / click / type / text / html / eval / back / forward / reload / wait / title / url；页面加载最多等 20 秒，返回内容截断；远程沙箱模式不暴露 | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |
-| - [~] | 子代理 | `subagent_task` | 本机模式已实现且子会话落库，见 2. 子代理；远程模式不暴露；运行中 steer 未做 | P1 |
+| - [x] | 子代理 | `subagent_task` | 本机模式完整实现（后台投递、status/steer/cancel/resume、排队、超时、崩溃恢复），见 2. 子代理；远程沙箱模式仍不暴露子代理 | P1 |
 | - [ ] | 图像生成 | `minis-model-use` 调用 `/images/generations` | 可选，取决于订阅模型 | P3 |
 | - [x] | 工具开关 UI | 逐工具启用/禁用 | 设置页「逐工具开关」；`AppSettings.disabledTools`，本机/远程/子代理共用；执行时同样拒绝 | P2 |
 | - [x] | 工具权限确认 | 危险操作弹出确认 | 设置项「写入前逐次确认」；`write_file` / `file_edit` 执行前弹窗，允许/拒绝，停止生成会按拒绝结算 | P2 |
@@ -269,3 +269,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 整库备份 / 恢复 | 侧栏「备份整库」导出 `minis-backup-日期.json`：全部会话 + 设置快照，密钥类字段（API Key、沙箱 Token、MCP/模型请求头）写盘前清空；「导入」同时识别备份与普通会话包，恢复设置时保留本机密钥；无加密；60 项测试通过 |
 | 2026-11-08 | MCP HTTP 工具 | 设置页「MCP 工具」可增删服务（URL + 请求头 JSON + 启用开关）；启动与保存设置时后台发现，手动刷新强制重查；`initialize` → `notifications/initialized` → `tools/list`，调用走 `tools/call`；响应支持 JSON 与 SSE；工具名 `mcp_服务_工具`，JSON Schema 原样透传；无 stdio / OAuth；59 项测试通过 |
 | 2026-11-08 | LaTeX 公式 | `core/Latex.ets` 轻量转换：`\frac/\dfrac/\tfrac`、`\sqrt[n]`、希腊字母、关系/集合/箭头运算符、`\sin` 等函数名、`^`/`_` 上下标（Unicode 上下标字符，不支持时退 `^(...)`/`_(...)`）、`\text`/`\mathrm`/`\operatorname`、`\left`/`\right`、`\begin|\end` 环境断行；未知命令丢弃。Markdown 识别单行与围栏式 `$$` 块（等宽居中卡片）以及行内 `$...$`；行内规则排除 `$5` 货币、`$$`、空行与未闭合。矩阵/多行环境只断行，非真实排版；73 项测试通过 |
+| 2026-11-08 | 子代理 steer / status / cancel / resume | `subagent_task` 改为单个工具 + `action`：delegate 默认后台执行并立即返回 job_id，结束时把「[后台任务结束 …]」作为用户消息送回父对话并自动续跑；`wait=true`/嵌套子代理同步阻塞。全局最多 3 个并行，其余排队，空位自动泵出；`max_minutes` 1–60。`status` 报告状态/当前工具/耗时/模型/结果；`steer` 由 `AgentRuntime.injectInput` 在下一请求前插入，若 turn 刚好结束则续跑而不是丢弃；`cancel` 保留部分结果；活动任务写入 preferences，重启后标记 `interrupted` 并可由 `resume` 按原始说明重跑。父对话停止时同步取消其阻塞子代理，后台任务继续投递；非当前会话的结果在打开时自动续跑。`core/SubagentJob.ets` 状态机/前缀匹配/报告/后台消息 78 项测试通过 |

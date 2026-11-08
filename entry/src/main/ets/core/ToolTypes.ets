@@ -46,12 +46,26 @@ export interface ToolRuntime {
   imageDataUrl(uri: string, mimeType: string): string;
 }
 
+/** One call of the single `subagent_task` tool. */
+export interface SubagentRequest {
+  /** delegate (default), status, steer, cancel or resume. */
+  action: string;
+  prompt: string;
+  label: string;
+  jobId: string;
+  message: string;
+  /** Only delegate: false returns at once and posts the result later. */
+  wait: boolean;
+  /** Wall-clock budget, clamped by the handler. */
+  maxMinutes: number;
+}
+
 /**
  * Optional capability behind `subagent_task`. Implemented by SubagentRunner;
  * the local runtime only advertises the tool when a handler is supplied.
  */
 export interface SubagentHandler {
-  run(prompt: string, label: string): Promise<ToolResult>;
+  execute(request: SubagentRequest): Promise<ToolResult>;
 }
 
 /**

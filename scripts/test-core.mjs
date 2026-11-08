@@ -35,6 +35,7 @@ copyCore('SseParser');
 copyCore('OpenCodeRules');
 copyCore('Latex');
 copyCore('Markdown', ['Latex']);
+copyCore('SubagentJob');
 copyCore('Types');
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -177,6 +178,7 @@ const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts')).href);
 const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href);
 const latex = await import(pathToFileURL(join(tmp, 'Latex.mts')).href);
+const jobs = await import(pathToFileURL(join(tmp, 'SubagentJob.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -935,7 +937,11 @@ test('tool catalogue exposes file_edit with a safe schema', () => {
   assert.equal(owner.parameters.properties.replace_all.type, 'boolean');
   const subagent = tools.find((tool) => tool.name === 'subagent_task');
   assert.notEqual(subagent, undefined);
-  assert.deepEqual(subagent.parameters.required, ['prompt']);
+  // action defaults to delegate, so prompt is conditionally required.
+  assert.deepEqual(subagent.parameters.required, []);
+  assert.equal(subagent.parameters.properties.action.type, 'string');
+  assert.equal(subagent.parameters.properties.job_id.type, 'string');
+  assert.equal(subagent.parameters.properties.wait.type, 'boolean');
   assert.equal(subagent.parameters.properties.label.type, 'string');
   const readClipboard = tools.find((tool) => tool.name === 'clipboard_read');
   assert.notEqual(readClipboard, undefined);
@@ -1779,4 +1785,94 @@ test('Markdown recognizes display and inline math', () => {
   const multiline = md.parseMarkdown('$$\na+b\n$$');
   assert.equal(multiline[0].kind, 'math');
   assert.equal(multiline[0].text, 'a+b');
+});
+
+function sampleJob(id, parent, state) {
+  const job = jobs.newJobRecord(id, parent, 'child-' + id, '调研', '看看仓库', 'm', 1000);
+  job.state = state;
+  return job;
+}
+
+test('subagent jobs start queued and label every state', () => {
+  const job = jobs.newJobRecord('ab12cd34', 's1', 'c1', '', '任务', 'm1', 5000);
+  assert.equal(job.state, 'queued');
+  assert.equal(job.steers.length, 0);
+  assert.equal(job.finishedAt, 0);
+  assert.equal(jobs.isActiveState('queued'), true);
+  assert.equal(jobs.isActiveState('running'), true);
+  assert.equal(jobs.isActiveState('done'), false);
+  assert.equal(jobs.isTerminalState('interrupted'), true);
+  assert.equal(jobs.stateLabel('running'), '运行中');
+  assert.equal(jobs.stateLabel('timeout'), '超时');
+});
+
+test('subagent job ids resolve exactly, by prefix, or report ambiguity', () => {
+  const list = [sampleJob('ab12cd34', 's1', 'running'),
+    sampleJob('ab34ef56', 's1', 'done'), sampleJob('ff00aa11', 's1', 'done')];
+  assert.equal(jobs.matchJobs(list, 'ab12cd34').length, 1);
+  assert.equal(jobs.matchJobs(list, 'ff00').length, 1);
+  assert.equal(jobs.matchJobs(list, 'ab').length, 2);
+  assert.equal(jobs.matchJobs(list, '').length, 3);
+  assert.equal(jobs.matchJobs(list, 'zzzz').length, 0);
+});
+
+test('subagent status reports state, tool, model and result', () => {
+  const list = [sampleJob('ab12cd34', 's1', 'running')];
+  list[0].currentTool = 'read_file';
+  list[0].modelId = 'gpt-x';
+  const report = jobs.statusReport(list, '', 61000);
+  assert.match(report, /运行中/);
+  assert.match(report, /当前工具：read_file/);
+  assert.match(report, /模型：gpt-x/);
+  assert.match(report, /已运行 1 分 0 秒/);
+
+  const done = sampleJob('cc00dd11', 's1', 'done');
+  jobs.endJob(done, 'done', '结论是 42', 70000);
+  const single = jobs.statusReport([done], 'cc00', 80000);
+  assert.match(single, /已完成/);
+  assert.match(single, /结果：结论是 42/);
+
+  const many = jobs.statusReport([list[0], done], '', 80000);
+  assert.match(many, /共 2 个子代理：1 运行中，0 排队中，1 已结束/);
+  assert.equal(jobs.statusReport([], '', 0), '这个对话还没有启动过子代理。');
+  assert.match(jobs.statusReport([list[0]], 'zzz', 0), /没有匹配/);
+  const ambiguous = jobs.statusReport(
+    [sampleJob('ab12cd34', 's1', 'running'), sampleJob('ab34ef56', 's1', 'done')],
+    'ab', 0);
+  assert.match(ambiguous, /匹配了多个/);
+});
+
+test('background message carries the prefix, state and result', () => {
+  const job = sampleJob('ab12cd34', 's1', 'done');
+  jobs.endJob(job, 'done', '完成了调研', 196000);
+  const message = jobs.backgroundMessage(job);
+  assert.equal(message.startsWith(jobs.BACKGROUND_PREFIX), true);
+  assert.match(message, /状态：已完成/);
+  assert.match(message, /用时 3 分 15 秒/);
+  assert.match(message, /完成了调研/);
+  assert.match(message, /job_id=ab12cd34/);
+
+  const empty = sampleJob('ff00aa11', 's1', 'failed');
+  jobs.endJob(empty, 'failed', '', 2000);
+  assert.match(jobs.backgroundMessage(empty), /（子代理没有返回文本）/);
+});
+
+test('elapsed text and pruning stay readable', () => {
+  assert.equal(jobs.elapsedText(0), '0 秒');
+  assert.equal(jobs.elapsedText(90000), '1 分 30 秒');
+  assert.equal(jobs.elapsedText(3 * 3600 * 1000 + 120000), '3 小时 2 分');
+
+  const a = sampleJob('a1', 's1', 'done');
+  a.startedAt = 100;
+  a.finishedAt = 200;
+  const b = sampleJob('b1', 's1', 'done');
+  b.startedAt = 200;
+  b.finishedAt = 300;
+  const c = sampleJob('c1', 's1', 'done');
+  c.startedAt = 300;
+  c.finishedAt = 400;
+  const running = sampleJob('r1', 's1', 'running');
+  running.startedAt = 400;
+  const kept = jobs.pruneJobs([a, b, c, running], 2);
+  assert.deepEqual(kept.map((job) => job.id), ['b1', 'c1', 'r1']);
 });

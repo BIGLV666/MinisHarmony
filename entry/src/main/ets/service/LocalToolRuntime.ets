@@ -5,6 +5,7 @@ import { util } from '@kit.ArkTS';
 import {
   BrowserHandler,
   SubagentHandler,
+  SubagentRequest,
   ToolDefinition,
   ToolResult,
   ToolRuntime
@@ -83,8 +84,13 @@ interface MemoryGetArgs {
 }
 
 interface SubagentArgs {
+  action?: string;
   prompt?: string;
   label?: string;
+  job_id?: string;
+  message?: string;
+  wait?: boolean;
+  max_minutes?: number;
 }
 
 interface ClipboardWriteArgs {
@@ -334,12 +340,21 @@ export class LocalToolRuntime implements ToolRuntime {
       return { ok: false, content: '当前模式不支持子代理。' };
     }
     const args: SubagentArgs = JSON.parse(argumentsJson) as SubagentArgs;
+    const action: string = args.action !== undefined ? args.action.trim() : '';
     const prompt: string = args.prompt !== undefined ? args.prompt.trim() : '';
-    if (prompt.length === 0) {
-      return { ok: false, content: 'subagent_task 需要非空的 prompt。' };
+    if ((action.length === 0 || action === 'delegate') && prompt.length === 0) {
+      return { ok: false, content: 'subagent_task 的 action=delegate 需要非空的 prompt。' };
     }
-    const label: string = args.label !== undefined ? args.label.trim() : '';
-    return this.subagent.run(prompt, label);
+    const request: SubagentRequest = {
+      action: action,
+      prompt: prompt,
+      label: args.label !== undefined ? args.label.trim() : '',
+      jobId: args.job_id !== undefined ? args.job_id.trim() : '',
+      message: args.message !== undefined ? args.message : '',
+      wait: args.wait === true,
+      maxMinutes: numberArg(args.max_minutes, 0)
+    };
+    return this.subagent.execute(request);
   }
 
   private resolvePath(raw: string, allowRoot: boolean): string {

@@ -23,6 +23,7 @@ import {
   textPart
 } from '../core/Types';
 import { capsForModel } from '../core/ModelCaps';
+import { BACKGROUND_PREFIX } from '../core/SubagentJob';
 import { ToolRuntime } from '../core/ToolTypes';
 import {
   applySessionParams,
@@ -219,6 +220,7 @@ struct Index {
     AttachmentStore.init(context.filesDir + '/attachments');
     try {
       await LocalStore.init(context);
+      await SubagentRunner.restore();
     } catch (e) {
       this.toast('本地存储初始化失败，本次会话不会保存');
     }
@@ -234,6 +236,9 @@ struct Index {
       this.currentId = loaded[0].meta.id;
       this.messages = loaded[0].messages.slice();
       this.mobileChat = true;
+      if (this.hasPendingBackgroundResult(loaded[0])) {
+        this.runAgent(loaded[0], '', false);
+      }
     } else {
       this.createChat(false);
       this.mobileChat = false;
@@ -362,6 +367,9 @@ struct Index {
     this.messages = session.messages.slice();
     this.draft = '';
     this.mobileChat = true;
+    if (!this.streaming && this.hasPendingBackgroundResult(session)) {
+      this.runAgent(session, '', false);
+    }
   }
 
   private requestDelete(id: string): void {
@@ -767,7 +775,7 @@ struct Index {
         : this.pendingSkillBody;
       this.pendingSkillBody = '';
     }
-    const runtime: ToolRuntime = this.makeToolRuntime(effective);
+    const runtime: ToolRuntime = this.makeToolRuntime(effective, session.meta.id);
     this.streaming = true;
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     keepScreenOn(context, true).catch((error: Error) => {});
@@ -1061,7 +1069,7 @@ struct Index {
     this.persistSoon();
   }
 
-  private makeToolRuntime(settings: AppSettings): ToolRuntime {
+  private makeToolRuntime(settings: AppSettings, sessionId: string): ToolRuntime {
     let base: ToolRuntime;
     if (settings.sandboxMode === 'remote') {
       base = new RemoteToolRuntime(
@@ -1080,8 +1088,11 @@ struct Index {
           settings,
           this.workspaceRoot,
           settings.allowWriteTools,
+          sessionId,
           0,
-          (session: StoredSession) => this.adoptSubagentSession(session)
+          (session: StoredSession) => this.adoptSubagentSession(session),
+          (parentSessionId: string, text: string) =>
+            this.deliverSubagentResult(parentSessionId, text)
         ),
         settings.disabledTools,
         settings.clipboardToolsEnabled,
@@ -1091,10 +1102,51 @@ struct Index {
     return new McpRuntime(base, settings.disabledTools);
   }
 
+  /**
+   * A background subagent finished. If its conversation is streaming, queue
+   * the text for that run's next request boundary; otherwise add it as a user
+   * message and let the model answer it, exactly like the user had typed it.
+   */
+  private deliverSubagentResult(parentSessionId: string, text: string): void {
+    const session: StoredSession | null = this.findSession(parentSessionId);
+    if (session === null) {
+      return;
+    }
+    if (parentSessionId === this.currentId && this.streaming && this.agent !== null) {
+      this.agent.injectInput(text);
+      return;
+    }
+    const notice: ChatMessage = newChatMessage(
+      util.generateRandomUUID(true), 'user', text);
+    session.messages.push(notice);
+    session.meta.updatedAt = Date.now();
+    session.meta.messageCount = session.messages.length;
+    this.refreshSessions();
+    this.persistSoon();
+    if (parentSessionId === this.currentId) {
+      this.messages = session.messages.slice();
+      if (!this.streaming) {
+        this.runAgent(session, '', false);
+      }
+    }
+  }
+
+  /** The last message is a background result the model has not answered yet. */
+  private hasPendingBackgroundResult(session: StoredSession): boolean {
+    if (session.messages.length === 0) {
+      return false;
+    }
+    const last: ChatMessage = session.messages[session.messages.length - 1];
+    return last.role === 'user' && textOf(last).startsWith(BACKGROUND_PREFIX);
+  }
+
   private stopStream(): void {
     // Unblock a tool waiting for confirmation, otherwise the loop would keep
     // a pending promise after the generation was stopped.
     this.settleToolPermission(false);
+    // Children the turn is synchronously waiting on would otherwise keep
+    // running with nobody to receive their result; background jobs survive.
+    SubagentRunner.cancelBlocking(this.currentId);
     if (this.agent !== null) {
       this.agent.cancel();
       this.agent = null;

@@ -1,6 +1,7 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { SecureStore } from './SecureStore';
+import { SubagentJobRecord } from '../core/SubagentJob';
 import { normalizeSoulId } from '../core/Soul';
 import { normalizeModelOverrides } from '../core/ModelOverride';
 import { normalizeMcpServers } from '../core/McpProtocol';
@@ -34,6 +35,8 @@ import {
 const STORE_NAME: string = 'minis_harmony_store_v1';
 const KEY_SETTINGS: string = 'settings';
 const KEY_SESSIONS: string = 'sessions';
+/** Only active subagent jobs are stored; leftovers become `interrupted`. */
+const KEY_SUBAGENT_JOBS: string = 'subagent_jobs';
 
 interface LegacyMessage {
   content?: string;
@@ -349,6 +352,44 @@ export class LocalStore {
       return;
     }
     await prefs.put(KEY_SESSIONS, JSON.stringify(sessions));
+    await prefs.flush();
+  }
+
+  static async loadSubagentJobs(): Promise<SubagentJobRecord[]> {
+    const prefs: preferences.Preferences | null = LocalStore.prefs;
+    if (prefs === null) {
+      return [];
+    }
+    try {
+      const raw: string = await prefs.get(KEY_SUBAGENT_JOBS, '') as string;
+      if (raw.length === 0) {
+        return [];
+      }
+      const parsed: SubagentJobRecord[] = JSON.parse(raw) as SubagentJobRecord[];
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      const jobs: SubagentJobRecord[] = [];
+      for (let i = 0; i < parsed.length; i++) {
+        const entry: SubagentJobRecord = parsed[i];
+        if (entry !== null && typeof entry.id === 'string' &&
+          entry.id.length > 0 && typeof entry.parentSessionId === 'string' &&
+          typeof entry.prompt === 'string') {
+          jobs.push(entry);
+        }
+      }
+      return jobs;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static async saveSubagentJobs(jobs: SubagentJobRecord[]): Promise<void> {
+    const prefs: preferences.Preferences | null = LocalStore.prefs;
+    if (prefs === null) {
+      return;
+    }
+    await prefs.put(KEY_SUBAGENT_JOBS, JSON.stringify(jobs));
     await prefs.flush();
   }
 }

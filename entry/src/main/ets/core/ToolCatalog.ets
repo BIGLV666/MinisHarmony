@@ -86,8 +86,24 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('text', 'string', '要写入系统剪贴板的纯文本。')
   ];
   const subagentFields: FieldEntry[] = [
-    field('prompt', 'string', '交给子代理的完整任务说明。子代理看不到当前对话，必须写清目标、输入和期望输出。'),
-    field('label', 'string', '可选短标签，用于日志与子会话标题。')
+    field('action', 'string',
+      'delegate（默认）启动子代理；status 查看本对话的子代理；steer 纠偏运行中的子代理；' +
+        'cancel 停止指定子代理并保留部分结果；resume 重启应用被终止时中断的子代理。'),
+    field('prompt', 'string',
+      'action=delegate 时必填。交给子代理的完整任务说明；子代理看不到当前对话，' +
+        '必须写清目标、输入、约束和期望输出。'),
+    field('label', 'string', '可选短标签，用于状态、后台消息与子会话标题。'),
+    field('job_id', 'string',
+      'action=status/steer/cancel/resume 使用。启动时返回的 job_id，接受前缀；' +
+        'status 省略时列出全部，resume 省略时重启全部已中断的子代理。'),
+    field('message', 'string',
+      'action=steer 时必填。对运行中子代理的纠正，会保留已完成的工作；' +
+        '在它下一次请求模型前读取。若子代理先结束，则报告未送达。'),
+    field('wait', 'boolean',
+      'action=delegate 时有效。false（默认）立即返回 job_id，结果稍后以后台消息送达；' +
+        'true 阻塞到结束并直接返回结果，仅在下一次操作必须依赖结果时使用。'),
+    field('max_minutes', 'number',
+      'action=delegate 时的实际耗时上限，默认 10，最大 60；超时返回已产生的部分结果。')
   ];
   const browserFields: FieldEntry[] = [
     field('action', 'string',
@@ -176,8 +192,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'subagent_task',
-      description: '把一个独立、边界清晰的子任务交给子代理执行。子代理有自己的工具循环，完成后只返回最终文本；适合并行调研或独立的多步操作。',
-      parameters: parametersOf(subagentFields, ['prompt'])
+      description: '把一个独立、边界清晰的子任务交给子代理（最多 3 个并行，队列化的会等空位）。' +
+        '子代理有自己的上下文和工具循环，看不到当前对话。默认立即返回 job_id，结果稍后以' +
+        '「[后台任务结束 …]」消息送达；wait=true 才阻塞等待。可用 action 查看状态、纠偏、' +
+        '取消或重启中断的任务。',
+      parameters: parametersOf(subagentFields, [])
     }
   ];
   return definitions;

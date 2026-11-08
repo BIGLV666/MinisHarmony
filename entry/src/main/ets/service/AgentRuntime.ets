@@ -98,6 +98,9 @@ export class AgentRuntime {
   private toolCount: number = 0;
   private requestId: string = '';
   private loopGuard: ToolLoopGuard = new ToolLoopGuard();
+  /** Steer / background input, read at the next model request boundary. */
+  private pendingInputs: string[] = [];
+  private currentTool: string = '';
 
   constructor(
     settings: AppSettings,
@@ -116,6 +119,30 @@ export class AgentRuntime {
 
   isRunning(): boolean {
     return this.running;
+  }
+
+  /** Tool currently executing in this run, for subagent status reports. */
+  currentToolName(): string {
+    return this.currentTool;
+  }
+
+  /**
+   * Steer a run without interrupting it: the text is queued and appended as a
+   * user message immediately before the next model request, so a running tool
+   * call is never cut off. If the turn was about to end, `finish` keeps the
+   * loop alive to read it instead of settling.
+   */
+  injectInput(text: string): void {
+    const trimmed: string = text.trim();
+    if (trimmed.length === 0 || this.finished) {
+      return;
+    }
+    this.pendingInputs.push(trimmed);
+  }
+
+  /** Pending steer / background texts not yet handed to the model. */
+  pendingInputCount(): number {
+    return this.pendingInputs.length;
   }
 
   start(userText: string, attachments: MessagePart[] = []): void {
@@ -201,6 +228,25 @@ export class AgentRuntime {
     return message;
   }
 
+  /**
+   * Turn queued input into user messages just before the pending assistant
+   * placeholder. Tool results travel with their assistant message, so a user
+   * message at this point is valid for every supported protocol.
+   */
+  private drainPendingInputs(): void {
+    if (this.pendingInputs.length === 0) {
+      return;
+    }
+    const at: number = Math.max(0, this.session.messages.length - 1);
+    for (let i = 0; i < this.pendingInputs.length; i++) {
+      const message: ChatMessage = newChatMessage(
+        util.generateRandomUUID(true), 'user', this.pendingInputs[i]);
+      this.session.messages.splice(at + i, 0, message);
+    }
+    this.pendingInputs = [];
+    this.emit();
+  }
+
   private runStep(): void {
     if (this.cancelled || !this.running) {
       this.finish();
@@ -230,6 +276,12 @@ export class AgentRuntime {
       this.finish();
       return;
     }
+
+    // Steer / background input is inserted before this step's assistant
+    // placeholder, so it lands after the previous tool results and is part of
+    // the request that is about to be built.
+    this.drainPendingInputs();
+    this.currentTool = '';
 
     const history: ChatMessage[] = this.session.messages.slice(
       0, this.session.messages.length - 1
@@ -340,7 +392,9 @@ export class AgentRuntime {
       } else if (textOf(assistant).length === 0) {
         appendText(assistant, '（模型没有返回内容）');
       }
-      this.finish();
+      // A steer that arrived while this turn was streaming keeps the loop
+      // alive instead of being reported as missed.
+      this.finish(true);
       return;
     }
 
@@ -393,6 +447,7 @@ export class AgentRuntime {
     for (let i = 0; i < calls.length; i++) {
       const call: MessagePart = calls[i];
       call.status = TOOL_RUNNING;
+      this.currentTool = call.toolName;
       const toolStartedAt: number = Date.now();
       this.log(EVENT_TOOL_START, LOG_INFO, this.step, call.toolName, true, 0, '');
       const repaired = repairToolArguments(call.argumentsText);
@@ -593,12 +648,25 @@ export class AgentRuntime {
     this.callbacks.onUpdate(this.session.messages.slice(), this.running);
   }
 
-  private finish(): void {
+  /**
+   * `continueForSteer` is set only when a model turn ended normally. A steer
+   * that arrived too late to be part of that turn restarts the loop instead of
+   * being dropped; cancellation, errors and the turn cap always settle.
+   */
+  private finish(continueForSteer: boolean = false): void {
     if (this.finished) {
+      return;
+    }
+    if (continueForSteer && !this.cancelled && this.pendingInputs.length > 0 &&
+      this.step < this.maxTurns) {
+      this.beginAssistant();
+      this.emit();
+      this.runStep();
       return;
     }
     this.finished = true;
     this.running = false;
+    this.currentTool = '';
     this.clearFlush();
     if (this.lastAssistant !== null) {
       this.lastAssistant.streaming = false;

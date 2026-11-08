@@ -4,6 +4,7 @@ import {
   OPENCODE_GO_BASE,
   ProviderPreset,
   SandboxMode,
+  clampContextBudget,
   clampMaxTurns,
   cloneSettings,
   defaultSettings
@@ -40,6 +41,7 @@ export struct SettingsSheet {
   @State sandboxUrl: string = '';
   @State sandboxToken: string = '';
   @State maxTurnsText: string = '200';
+  @State contextBudgetText: string = '60000';
   @State loggingEnabled: boolean = false;
   @State memoryEnabled: boolean = false;
 
@@ -58,6 +60,7 @@ export struct SettingsSheet {
     this.sandboxUrl = copy.sandboxUrl;
     this.sandboxToken = copy.sandboxToken;
     this.maxTurnsText = copy.maxAgentTurns.toString();
+    this.contextBudgetText = copy.contextBudgetChars.toString();
     this.loggingEnabled = copy.loggingEnabled;
     this.memoryEnabled = copy.memoryEnabled;
   }
@@ -95,6 +98,7 @@ export struct SettingsSheet {
       sandboxUrl: this.sandboxUrl.trim(),
       sandboxToken: this.sandboxToken.trim(),
       maxAgentTurns: clampMaxTurns(Number(this.maxTurnsText)),
+      contextBudgetChars: clampContextBudget(Number(this.contextBudgetText)),
       loggingEnabled: this.loggingEnabled,
       memoryEnabled: this.memoryEnabled
     };
@@ -479,6 +483,33 @@ export struct SettingsSheet {
               .width('100%')
 
               Text('默认 200。达到上限后本轮结束，已完成的上下文与工具结果会保留，继续发送消息即可接着执行。')
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+                .lineHeight(14)
+                .width('100%')
+
+              Row({ space: 10 }) {
+                Text('上下文预算')
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width(84)
+                TextInput({ text: this.contextBudgetText })
+                  .layoutWeight(1)
+                  .height(38)
+                  .fontSize(12)
+                  .type(InputType.Number)
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                  .onChange((value: string) => {
+                    this.contextBudgetText = value;
+                  })
+                Text('字符')
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_tertiary'))
+              }
+              .width('100%')
+
+              Text('默认 60000。估算请求超过预算时，较早的工具结果会在发送前被截断；界面与已保存的记录不受影响。可用 /compact 让模型生成摘要。')
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)

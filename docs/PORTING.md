@@ -27,6 +27,8 @@
 | 重新生成 / 编辑重发 | `AgentRuntime.regenerate()` | 截断到目标 user 消息后复用同一循环 |
 | OpenMinis 持久记忆 | `core/Memory.ets` + `service/MemoryStore.ets` | `GLOBAL.md` + 每日文件、关键词检索、系统提示注入 |
 | 会话全文搜索 | `core/Types.ets#searchableText` | 预计算小写文本块，侧栏 `indexOf` |
+| OpenMinis `/compact` | `core/ContextBudget.ets` + `ChatApi.summarizeConversation()` | 按用户轮次切分，模型摘要替换旧轮次 |
+| 工具结果预算裁剪 | `core/ContextBudget.ets#fitHistoryToBudget` | 只改请求副本，界面与存储保持完整 |
 | 本地文件 / shell 工具 | `service/LocalToolRuntime.ets`、`RemoteToolRuntime.ets` | 应用工作区或远程 HTTP 服务，共用 `ToolRuntime` |
 | OpenCode Go 模型发现 | `ChatApi.fetchModelIds()` | 规范基址 `/zen/go/v1/models`；旧基址自动换算 |
 | Android `preferences` / DB | `service/LocalStore.ets` | 单库 JSON；后续可换 RDB |

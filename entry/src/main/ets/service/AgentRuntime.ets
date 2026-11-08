@@ -17,6 +17,7 @@ import {
 } from '../core/Types';
 import { TokenUsage, ToolCallDelta } from '../core/SseParser';
 import { ToolResult, ToolRuntime } from '../core/ToolTypes';
+import { BudgetResult, fitHistoryToBudget } from '../core/ContextBudget';
 import { truncateText } from '../core/Workspace';
 import {
   EVENT_AGENT_FINISH,
@@ -210,6 +211,11 @@ export class AgentRuntime {
     const history: ChatMessage[] = this.session.messages.slice(
       0, this.session.messages.length - 1
     );
+    // Shrink old tool results for this request only. The stored transcript and
+    // the UI keep the full output; the model sees a budgeted view.
+    const budgeted: BudgetResult = fitHistoryToBudget(
+      history, this.settings.contextBudgetChars
+    );
     this.accumulators.clear();
     const definitions = this.settings.toolsEnabled ? this.tools.definitions() : [];
     const memoryContext: string = this.settings.memoryEnabled
@@ -219,13 +225,14 @@ export class AgentRuntime {
     this.log(
       EVENT_MODEL_START, LOG_INFO, this.step, '', true, 0,
       'messages=' + history.length.toString() +
-        ' tools=' + definitions.length.toString()
+        ' tools=' + definitions.length.toString() +
+        ' trimmed=' + budgeted.trimmedParts.toString()
     );
 
     const handle: ChatStreamHandle = startChatStream(
       this.settings,
       this.session.meta.id,
-      history,
+      budgeted.messages,
       definitions,
       memoryContext,
       {

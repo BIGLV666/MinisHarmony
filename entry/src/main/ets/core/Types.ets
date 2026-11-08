@@ -46,6 +46,8 @@ export interface AppSettings {
   sandboxToken: string;
   /** Upper bound for model/tool round trips in one user turn. */
   maxAgentTurns: number;
+  /** Character budget before old tool results are trimmed from requests. */
+  contextBudgetChars: number;
   /** Write structured, redacted event logs to the app sandbox. */
   loggingEnabled: boolean;
   /** Enable the persistent memory files and memory tools. */
@@ -55,6 +57,25 @@ export interface AppSettings {
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
 export const MIN_MAX_AGENT_TURNS: number = 1;
 export const MAX_MAX_AGENT_TURNS: number = 1000;
+
+export const DEFAULT_CONTEXT_BUDGET_CHARS: number = 60000;
+export const MIN_CONTEXT_BUDGET_CHARS: number = 4000;
+export const MAX_CONTEXT_BUDGET_CHARS: number = 400000;
+
+/** Clamp the request budget; invalid input falls back to the default. */
+export function clampContextBudget(value: number): number {
+  if (Number.isNaN(value) || !Number.isFinite(value)) {
+    return DEFAULT_CONTEXT_BUDGET_CHARS;
+  }
+  const rounded: number = Math.floor(value);
+  if (rounded < MIN_CONTEXT_BUDGET_CHARS) {
+    return MIN_CONTEXT_BUDGET_CHARS;
+  }
+  if (rounded > MAX_CONTEXT_BUDGET_CHARS) {
+    return MAX_CONTEXT_BUDGET_CHARS;
+  }
+  return rounded;
+}
 
 /** Clamp a user-entered turn budget; non-finite values fall back to the default. */
 export function clampMaxTurns(value: number): number {
@@ -236,6 +257,7 @@ export function defaultSettings(): AppSettings {
     sandboxUrl: '',
     sandboxToken: '',
     maxAgentTurns: DEFAULT_MAX_AGENT_TURNS,
+    contextBudgetChars: DEFAULT_CONTEXT_BUDGET_CHARS,
     loggingEnabled: false,
     memoryEnabled: false
   };
@@ -256,6 +278,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     sandboxUrl: source.sandboxUrl,
     sandboxToken: source.sandboxToken,
     maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
+    contextBudgetChars: clampContextBudget(source.contextBudgetChars),
     loggingEnabled: source.loggingEnabled === true,
     memoryEnabled: source.memoryEnabled === true
   };

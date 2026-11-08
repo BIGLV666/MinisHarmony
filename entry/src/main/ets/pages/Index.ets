@@ -17,7 +17,16 @@ import {
   textPart
 } from '../core/Types';
 import { ToolRuntime } from '../core/ToolTypes';
+import {
+  COMPACT_DEFAULT_KEEP_TURNS,
+  CompactPlan,
+  SUMMARY_TRANSCRIPT_LIMIT,
+  makeSummaryMessage,
+  planCompact,
+  transcriptForSummary
+} from '../core/ContextBudget';
 import { AgentRuntime } from '../service/AgentRuntime';
+import { SummaryResult, summarizeConversation } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
@@ -39,6 +48,7 @@ struct Index {
   @State currentId: string = '';
   @State draft: string = '';
   @State streaming: boolean = false;
+  @State compacting: boolean = false;
   @State isWide: boolean = true;
   @State mobileChat: boolean = false;
   @State query: string = '';
@@ -332,6 +342,10 @@ struct Index {
     if (text.length === 0 || this.streaming) {
       return;
     }
+    if (this.compacting) {
+      this.toast('正在压缩上下文，请稍候');
+      return;
+    }
     if (text.startsWith('/')) {
       this.handleCommand(text);
       return;
@@ -487,6 +501,52 @@ struct Index {
   }
 
   /**
+   * Replace old turns with a model-written summary. The recent turns are kept
+   * verbatim, so tool results from the current task stay available.
+   */
+  private async compactSession(): Promise<void> {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    if (this.compacting) {
+      this.toast('正在压缩上下文');
+      return;
+    }
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return;
+    }
+    const plan: CompactPlan | null =
+      planCompact(session.messages, COMPACT_DEFAULT_KEEP_TURNS);
+    if (plan === null) {
+      this.toast('对话还太短，或最近几轮已覆盖全部内容');
+      return;
+    }
+    const transcript: string =
+      transcriptForSummary(plan.head, SUMMARY_TRANSCRIPT_LIMIT);
+    this.compacting = true;
+    this.toast('正在生成摘要…');
+    const result: SummaryResult = await summarizeConversation(
+      this.settings, session.meta.id, transcript
+    );
+    this.compacting = false;
+    if (!result.ok) {
+      this.toast('压缩失败：' + result.message);
+      return;
+    }
+    const summary: ChatMessage =
+      makeSummaryMessage(util.generateRandomUUID(true), result.text);
+    session.messages = [summary].concat(plan.tail);
+    session.meta.messageCount = session.messages.length;
+    session.meta.updatedAt = Date.now();
+    this.messages = session.messages.slice();
+    this.refreshSessions();
+    this.persistNow();
+    this.toast('已压缩 ' + plan.head.length.toString() + ' 条早期消息');
+  }
+
+  /**
    * Local slash commands. They never reach the model, which mirrors the way
    * OpenMinis handles /clear and friends.
    */
@@ -497,13 +557,18 @@ struct Index {
       this.createChat();
       return;
     }
+    if (command === '/compact') {
+      this.compactSession();
+      return;
+    }
     if (command === '/help') {
       this.appendLocalNotice(
         '可用命令：\n' +
           '/new — 新建对话\n' +
           '/clear — 清空当前对话\n' +
+          '/compact — 用模型摘要较早的对话，保留最近几轮\n' +
           '/help — 显示本帮助\n\n' +
-          '/compact（上下文压缩）尚未实现；长对话可以先复制会话再清空。'
+          '长对话接近上下文预算时，发送前会自动裁剪较早的工具结果。'
       );
       return;
     }

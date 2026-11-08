@@ -42,6 +42,7 @@ copyCore('Workspace');
 copyCore('EventLog');
 copyCore('EditPatch');
 copyCore('Memory');
+copyCore('ContextBudget', ['Types']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -54,6 +55,18 @@ function markTypeOnly(name, from, names) {
 }
 
 markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'ToolProperty']);
+
+{
+  const file = join(tmp, 'ContextBudget.mts');
+  const source = readFileSync(file, 'utf8');
+  writeFileSync(
+    file,
+    source.replace(
+      'import {\n  ChatMessage,\n  MessagePart,\n  PART_TOOL_CALL,',
+      "import type { ChatMessage, MessagePart } from './Types.mts';\nimport {\n  PART_TOOL_CALL,"
+    )
+  );
+}
 
 {
   const file = join(tmp, 'ToolProtocol.mts');
@@ -77,6 +90,7 @@ const log = await import(pathToFileURL(join(tmp, 'EventLog.mts')).href);
 const edit = await import(pathToFileURL(join(tmp, 'EditPatch.mts')).href);
 const catalog = await import(pathToFileURL(join(tmp, 'ToolCatalog.mts')).href);
 const memory = await import(pathToFileURL(join(tmp, 'Memory.mts')).href);
+const budget = await import(pathToFileURL(join(tmp, 'ContextBudget.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -526,4 +540,56 @@ test('rewind keeps the checkpoint and rejects last or missing ids', () => {
   assert.equal(types.rewindMessages([a, b, c], 'c'), null);
   assert.equal(types.rewindMessages([a, b, c], 'missing'), null);
   assert.equal(types.rewindMessages([a], 'a'), null);
+});
+
+test('compact plans keep the newest user turns and align on a user message', () => {
+  const messages = [];
+  for (let round = 0; round < 5; round++) {
+    messages.push(types.newChatMessage('u' + round, 'user', 'q' + round));
+    messages.push(types.newChatMessage('a' + round, 'assistant', 'a' + round));
+  }
+  const plan = budget.planCompact(messages, 2);
+  assert.notEqual(plan, null);
+  assert.equal(plan.head.length, 6);
+  assert.equal(plan.tail.length, 4);
+  assert.equal(plan.tail[0].role, 'user');
+  assert.equal(plan.tail[0].id, 'u3');
+  assert.equal(budget.planCompact(messages.slice(0, 4), 2), null);
+});
+
+test('summary transcript includes tools and respects the character cap', () => {
+  const user = types.newChatMessage('u', 'user', '目标：修复登录');
+  const assistant = types.newChatMessage('a', 'assistant', '');
+  const call = types.toolCallPart('c1', 'read_file', '{"path":"a.ts"}');
+  call.resultText = 'R'.repeat(1000);
+  assistant.parts.push(call);
+  const text = budget.transcriptForSummary([user, assistant], 5000);
+  assert.match(text, /用户：目标：修复登录/);
+  assert.match(text, /\[工具 read_file\]/);
+  const capped = budget.transcriptForSummary([user, assistant], 80);
+  assert.equal(capped.length < 160, true);
+  const summary = budget.makeSummaryMessage('s1', '要点');
+  assert.equal(summary.role, 'system');
+  assert.match(types.textOf(summary), /摘要/);
+});
+
+test('history budget trims old tool results without touching the transcript', () => {
+  const oldUser = types.newChatMessage('u1', 'user', 'go');
+  const oldWork = types.newChatMessage('a1', 'assistant', '');
+  const call = types.toolCallPart('c1', 'read_file', '{}');
+  call.resultText = 'x'.repeat(2000);
+  call.status = types.TOOL_DONE;
+  oldWork.parts.push(call);
+  const messages = [oldUser, oldWork];
+  for (let i = 0; i < 6; i++) {
+    messages.push(types.newChatMessage('m' + i, 'user', 'filler'));
+  }
+  const result = budget.fitHistoryToBudget(messages, 1000, 6);
+  assert.equal(result.trimmedParts, 1);
+  assert.equal(oldWork.parts[0].resultText.length, 2000);
+  assert.equal(result.messages[1].parts[0].resultText.length < 800, true);
+  assert.match(result.messages[1].parts[0].resultText, /较早的工具结果已省略/);
+  const untouched = budget.fitHistoryToBudget(messages, 100000, 6);
+  assert.equal(untouched.trimmedParts, 0);
+  assert.equal(untouched.messages, messages);
 });

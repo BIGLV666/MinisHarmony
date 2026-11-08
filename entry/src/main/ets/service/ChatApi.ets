@@ -72,6 +72,38 @@ export interface ModelsResult {
   message: string;
 }
 
+interface SummaryMessage {
+  role: string;
+  content: string;
+}
+
+interface SummaryRequestBody {
+  model: string;
+  messages: SummaryMessage[];
+  stream: boolean;
+  temperature: number;
+  max_tokens: number;
+}
+
+interface SummaryChoiceMessage {
+  content?: string;
+}
+
+interface SummaryChoice {
+  message?: SummaryChoiceMessage;
+}
+
+interface SummaryEnvelope {
+  choices?: SummaryChoice[];
+  error?: OpenAiErrorDetail;
+}
+
+export interface SummaryResult {
+  ok: boolean;
+  text: string;
+  message: string;
+}
+
 /**
  * Handle for an in-flight stream. Cancelling destroys the HTTP request and
  * suppresses every subsequent callback; the partial answer already delivered
@@ -364,6 +396,102 @@ export function startChatStream(
   }
 
   return handle;
+}
+
+/**
+ * Ask the model to summarise an old transcript for `/compact`.
+ *
+ * This is a non-streaming request: the caller blocks until the summary is
+ * complete, then replaces the old turns with one system message. It reuses the
+ * same session id (so OpenCode routing/cache stays stable) but sends no tools.
+ */
+export async function summarizeConversation(
+  settings: AppSettings,
+  sessionId: string,
+  transcript: string
+): Promise<SummaryResult> {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const apiKey: string = settings.apiKey.trim();
+  if (baseUrl.length === 0) {
+    return { ok: false, text: '', message: '请先在设置中填写 API 地址' };
+  }
+  if (apiKey.length === 0) {
+    return { ok: false, text: '', message: '请先在设置中填写 API Key' };
+  }
+  if (transcript.trim().length === 0) {
+    return { ok: false, text: '', message: '没有可压缩的内容' };
+  }
+
+  const body: SummaryRequestBody = {
+    model: settings.modelId,
+    messages: [
+      {
+        role: 'system',
+        content: '你是对话压缩器。把给出的对话压缩成简洁的中文摘要，保留：' +
+          '用户目标与约束、已确认的事实与决定、改过的文件与命令、未完成事项。' +
+          '不要编造，不要加开场白，直接输出摘要正文。'
+      },
+      {
+        role: 'user',
+        content: transcript
+      }
+    ],
+    stream: false,
+    temperature: 0.2,
+    max_tokens: 1500
+  };
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Authorization': 'Bearer ' + apiKey,
+    'User-Agent': USER_AGENT
+  };
+  if (shouldAttachSessionHeader(baseUrl, sessionId)) {
+    headers[OPENCODE_SESSION_HEADER] = sessionId;
+  }
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.POST,
+    header: headers,
+    extraData: JSON.stringify(body),
+    connectTimeout: 20000,
+    readTimeout: 180000,
+    usingCache: false,
+    expectDataType: http.HttpDataType.STRING
+  };
+
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(
+      chatCompletionsUrl(baseUrl), options
+    );
+    const raw: string = response.result as string;
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      return {
+        ok: false,
+        text: '',
+        message: httpErrorText(response.responseCode, raw)
+      };
+    }
+    const envelope: SummaryEnvelope = JSON.parse(raw) as SummaryEnvelope;
+    if (envelope.choices === undefined || envelope.choices.length === 0) {
+      return { ok: false, text: '', message: '模型没有返回摘要' };
+    }
+    const choice: SummaryChoice = envelope.choices[0];
+    if (choice.message === undefined || choice.message.content === undefined) {
+      return { ok: false, text: '', message: '模型没有返回摘要' };
+    }
+    const text: string = choice.message.content.trim();
+    if (text.length === 0) {
+      return { ok: false, text: '', message: '模型返回了空摘要' };
+    }
+    return { ok: true, text: text, message: '已生成摘要' };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return { ok: false, text: '', message: describeNetworkError(error) };
+  } finally {
+    request.destroy();
+  }
 }
 
 /**

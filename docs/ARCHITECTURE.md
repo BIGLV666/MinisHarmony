@@ -34,6 +34,7 @@ pages/Index.ets
               ToolCatalog       内置工具定义
               ToolProtocol      内部 parts ↔ OpenAI tool_calls
               EditPatch         file_edit 的唯一锚点 / replace_all
+              ContextBudget     压缩切分、摘要文本、请求前预算裁剪
               Memory            记忆条目、关键词检索、上下文拼装
               EventLog          日志事件、脱敏、JSONL 文件名
               Workspace         相对路径规范化、路径 jail、截断
@@ -206,6 +207,7 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
     "sandboxUrl": "",
     "sandboxToken": "",
     "maxAgentTurns": 200,
+    "contextBudgetChars": 60000,
     "loggingEnabled": false,
     "memoryEnabled": false
   },
@@ -278,6 +280,22 @@ chunk 里返回 `usage`，且该 chunk 常常是 `choices: []` —— `SseParser
 持久化，所以重启后每条回复的 `↑X ↓Y` 仍可见；顶栏取最近一条有 token 的消息显示
 上下文大小。上游不返回 usage 时三个字段保持 0，UI 不显示。
 
+## 上下文预算与压缩
+
+两个独立机制，都在 `core/ContextBudget.ets`（纯函数，可 Node 测试）：
+
+1. **发送前裁剪**：`fitHistoryToBudget()` 估算字符数，超过
+   `settings.contextBudgetChars` 时克隆一份历史，只截断**较早**（最后 6 条之外）
+   且超过 800 字符的工具结果。存储中的消息与 UI 不变，所以工具卡片仍可展开查看
+   完整输出；下一轮请求会重新计算。
+2. **显式压缩 `/compact`**：`planCompact()` 以用户消息为边界，保留最近 3 个
+   用户轮次，其余交给 `ChatApi.summarizeConversation()`（非流式、无工具、
+   同会话 ID）。返回摘要后用 `makeSummaryMessage()` 生成一条 `system` 消息，
+   与最近轮次组成新历史。失败时原历史不变。
+
+`transcriptForSummary()` 对工具参数/结果分别按 300 / 600 字符裁剪，总长上限
+24000 字符，避免摘要请求本身超限。
+
 ## 持久记忆
 
 记忆是**本机**能力，默认关闭，开启后：
@@ -327,6 +345,6 @@ filesDir/memory/
 
 ## 可测试性
 
-`core/` 十一个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 十二个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

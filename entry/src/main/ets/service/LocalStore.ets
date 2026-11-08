@@ -14,6 +14,7 @@ import {
   TOOL_ERROR,
   TOOL_PENDING,
   TOOL_RUNNING,
+  clampContextBudget,
   clampMaxTurns,
   defaultSettings,
   reasoningPart,
@@ -79,6 +80,7 @@ function normalizeSettings(source: AppSettings): AppSettings {
     sandboxUrl: source.sandboxUrl !== undefined ? source.sandboxUrl : '',
     sandboxToken: source.sandboxToken !== undefined ? source.sandboxToken : '',
     maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
+    contextBudgetChars: clampContextBudget(source.contextBudgetChars),
     loggingEnabled: source.loggingEnabled === true,
     memoryEnabled: source.memoryEnabled === true
   };

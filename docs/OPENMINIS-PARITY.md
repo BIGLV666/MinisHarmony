@@ -133,8 +133,8 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 照片 / 相机 | `photos` | 系统相册 `PhotoViewPicker` 多选（最多 4 张、10 MB），复制到应用私有目录；相机拍摄未接 | P2 |
 | - [ ] | 定位 | `location` | `LocationKit` | P3 |
 | - [ ] | 天气 | `weather` | 第三方 API | P3 |
-| - [ ] | 语音识别 | `speech` / ASR | `CoreSpeechKit` | P2 |
-| - [ ] | 朗读 TTS | `speak` | `CoreSpeechKit` | P2 |
+| - [ ] | 语音识别 | `speech` / ASR | 当前公共 OpenHarmony SDK 不含 `CoreSpeechKit`，接入需华为 HarmonyOS SDK 与真机验证 | P2 |
+| - [ ] | 朗读 TTS | `speak` | 同上：`CoreSpeechKit` 不在公共 SDK 中，暂无法编译接入 | P2 |
 | - [ ] | 无障碍自动化 | Android AccessibilityService | 无对等能力 | - |
 | - [ ] | Shizuku 特权 | Android 专用 | 不适用 | - |
 | - [ ] | HealthKit / HomeKit / NFC | iOS 专用 | 不适用 | - |
@@ -176,7 +176,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [ ] | 应用图标切换 | 备用图标 | 鸿蒙不支持动态图标 | - |
 | - [ ] | 快捷指令 / 小组件 | iOS Widget / Shortcuts | 服务卡片 | P3 |
 | - [x] | 回车键行为 | Enter 发送或换行 | 设置项「Enter 键发送」；输入框切换 `EnterKeyType.Send` / `NEW_LINE`，`onSubmit` 仅在可发送时触发 | P2 |
-| - [~] | 常亮 / 自动聚焦 | 小选项集合 | 生成期间 `setWindowKeepScreenOn(true)`，结束/停止恢复；输入框自动聚焦未做 | P3 |
+| - [x] | 常亮 / 自动聚焦 | 小选项集合 | 生成期间 `setWindowKeepScreenOn(true)`，结束/停止恢复；进入对话后自动聚焦输入框（350 ms 后布局完成再请求焦点） | P3 |
 | - [x] | 日志查看器 UI | 应用内查看 | 设置页内嵌最近 200 条，格式化为时间/事件/耗时/详情，可收起 | P2 |
 
 ## 11. 安全 / 隐私 / 诊断
@@ -257,6 +257,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
 | 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |
 | 2026-11-08 | 逐模型参数覆盖 | `core/ModelOverride.ets` + 设置页「逐模型参数」：按模型 ID 精确匹配，覆盖 temperature / top_p / max_tokens，合并额外请求头与 extra_body；未知模型或全局参数不受影响；坏 JSON 保存时拒绝；57 项测试通过 |
+| 2026-11-08 | 输入框自动聚焦 | `ChatView` 首次布局后 350 ms 调用 `focusControl.requestFocus('composerInput')`，失败静默；与生成期间常亮一起补齐该项 |
 | 2026-11-08 | 接收应用分享 | `core/SharePayload.ets` 兼容 `ability.params.content` 等键与 `ability.params.stream` 文件列表；`EntryAbility` 冷/热启动都接收，读文本文件上限 512 KB；内容只填入输入框，不自动发送；62 项测试通过 |
 | 2026-11-08 | 代码语法高亮 | `core/CodeHighlight.ets` 轻量分词：C 系/JS/Python/Shell/JSON/Go/Rust 关键字、字符串、注释、数字与函数调用；未知语言或超 20k 字符退纯文本；浅/深色各一组配色；61 项测试通过 |
 | 2026-11-08 | 整库备份 / 恢复 | 侧栏「备份整库」导出 `minis-backup-日期.json`：全部会话 + 设置快照，密钥类字段（API Key、沙箱 Token、MCP/模型请求头）写盘前清空；「导入」同时识别备份与普通会话包，恢复设置时保留本机密钥；无加密；60 项测试通过 |

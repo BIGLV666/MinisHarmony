@@ -78,6 +78,17 @@ export struct ChatView {
     return '';
   }
 
+  aboutToAppear(): void {
+    // Focus after the first layout pass so the keyboard follows the composer.
+    setTimeout(() => {
+      try {
+        focusControl.requestFocus('composerInput');
+      } catch (e) {
+        // The input may not be attached yet; the user can tap it normally.
+      }
+    }, 350);
+  }
+
   onMessagesChanged(): void {
     setTimeout(() => {
       try {
@@ -277,6 +288,7 @@ export struct ChatView {
             .onClick(() => this.onPickImage())
         }
         TextArea({ text: this.draft, placeholder: '问点什么…' })
+          .id('composerInput')
           .layoutWeight(1)
           .constraintSize({ minHeight: 42, maxHeight: 150 })
           .fontSize(scaleFont(15, this.fontScale))

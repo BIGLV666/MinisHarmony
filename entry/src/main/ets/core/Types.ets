@@ -27,6 +27,15 @@ export const TOOL_ERROR: string = 'error';
 
 export type ProviderPreset = 'opencode' | 'custom';
 export type SandboxMode = 'local' | 'remote';
+/** Request-level reasoning effort; `off` omits the field entirely. */
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
+
+export function normalizeThinkingLevel(value: string | undefined): ThinkingLevel {
+  if (value === 'low' || value === 'medium' || value === 'high') {
+    return value;
+  }
+  return 'off';
+}
 
 export interface AppSettings {
   preset: ProviderPreset;
@@ -56,6 +65,8 @@ export interface AppSettings {
   memoryEnabled: boolean;
   /** Keep a running reply alive when the app moves to the background. */
   backgroundEnabled: boolean;
+  /** Sent as `reasoning_effort` when not `off`. */
+  thinkingLevel: ThinkingLevel;
 }
 
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
@@ -265,7 +276,8 @@ export function defaultSettings(): AppSettings {
     contextBudgetChars: DEFAULT_CONTEXT_BUDGET_CHARS,
     loggingEnabled: false,
     memoryEnabled: false,
-    backgroundEnabled: true
+    backgroundEnabled: true,
+    thinkingLevel: 'off'
   };
 }
 
@@ -288,7 +300,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     contextBudgetChars: clampContextBudget(source.contextBudgetChars),
     loggingEnabled: source.loggingEnabled === true,
     memoryEnabled: source.memoryEnabled === true,
-    backgroundEnabled: source.backgroundEnabled !== false
+    backgroundEnabled: source.backgroundEnabled !== false,
+    thinkingLevel: normalizeThinkingLevel(source.thinkingLevel)
   };
 }
 

@@ -106,7 +106,8 @@ export struct SettingsSheet {
       loggingEnabled: this.loggingEnabled,
       memoryEnabled: this.memoryEnabled,
       imageToolsEnabled: this.imageToolsEnabled,
-      backgroundEnabled: this.backgroundEnabled
+      backgroundEnabled: this.backgroundEnabled,
+      thinkingLevel: this.settings.thinkingLevel
     };
     return next;
   }

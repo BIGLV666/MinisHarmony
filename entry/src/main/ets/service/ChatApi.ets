@@ -53,6 +53,8 @@ interface ChatRequestBody {
   stream_options?: StreamOptions;
   temperature?: number;
   max_tokens?: number;
+  /** Only sent when the user opted into thinking via /thinking. */
+  reasoning_effort?: string;
   tools?: ApiToolDefinition[];
   tool_choice?: string;
 }
@@ -232,6 +234,9 @@ export function startChatStream(
     temperature: settings.temperature,
     max_tokens: settings.maxTokens
   };
+  if (settings.thinkingLevel !== 'off') {
+    body.reasoning_effort = settings.thinkingLevel;
+  }
   if (tools.length > 0) {
     body.tools = buildToolDefinitions(tools);
     body.tool_choice = 'auto';

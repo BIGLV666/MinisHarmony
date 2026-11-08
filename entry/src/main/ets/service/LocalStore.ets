@@ -19,6 +19,7 @@ import {
   clampMaxTurns,
   cloneSettings,
   defaultSettings,
+  normalizeThinkingLevel,
   reasoningPart,
   textPart
 } from '../core/Types';
@@ -86,7 +87,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     contextBudgetChars: clampContextBudget(source.contextBudgetChars),
     loggingEnabled: source.loggingEnabled === true,
     memoryEnabled: source.memoryEnabled === true,
-    backgroundEnabled: source.backgroundEnabled !== false
+    backgroundEnabled: source.backgroundEnabled !== false,
+    thinkingLevel: normalizeThinkingLevel(source.thinkingLevel)
   };
 }
 

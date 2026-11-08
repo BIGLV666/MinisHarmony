@@ -33,7 +33,7 @@
 | - [x] | token 用量显示 | 每条回复的输入/输出 token | 解析流式 `usage` 并持久化到消息 | P0 |
 | - [x] | 上下文压力提示 | 接近窗口上限变色 | 顶栏显示 `上下文 12.3k`（最近一次 prompt+completion） | P0 |
 | - [x] | 失败重试 | 一键重发上一条 | 错误回复显示「重试」，复用重新生成 | P1 |
-| - [~] | 斜杠命令 | `/clear` `/compact` `/memory` `/thinking` | 已做 `/new` `/clear` `/compact` `/help`；`/memory` `/thinking` 未做 | P1 |
+| - [x] | 斜杠命令 | `/clear` `/compact` `/memory` `/thinking` | `/new` `/clear` `/compact` `/memory` `/thinking` `/help`；记忆开关为全局而非每会话，思考用请求级 `reasoning_effort`（无模型元数据） | P1 |
 | - [ ] | 消息内图片预览 | 附件缩略图、点开大图 | 依赖附件功能 | P2 |
 | - [ ] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | 当前仅基础 Markdown | P2 |
 | - [ ] | 消息内链接点击 | 内置浏览器打开 | `Want` 拉起系统浏览器 | P2 |
@@ -227,3 +227,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 导出 Markdown | 长按会话「导出为 Markdown」，系统文档选择器选择位置；38 项测试通过 |
 | 2026-11-08 | 后台继续生成 | `KEEP_BACKGROUND_RUNNING` + `backgroundModes: dataTransfer`；生成开始/结束成对启停长时任务，失败静默回退 |
 | 2026-11-08 | `read_image` 视觉输入 | 工作区图片经 `imageDataUrl()` 转 data URL，`role:"tool"` 后紧跟合成 user 图片消息；5 MB 上限、编码缓存、默认关闭；39 项测试通过 |
+| 2026-11-08 | `/memory` `/thinking` | 记忆开关即时生效并落盘；思考在 off/medium 间切换，开启时请求携带 `reasoning_effort` |

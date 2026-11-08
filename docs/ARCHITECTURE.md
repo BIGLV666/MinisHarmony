@@ -357,6 +357,18 @@ filesDir/memory/
 `fileSuffixChoices` 限定 `.md`），再用 `fileIo` 写入返回的 URI。因此不需要
 申请宽泛的存储权限，也不会上传到应用之外，除非用户自己选择云盘目录。
 
+## 斜杠命令与思考档位
+
+`Index.handleCommand()` 在发送前拦截以 `/` 开头的输入。`/new` `/clear` `/compact`
+`/help` 是本地操作；`/memory` 翻转 `settings.memoryEnabled` 并立即落盘；
+`/thinking` 在 `off` 与 `medium` 之间切换 `settings.thinkingLevel`。
+
+`thinkingLevel` 不为 `off` 时，`ChatApi` 在请求体里带 `reasoning_effort`
+（`low` / `medium` / `high`）。这是一个通用 OpenAI 兼容字段，不是所有模型都支持：
+本项目没有 models.dev 那样的模型能力元数据，所以不会偷偷发送，只有用户显式输入
+`/thinking` 才会开启；不支持时再次输入即可关闭。关闭只会省略字段，无法阻止那些
+服务端默认就推理的模型继续返回 `reasoning_content`。
+
 ## 视觉输入
 
 `read_image`（默认关闭，设置里需显式开启）只检查路径、格式与大小，最多 5 MB。

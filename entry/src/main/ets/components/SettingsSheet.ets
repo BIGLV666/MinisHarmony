@@ -118,6 +118,7 @@ export struct SettingsSheet {
   @State loggingEnabled: boolean = false;
   @State memoryEnabled: boolean = false;
   @State imageToolsEnabled: boolean = false;
+  @State imageGenEnabled: boolean = false;
   @State clipboardToolsEnabled: boolean = false;
   @State backgroundEnabled: boolean = true;
   @State enterToSend: boolean = false;
@@ -175,6 +176,7 @@ export struct SettingsSheet {
     this.loggingEnabled = copy.loggingEnabled;
     this.memoryEnabled = copy.memoryEnabled;
     this.imageToolsEnabled = copy.imageToolsEnabled;
+    this.imageGenEnabled = copy.imageGenEnabled;
     this.clipboardToolsEnabled = copy.clipboardToolsEnabled;
     this.backgroundEnabled = copy.backgroundEnabled;
     this.enterToSend = copy.enterToSend;
@@ -310,6 +312,7 @@ export struct SettingsSheet {
       loggingEnabled: this.loggingEnabled,
       memoryEnabled: this.memoryEnabled,
       imageToolsEnabled: this.imageToolsEnabled,
+      imageGenEnabled: this.imageGenEnabled,
       clipboardToolsEnabled: this.clipboardToolsEnabled,
       confirmWriteTools: this.confirmWriteTools,
       backgroundEnabled: this.backgroundEnabled,
@@ -1552,6 +1555,29 @@ export struct SettingsSheet {
                     .selectedColor($r('app.color.accent'))
                     .onChange((on: boolean) => {
                       this.imageToolsEnabled = on;
+                    })
+                }
+                .width('100%')
+                .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(11)
+
+                Row({ space: 10 }) {
+                  Column({ space: 3 }) {
+                    Text('允许生成图片')
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_primary'))
+                    Text('开启后模型可调用 generate_image，请求 OpenAI 兼容的 /images/generations；Anthropic / Gemini 原生协议不可用。')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(14)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  Toggle({ type: ToggleType.Switch, isOn: this.imageGenEnabled })
+                    .selectedColor($r('app.color.accent'))
+                    .onChange((on: boolean) => {
+                      this.imageGenEnabled = on;
                     })
                 }
                 .width('100%')

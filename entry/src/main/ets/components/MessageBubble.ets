@@ -191,6 +191,19 @@ export struct MessageBubble {
       .width('100%')
       .onClick(() => this.toggleTool(part))
 
+      // Generated or read images arrive as an attachment URI on the tool part.
+      if (part.uri.length > 0) {
+        Image('file://' + AttachmentStore.absolutePath(part.uri))
+          .width(180)
+          .height(180)
+          .objectFit(ImageFit.Cover)
+          .borderRadius(8)
+          .onClick(() => {
+            this.previewPath = AttachmentStore.absolutePath(part.uri);
+            this.previewOpen = true;
+          })
+      }
+
       if (this.isToolOpen(part)) {
         Text('参数')
           .fontSize(10)

@@ -68,6 +68,18 @@ export interface SubagentHandler {
   execute(request: SubagentRequest): Promise<ToolResult>;
 }
 
+/** One image-generation request, already validated by the caller. */
+export interface ImageGenRequest {
+  prompt: string;
+  size: string;
+  model: string;
+}
+
+/** Pluggable image generation so the tool runtime never holds API keys. */
+export interface ImageGenHandler {
+  generate(request: ImageGenRequest): Promise<ToolResult>;
+}
+
 /**
  * Optional capability behind `browser_use`. Implemented by a handler bound to
  * the hidden ArkWeb view; the runtime only advertises the tool when present.

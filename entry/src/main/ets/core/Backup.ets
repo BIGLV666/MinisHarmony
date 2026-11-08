@@ -147,6 +147,7 @@ export function parseBackupSettings(text: string): AppSettings | null {
   base.toolsEnabled = boolOr(raw.toolsEnabled, true);
   base.allowWriteTools = boolOr(raw.allowWriteTools, false);
   base.imageToolsEnabled = boolOr(raw.imageToolsEnabled, false);
+  base.imageGenEnabled = boolOr(raw.imageGenEnabled, false);
   base.clipboardToolsEnabled = boolOr(raw.clipboardToolsEnabled, false);
   base.confirmWriteTools = boolOr(raw.confirmWriteTools, false);
   base.sandboxMode = raw.sandboxMode === 'remote' ? 'remote' : 'local';

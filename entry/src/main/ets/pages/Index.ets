@@ -58,6 +58,7 @@ import {
 } from '../service/ExportService';
 import { BACKUP_MIN_PASSWORD, isEncryptedBackup } from '../core/BackupCrypto';
 import { decryptBackupText, DecryptOutcome } from '../service/BackupCrypto';
+import { SettingsImageGen } from '../service/ImageGen';
 import { AttachmentStore } from '../service/AttachmentStore';
 import { MemoryStore } from '../service/MemoryStore';
 import { SkillDoc, SkillCommand, matchSkillCommand } from '../core/SkillDoc';
@@ -1198,7 +1199,8 @@ struct Index {
         ),
         settings.disabledTools,
         settings.clipboardToolsEnabled,
-        this.browserTool
+        this.browserTool,
+        settings.imageGenEnabled ? new SettingsImageGen(settings) : null
       );
     }
     return new McpRuntime(base, settings.disabledTools);

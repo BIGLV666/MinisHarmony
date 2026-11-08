@@ -24,6 +24,7 @@ import {
 } from '../core/SubagentJob';
 import { AgentRuntime } from './AgentRuntime';
 import { LocalToolRuntime } from './LocalToolRuntime';
+import { SettingsImageGen } from './ImageGen';
 import { LocalStore } from './LocalStore';
 
 /** OpenMinis runs at most three subagents at once; the rest wait in a queue. */
@@ -319,7 +320,9 @@ export class SubagentRunner implements SubagentHandler {
       settings.imageToolsEnabled,
       nextRunner,
       settings.disabledTools,
-      settings.clipboardToolsEnabled
+      settings.clipboardToolsEnabled,
+      null,
+      settings.imageGenEnabled ? new SettingsImageGen(settings) : null
     );
 
     const runtime: AgentRuntime = new AgentRuntime(

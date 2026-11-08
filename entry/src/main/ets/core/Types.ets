@@ -70,6 +70,8 @@ export interface AppSettings {
   allowWriteTools: boolean;
   /** Expose read_image; only enable when the selected model accepts images. */
   imageToolsEnabled: boolean;
+  /** Expose generate_image, which calls /images/generations. */
+  imageGenEnabled: boolean;
   /** Allow the model to read and write the device clipboard. */
   clipboardToolsEnabled: boolean;
   /** Ask the user before every write_file / file_edit call. */
@@ -423,6 +425,7 @@ export function defaultSettings(): AppSettings {
     toolsEnabled: true,
     allowWriteTools: false,
     imageToolsEnabled: false,
+    imageGenEnabled: false,
     clipboardToolsEnabled: false,
     confirmWriteTools: false,
     sandboxMode: 'local',
@@ -514,6 +517,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     toolsEnabled: source.toolsEnabled,
     allowWriteTools: source.allowWriteTools,
     imageToolsEnabled: source.imageToolsEnabled === true,
+    imageGenEnabled: source.imageGenEnabled === true,
     clipboardToolsEnabled: source.clipboardToolsEnabled === true,
     confirmWriteTools: source.confirmWriteTools === true,
     sandboxMode: source.sandboxMode,

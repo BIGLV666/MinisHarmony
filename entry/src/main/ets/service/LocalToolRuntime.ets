@@ -4,6 +4,8 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import {
   BrowserHandler,
+  ImageGenHandler,
+  ImageGenRequest,
   SubagentHandler,
   SubagentRequest,
   ToolDefinition,
@@ -101,6 +103,12 @@ interface ReadSkillArgs {
   id?: string;
 }
 
+interface GenerateImageArgs {
+  prompt?: string;
+  size?: string;
+  model?: string;
+}
+
 function clamp(value: number, min: number, max: number): number {
   if (value < min) {
     return min;
@@ -164,6 +172,7 @@ export class LocalToolRuntime implements ToolRuntime {
   private disabledTools: string[];
   private clipboardEnabled: boolean;
   private browser: BrowserHandler | null;
+  private imageGen: ImageGenHandler | null;
   private imageCache: Map<string, string> = new Map();
 
   constructor(
@@ -174,7 +183,8 @@ export class LocalToolRuntime implements ToolRuntime {
     subagent: SubagentHandler | null = null,
     disabledTools: string[] = [],
     clipboardEnabled: boolean = false,
-    browser: BrowserHandler | null = null
+    browser: BrowserHandler | null = null,
+    imageGen: ImageGenHandler | null = null
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
@@ -184,6 +194,7 @@ export class LocalToolRuntime implements ToolRuntime {
     this.disabledTools = disabledTools;
     this.clipboardEnabled = clipboardEnabled;
     this.browser = browser;
+    this.imageGen = imageGen;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -224,6 +235,9 @@ export class LocalToolRuntime implements ToolRuntime {
         continue;
       }
       if (name === 'browser_use' && this.browser === null) {
+        continue;
+      }
+      if (name === 'generate_image' && this.imageGen === null) {
         continue;
       }
       available.push(all[i]);
@@ -288,6 +302,9 @@ export class LocalToolRuntime implements ToolRuntime {
         }
         return await this.browser.execute(argumentsJson);
       }
+      if (name === 'generate_image') {
+        return await this.generateImage(argumentsJson);
+      }
       return { ok: false, content: '未知工具：' + name };
     } catch (e) {
       const error: Error = e as Error;
@@ -333,6 +350,29 @@ export class LocalToolRuntime implements ToolRuntime {
     } catch (e) {
       return '';
     }
+  }
+
+  private async generateImage(argumentsJson: string): Promise<ToolResult> {
+    if (this.imageGen === null) {
+      return {
+        ok: false,
+        content: '图像生成未开启。请在设置 → 工具与沙箱中允许图像生成，并使用 OpenAI 兼容协议。'
+      };
+    }
+    const args: GenerateImageArgs = JSON.parse(argumentsJson) as GenerateImageArgs;
+    const prompt: string = args.prompt !== undefined ? args.prompt.trim() : '';
+    if (prompt.length === 0) {
+      return { ok: false, content: 'prompt 不能为空。' };
+    }
+    if (prompt.length > 4000) {
+      return { ok: false, content: 'prompt 太长（上限 4000 字符）。' };
+    }
+    const request: ImageGenRequest = {
+      prompt: prompt,
+      size: args.size !== undefined ? args.size : '',
+      model: args.model !== undefined ? args.model : ''
+    };
+    return await this.imageGen.generate(request);
   }
 
   private async runSubagent(argumentsJson: string): Promise<ToolResult> {

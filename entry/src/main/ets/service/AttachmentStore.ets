@@ -117,6 +117,36 @@ export class AttachmentStore {
     }
   }
 
+  /**
+   * Save bytes produced inside the app (e.g. a generated image). The caller
+   * picks the extension because the bytes carry no file name.
+   */
+  static saveBytes(bytes: Uint8Array, ext: string): AttachmentInfo | null {
+    if (AttachmentStore.dir.length === 0 || bytes.length === 0 ||
+      bytes.length > MAX_ATTACHMENT_BYTES) {
+      return null;
+    }
+    const mime: string = AttachmentStore.mimeFor(ext);
+    if (mime.length === 0) {
+      return null;
+    }
+    try {
+      const name: string = util.generateRandomUUID(true) + '.' + ext;
+      const exact: ArrayBuffer = new ArrayBuffer(bytes.length);
+      new Uint8Array(exact).set(bytes);
+      const file = fs.openSync(AttachmentStore.absolutePath(name),
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      try {
+        fs.writeSync(file.fd, exact);
+      } finally {
+        fs.closeSync(file);
+      }
+      return { name: name, mimeType: mime };
+    } catch (e) {
+      return null;
+    }
+  }
+
   /** Data URL used by the multimodal request builder. Empty on failure. */
   static dataUrl(uri: string, mimeType: string): string {
     const name: string = AttachmentStore.nameFromUri(uri);

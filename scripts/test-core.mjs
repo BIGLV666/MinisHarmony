@@ -64,6 +64,7 @@ copyCore('DeepLink');
 copyCore('Types', ['ModelOverride', 'McpProtocol']);
 copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
 copyCore('BackupCrypto', ['Backup', 'SessionExport']);
+copyCore('ImageGen', ['OpenCodeRules']);
 copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 copyCore('GeminiProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 
@@ -178,6 +179,7 @@ const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
 const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 const backupCrypto = await import(pathToFileURL(join(tmp, 'BackupCrypto.mts')).href);
+const imageGen = await import(pathToFileURL(join(tmp, 'ImageGen.mts')).href);
 const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts')).href);
 const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href);
 const latex = await import(pathToFileURL(join(tmp, 'Latex.mts')).href);
@@ -947,6 +949,10 @@ test('tool catalogue exposes file_edit with a safe schema', () => {
   assert.equal(subagent.parameters.properties.job_id.type, 'string');
   assert.equal(subagent.parameters.properties.wait.type, 'boolean');
   assert.equal(subagent.parameters.properties.label.type, 'string');
+  const imageTool = tools.find((tool) => tool.name === 'generate_image');
+  assert.notEqual(imageTool, undefined);
+  assert.deepEqual(imageTool.parameters.required, ['prompt']);
+  assert.equal(imageTool.parameters.properties.size.type, 'string');
   const readClipboard = tools.find((tool) => tool.name === 'clipboard_read');
   assert.notEqual(readClipboard, undefined);
   assert.deepEqual(readClipboard.parameters.required, []);
@@ -1429,6 +1435,37 @@ test('model fallback lists parse, trim and de-duplicate', () => {
   assert.deepEqual(types.modelChain('m', [' n ', 'm', 'n', '']), ['m', 'n']);
   assert.deepEqual(types.modelChain('  ', ['x']), ['x']);
   assert.deepEqual(types.modelChain('', []), []);
+});
+
+test('image generation builds compatible requests and parses responses', () => {
+  assert.equal(imageGen.imageGenEndpoint('https://api.example.com/v1/'),
+    'https://api.example.com/v1/images/generations');
+  assert.equal(imageGen.imageGenEndpoint('api.example.com/v1'),
+    'https://api.example.com/v1/images/generations');
+  assert.equal(imageGen.imageGenEndpoint(''), '');
+  assert.equal(imageGen.normalizeImageSize('1792x1024'), '1792x1024');
+  assert.equal(imageGen.normalizeImageSize('512x512'), '1024x1024');
+  const body = JSON.parse(imageGen.buildImageGenBody('img-1', 'a "cat"', 'bad'));
+  assert.equal(body.model, 'img-1');
+  assert.equal(body.prompt, 'a "cat"');
+  assert.equal(body.size, '1024x1024');
+  assert.equal(body.response_format, 'b64_json');
+
+  assert.equal(imageGen.parseImageGenResponse('{"data":[{"b64_json":"QUJD"}]}').b64, 'QUJD');
+  assert.equal(imageGen.parseImageGenResponse('{"data":[{"url":"https://x.test/a.png"}]}').url,
+    'https://x.test/a.png');
+  assert.equal(imageGen.parseImageGenResponse('{"data":[{"url":"file:///x"}]}').error.length > 0,
+    true);
+  assert.equal(imageGen.parseImageGenResponse('{"error":{"message":"nope"}}').error, 'nope');
+  assert.equal(imageGen.parseImageGenResponse('nope').error.length > 0, true);
+  assert.equal(imageGen.parseImageGenResponse('{"data":[]}').error.length > 0, true);
+
+  assert.equal(imageGen.detectImageExtension(new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0])), 'png');
+  assert.equal(imageGen.detectImageExtension(new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0])), 'jpg');
+  assert.equal(imageGen.detectImageExtension(new Uint8Array(
+    [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])), 'webp');
+  assert.equal(imageGen.detectImageExtension(new Uint8Array([0x47, 0x49, 0x46, 0x38])), 'gif');
+  assert.equal(imageGen.detectImageExtension(new Uint8Array([1, 2, 3])), '');
 });
 
 test('code highlighting segments cover the source without losing characters', () => {

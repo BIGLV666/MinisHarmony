@@ -139,7 +139,7 @@ export function toApiMessages(
           // The Chat Completions schema does not allow image parts inside a
           // role:"tool" message, so the pixels follow as a synthetic user turn.
           const parts: ApiContentPart[] = [
-            { type: 'text', text: '以下是 read_image 读取的图片：' },
+            { type: 'text', text: '以下是工具返回的图片：' },
             { type: 'image_url', image_url: { url: images[k] } }
           ];
           out.push({ role: 'user', content: parts });

@@ -74,7 +74,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集：隐藏 Web 视图常驻，`browser_use` 支持 open / click / type / text / html / eval / back / forward / reload / wait / title / url；页面加载最多等 20 秒，返回内容截断；远程沙箱模式不暴露 | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |
 | - [x] | 子代理 | `subagent_task` | 本机模式完整实现（后台投递、status/steer/cancel/resume、排队、超时、崩溃恢复），见 2. 子代理；远程沙箱模式仍不暴露子代理 | P1 |
-| - [ ] | 图像生成 | `minis-model-use` 调用 `/images/generations` | 可选，取决于订阅模型 | P3 |
+| - [x] | 图像生成 | `minis-model-use` 调用 `/images/generations` | 工具 `generate_image {prompt, size?, model?}`：POST OpenAI 兼容 `/images/generations`（`response_format=b64_json`），支持 1024x1024 / 1024x1792 / 1792x1024，模型省略时用当前对话模型；返回 b64 或 http(s) 图片地址（自动下载），按魔数识别 png/jpg/webp/gif 后存入附件目录，上限 10 MB；工具卡片直接显示缩略图并可全屏查看，下一轮请求把图片作为视觉输入带回模型；设置页「允许生成图片」默认关闭，Anthropic / Gemini 原生预设明确拒绝，远程沙箱与子代理按本机设置继承/不转发 | P3 |
 | - [x] | 工具开关 UI | 逐工具启用/禁用 | 设置页「逐工具开关」；`AppSettings.disabledTools`，本机/远程/子代理共用；执行时同样拒绝 | P2 |
 | - [x] | 工具权限确认 | 危险操作弹出确认 | 设置项「写入前逐次确认」；`write_file` / `file_edit` 执行前弹窗，允许/拒绝，停止生成会按拒绝结算 | P2 |
 
@@ -274,3 +274,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | KaTeX 公式排版 | 从参考实现复制内置 `katex/` 资源（`katex.min.js`、`katex.min.css`、`mhchem.min.js`、字体、`katex-render.html`，约 888 KB）到 `rawfile`；`components/MathBlockView.ets` 用独立 ArkWeb 加载并 `javaScriptProxy` 回传测量宽高，`$$` 块按高度自适应，超宽横向滚动，深色与字号跟随设置，`throwOnError` 失败退回 Unicode 文本；`MdBlock.raw` 保留原始 LaTeX；`nestedScroll` 让公式内竖滑交给聊天列表；79 项测试通过、构建通过 |
 | 2026-11-08 | 加密备份 | `core/BackupCrypto.ets` 定义并严格校验加密信封（app/version/kind、cipher、kdf、迭代次数区间、base64、payload 长度）；`service/BackupCrypto.ets` 用 PBKDF2-HMAC-SHA256（12 万次、16 字节随机盐、32 字节密钥）+ AES-256-GCM（12 字节随机 IV），按官方约定 `update()` 取密文、`doFinal(null)` 取 16 字节 tag，payload 存「密文‖tag」，解密时 `update()` + `doFinal(null)` 验签；侧栏「加密备份（密码保护）」与导入自动识别，密码只存在组件状态、不落盘不写日志；错误统一提示，明文导入上限放宽到 16 MB；80 项测试通过、构建通过 |
 | 2026-11-08 | 模型组 fallback | `AppSettings.fallbackModels` + `parseModelList`/`modelChain` 纯函数（分割、去空白、去重、保持顺序）；设置页「备用模型」输入；`AgentRuntime` 每轮建立主模型 + 备用链，请求失败且本步无任何输出时 `step--` 后异步重试下一个模型，切换写入事件日志（`fallback -> <id>`），已有输出则照旧报错终止；`activeModelId()` 用于请求、事件日志与用量记录；81 项测试通过、构建通过 |
+| 2026-11-08 | 图像生成 | `core/ImageGen.ets` 纯函数：端点拼接（复用 `normalizeBaseUrl`）、请求体、尺寸白名单、响应解析（b64/url/错误）、魔数识别图片格式；`service/ImageGen.ets` 走 `http` POST `/images/generations`，URL 结果二次下载，写入附件目录；新增 `generate_image` 工具与 `ImageGenHandler` 边界、设置开关 `imageGenEnabled`（默认关）；`MessageBubble` 工具卡片显示图片缩略图并复用全屏预览；远程沙箱不暴露；82 项测试通过、构建通过 |

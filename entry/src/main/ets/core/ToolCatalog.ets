@@ -71,6 +71,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
   const readImageFields: FieldEntry[] = [
     field('path', 'string', '工作区内的图片路径（相对根目录）。支持 png / jpg / jpeg / webp / gif / bmp，单文件上限 5 MB。')
   ];
+  const generateImageFields: FieldEntry[] = [
+    field('prompt', 'string', '画面描述。写清主体、风格、构图、光线；模型会按此生成一张图。'),
+    field('size', 'string', '尺寸：1024x1024（默认）、1024x1792 或 1792x1024。'),
+    field('model', 'string', '可选的图像模型 ID；省略时使用当前对话模型。')
+  ];
   const memoryWriteFields: FieldEntry[] = [
     field('content', 'string', '要长期记住的内容，一句话写清事实、偏好或决定。')
   ];
@@ -133,6 +138,12 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'read_image',
       description: '读取工作区内的图片并把像素传给模型（需要模型支持视觉，且用户在设置中开启）。纯文本模型不要调用。',
       parameters: parametersOf(readImageFields, ['path'])
+    },
+    {
+      name: 'generate_image',
+      description: '调用 OpenAI 兼容的 /images/generations 生成一张图片并保存到本机（需要用户在设置中开启图像生成）。' +
+        '返回后图片会显示在工具卡片中，同时把像素带给模型。Anthropic / Gemini 原生协议不支持。',
+      parameters: parametersOf(generateImageFields, ['prompt'])
     },
     {
       name: 'write_file',

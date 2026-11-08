@@ -59,7 +59,7 @@ export class RemoteToolRuntime implements ToolRuntime {
       }
       if (name === 'subagent_task' || name === 'read_image' ||
         name === 'clipboard_read' || name === 'clipboard_write' ||
-        name === 'browser_use') {
+        name === 'browser_use' || name === 'generate_image') {
         continue;
       }
       if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {
@@ -78,6 +78,12 @@ export class RemoteToolRuntime implements ToolRuntime {
       return {
         ok: false,
         content: '持久记忆只在本机工作区模式下可用，远程沙箱不会转发记忆工具。'
+      };
+    }
+    if (name === 'generate_image') {
+      return {
+        ok: false,
+        content: '图像生成在平板本机执行，远程沙箱不会转发该工具。'
       };
     }
     if (name === 'read_image') {

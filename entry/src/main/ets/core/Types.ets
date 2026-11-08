@@ -74,6 +74,11 @@ export interface AppSettings {
   imageGenEnabled: boolean;
   /** Allow the model to read and write the device clipboard. */
   clipboardToolsEnabled: boolean;
+  /** Device-data tools; all off until the user opts in. */
+  calendarToolsEnabled: boolean;
+  contactsToolsEnabled: boolean;
+  locationToolsEnabled: boolean;
+  weatherToolsEnabled: boolean;
   /** Ask the user before every write_file / file_edit call. */
   confirmWriteTools: boolean;
   /** Where tool calls execute: in the app sandbox or a remote helper. */
@@ -432,6 +437,10 @@ export function defaultSettings(): AppSettings {
     imageToolsEnabled: false,
     imageGenEnabled: false,
     clipboardToolsEnabled: false,
+    calendarToolsEnabled: false,
+    contactsToolsEnabled: false,
+    locationToolsEnabled: false,
+    weatherToolsEnabled: false,
     confirmWriteTools: false,
     sandboxMode: 'local',
     sandboxUrl: '',
@@ -527,6 +536,10 @@ export function cloneSettings(source: AppSettings): AppSettings {
     imageToolsEnabled: source.imageToolsEnabled === true,
     imageGenEnabled: source.imageGenEnabled === true,
     clipboardToolsEnabled: source.clipboardToolsEnabled === true,
+    calendarToolsEnabled: source.calendarToolsEnabled === true,
+    contactsToolsEnabled: source.contactsToolsEnabled === true,
+    locationToolsEnabled: source.locationToolsEnabled === true,
+    weatherToolsEnabled: source.weatherToolsEnabled === true,
     confirmWriteTools: source.confirmWriteTools === true,
     sandboxMode: source.sandboxMode,
     sandboxUrl: source.sandboxUrl,

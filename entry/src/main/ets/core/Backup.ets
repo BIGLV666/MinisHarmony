@@ -150,6 +150,10 @@ export function parseBackupSettings(text: string): AppSettings | null {
   base.imageToolsEnabled = boolOr(raw.imageToolsEnabled, false);
   base.imageGenEnabled = boolOr(raw.imageGenEnabled, false);
   base.clipboardToolsEnabled = boolOr(raw.clipboardToolsEnabled, false);
+  base.calendarToolsEnabled = boolOr(raw.calendarToolsEnabled, false);
+  base.contactsToolsEnabled = boolOr(raw.contactsToolsEnabled, false);
+  base.locationToolsEnabled = boolOr(raw.locationToolsEnabled, false);
+  base.weatherToolsEnabled = boolOr(raw.weatherToolsEnabled, false);
   base.confirmWriteTools = boolOr(raw.confirmWriteTools, false);
   base.sandboxMode = raw.sandboxMode === 'remote' ? 'remote' : 'local';
   base.sandboxUrl = stringOr(raw.sandboxUrl, '');

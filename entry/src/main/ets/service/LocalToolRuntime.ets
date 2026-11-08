@@ -4,6 +4,7 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import {
   BrowserHandler,
+  DeviceToolsHandler,
   ImageGenHandler,
   ImageGenRequest,
   SubagentHandler,
@@ -173,6 +174,7 @@ export class LocalToolRuntime implements ToolRuntime {
   private clipboardEnabled: boolean;
   private browser: BrowserHandler | null;
   private imageGen: ImageGenHandler | null;
+  private device: DeviceToolsHandler | null;
   private imageCache: Map<string, string> = new Map();
 
   constructor(
@@ -184,7 +186,8 @@ export class LocalToolRuntime implements ToolRuntime {
     disabledTools: string[] = [],
     clipboardEnabled: boolean = false,
     browser: BrowserHandler | null = null,
-    imageGen: ImageGenHandler | null = null
+    imageGen: ImageGenHandler | null = null,
+    device: DeviceToolsHandler | null = null
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
@@ -195,6 +198,7 @@ export class LocalToolRuntime implements ToolRuntime {
     this.clipboardEnabled = clipboardEnabled;
     this.browser = browser;
     this.imageGen = imageGen;
+    this.device = device;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -239,6 +243,12 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'generate_image' && this.imageGen === null) {
         continue;
+      }
+      if (name === 'calendar' || name === 'contacts' ||
+        name === 'location' || name === 'weather') {
+        if (this.device === null || !this.device.enabled(name)) {
+          continue;
+        }
       }
       available.push(all[i]);
     }
@@ -304,6 +314,13 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'generate_image') {
         return await this.generateImage(argumentsJson);
+      }
+      if (name === 'calendar' || name === 'contacts' ||
+        name === 'location' || name === 'weather') {
+        if (this.device === null) {
+          return { ok: false, content: '设备工具在此模式下不可用。' };
+        }
+        return await this.device.execute(name, argumentsJson);
       }
       return { ok: false, content: '未知工具：' + name };
     } catch (e) {

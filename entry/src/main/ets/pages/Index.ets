@@ -67,6 +67,7 @@ import {
 import { BACKUP_MIN_PASSWORD, isEncryptedBackup } from '../core/BackupCrypto';
 import { decryptBackupText, DecryptOutcome } from '../service/BackupCrypto';
 import { SettingsImageGen } from '../service/ImageGen';
+import { DeviceTools } from '../service/DeviceTools';
 import { ScreenshotOutcome, saveShareCard } from '../service/Screenshot';
 import { shareCardFileName } from '../core/ShareCard';
 import { shareCardView } from '../components/ShareCardView';
@@ -1519,7 +1520,8 @@ struct Index {
         settings.disabledTools,
         settings.clipboardToolsEnabled,
         this.browserTool,
-        settings.imageGenEnabled ? new SettingsImageGen(settings) : null
+        settings.imageGenEnabled ? new SettingsImageGen(settings) : null,
+        new DeviceTools(getContext(this) as common.UIAbilityContext, settings)
       );
     }
     return new McpRuntime(base, settings.disabledTools);

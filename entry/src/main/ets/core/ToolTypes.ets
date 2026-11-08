@@ -87,3 +87,13 @@ export interface ImageGenHandler {
 export interface BrowserHandler {
   execute(argumentsJson: string): Promise<ToolResult>;
 }
+
+/**
+ * Device-data tools (calendar / contacts / location / weather). Each tool is
+ * advertised only when the handler both exists and reports it enabled, so the
+ * user's per-capability switches remove it from the model's toolbox entirely.
+ */
+export interface DeviceToolsHandler {
+  enabled(name: string): boolean;
+  execute(name: string, argumentsJson: string): Promise<ToolResult>;
+}

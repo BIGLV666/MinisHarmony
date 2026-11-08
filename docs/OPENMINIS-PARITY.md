@@ -128,11 +128,11 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 |---|---|---|---|---|
 | - [x] | 剪贴板 | `android-clipboard` / `apple-clipboard` | `clipboard_read` / `clipboard_write`，默认关闭、设置页单独开关；`pasteboard` 纯文本读写；远程沙箱不转发 | P2 |
 | - [x] | 通知 | `notification` | 后台生成时 `notificationManager` 发布「正在生成」，完成替换为「回复已完成」，点按回到应用 | P2 |
-| - [ ] | 日历 | `calendar` | `CalendarKit` | P3 |
-| - [ ] | 通讯录 | `contacts` | `ContactsKit` | P3 |
+| - [x] | 日历 | `calendar` | `service/DeviceTools.ets`：`calendar` 工具支持 list（时间段内最多 50 条，默认今天起 7 天）与 create（标题/起止/地点/备注，写入默认日历）；`CalendarKit.getCalendarManager` + `READ_CALENDAR`/`WRITE_CALENDAR`，首次调用请求系统授权；默认关闭，设置页单独开关；远程沙箱不暴露 | P3 |
+| - [x] | 通讯录 | `contacts` | `contacts` 工具支持 search/list：按姓名、电话、邮箱不敏感匹配，最多 20 条，只读不写；`ContactsKit.queryContacts` + `READ_CONTACTS` 首次授权；默认关闭，远程沙箱不暴露 | P3 |
 | - [x] | 照片 / 相机 | `photos` | 系统相册 `PhotoViewPicker` 多选（最多 4 张、10 MB），复制到应用私有目录；相机拍摄未接 | P2 |
-| - [ ] | 定位 | `location` | `LocationKit` | P3 |
-| - [ ] | 天气 | `weather` | 第三方 API | P3 |
+| - [x] | 定位 | `location` | `location` 工具用 `LocationKit.getCurrentLocation` 取一次坐标（FIRST_FIX、10 秒超时），返回经纬度与精度；`APPROXIMATELY_LOCATION` 首次授权；默认关闭，远程沙箱不暴露 | P3 |
+| - [x] | 天气 | `weather` | `weather` 工具走 Open-Meteo（无需密钥）：`current` 当前温湿度/体感/风速/降水，`forecast` 1–7 天（天气、最高最低、降水概率）；指定 `city` 时用 Open-Meteo 地理编码，否则用设备定位；WMO 天气码译为中文；`Weather` 相关纯函数在 `core/Device.ets`，97 项测试通过 | P3 |
 | - [ ] | 语音识别 | `speech` / ASR | 当前公共 OpenHarmony SDK 不含 `CoreSpeechKit`，接入需华为 HarmonyOS SDK 与真机验证 | P2 |
 | - [ ] | 朗读 TTS | `speak` | 同上：`CoreSpeechKit` 不在公共 SDK 中，暂无法编译接入 | P2 |
 | - [ ] | 无障碍自动化 | Android AccessibilityService | 无对等能力 | - |
@@ -278,4 +278,5 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 单轮截图分享 | `components/ShareCardView.ets` 全局 `@Builder` 卡片（问题条 + Markdown 正文 + 工具摘要 + 时间/token 页脚）；`service/Screenshot.ets` 用 `UIContext.getComponentSnapshot().createFromBuilder` 离屏渲染（不受滚动位置裁剪）、`image.createImagePacker` 转 PNG、`DocumentViewPicker` 保存；`MarkdownView.plainMath` 让离屏卡片用 Unicode 公式；`core/ShareCard.ets` 负责文件名与 12000 字/12 工具的边界；`ChatView` 找到上一条用户消息一并入图；83 项测试通过、构建通过 |
 | 2026-11-08 | 崩溃 / 诊断导出 | `core/Diagnostics.ets` 定义诊断文档（环境、非密钥设置摘要、计数、崩溃、事件）与文件名，`crashLine` 对系统上报参数再次脱敏并截断到 2000 字；`service/CrashLog.ets` 用 `hiAppEvent.addWatcher` 订阅 `APP_CRASH`/`APP_FREEZE`，落 `crashes.jsonl` 保留 40 条；`service/Diagnostics.ets` 汇总 `deviceInfo`、`bundleManager`、`i18n`、`AppLogger.recent(300)` 并经文档选择器导出；设置页「导出诊断包」；84 项测试通过、构建通过 |
 | 2026-11-08 | 定时任务 / 运行历史 | `core/ScheduledTask.ets` 纯逻辑（提示词清洗与 4000 字上限、标题/通知文案派生、1 分钟–1 年时间校验、排序、今天/明天/日期显示、任务与运行记录的防御式解析、运行历史 50 条上限）；`service/ReminderScheduler.ets` 用 `reminderAgentManager` 发布一次性日历提醒（新增 `PUBLISH_AGENT_REMINDER` 权限），wantAgent 指向 `minis://task/<id>`；`core/DeepLink.ets` 支持该深链；`components/ScheduledTasksSheet.ets` 提供提示词、快捷时间（1 小时后/今晚 20:00/明早 09:00）、DatePicker/TimePicker、删除/填入与可展开历史；顶栏 ⏰ 打开；Index 预填后仅在提示词原样发送时归属任务，完成/失败/取消写入 `TaskRun` 并移除一次性任务；任务与历史存 preferences；92 项测试通过、构建通过 |
+| 2026-11-08 | 设备数据工具（日历/通讯录/定位/天气） | `core/Device.ets` 纯逻辑：时间参数解析（YYYY-MM-DD HH:mm、ISO、时间戳、当天 HH:mm）、WMO 天气码中文映射、Open-Meteo URL 构造与防御式 JSON 解析、事件/联系人格式化；`service/DeviceTools.ets` 实现 `calendar`（list/create，默认日历，50 条上限）、`contacts`（姓名/电话/邮箱搜索，只读，20 条上限）、`location`（FIRST_FIX，10 秒超时）、`weather`（Open-Meteo 当前/预报 1–7 天，城市名或设备定位），每个能力首次调用才请求系统权限；`DeviceToolsHandler` 让 `LocalToolRuntime` 仅在开关打开时暴露工具，远程沙箱隐藏；`module.json5` 增加 READ/WRITE_CALENDAR、READ_CONTACTS、APPROXIMATELY_LOCATION 与授权理由；设置页新增四个默认关闭的开关；97 项测试通过、构建通过 |
 | 2026-11-08 | 远程备份 WebDAV | `core/WebDav.ets` 负责地址规范化、文件 URL 与「日期快照 + latest」目标；`service/WebDav.ets` 用 Basic 认证 PUT 加密信封、GET latest 供恢复；`AppSettings` 新增 `webDavUrl/webDavUser/webDavPassword`，密码走 `SecureStore` 新增别名并在保存设置时从 preferences 剔除；`redactedSettings` 清空 WebDAV 密码、备份恢复保留当前密码；设置页新增「远程备份（WebDAV）」区块（地址/账号/密码 + 上传/恢复），草稿凭据直接用于当次操作；86 项测试通过、构建通过 |

@@ -51,6 +51,7 @@ copyCore('ShareCard', ['MarkdownExport']);
 copyCore('Diagnostics', ['MarkdownExport', 'EventLog']);
 copyCore('WebDav', ['BackupCrypto', 'Backup', 'SessionExport']);
 copyCore('ScheduledTask');
+copyCore('Device');
 copyCore('ToolArgs');
 copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
@@ -193,6 +194,7 @@ const shareCard = await import(pathToFileURL(join(tmp, 'ShareCard.mts')).href);
 const diagnostics = await import(pathToFileURL(join(tmp, 'Diagnostics.mts')).href);
 const webDav = await import(pathToFileURL(join(tmp, 'WebDav.mts')).href);
 const scheduled = await import(pathToFileURL(join(tmp, 'ScheduledTask.mts')).href);
+const device = await import(pathToFileURL(join(tmp, 'Device.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -2245,4 +2247,106 @@ test('task runs record outcome and keep only the newest 50', () => {
   assert.equal(parsed.length, scheduled.MAX_TASK_RUNS);
   assert.deepEqual(scheduled.parseRuns(''), []);
   assert.deepEqual(scheduled.parseRuns('{}'), []);
+});
+
+test('parseTimeArg accepts common shapes and rejects nonsense', () => {
+  const now = new Date(2026, 10, 8, 12, 0, 0).getTime();
+  assert.equal(device.parseTimeArg('2026-11-08 09:30', now),
+    new Date(2026, 10, 8, 9, 30, 0).getTime());
+  assert.equal(device.parseTimeArg('2026-11-08T09:30:15', now),
+    new Date(2026, 10, 8, 9, 30, 15).getTime());
+  assert.equal(device.parseTimeArg('2026-11-08', now),
+    new Date(2026, 10, 8, 0, 0, 0).getTime());
+  assert.equal(device.parseTimeArg('08:05', now),
+    new Date(2026, 10, 8, 8, 5, 0).getTime());
+  assert.equal(device.parseTimeArg('1700000000000', now), 1700000000000);
+  assert.equal(device.parseTimeArg('1700000000', now), 1700000000 * 1000);
+  assert.equal(device.parseTimeArg('2026-13-08', now), -1);
+  assert.equal(device.parseTimeArg('tomorrow-ish', now), -1);
+  assert.equal(device.parseTimeArg('', now), -1);
+  assert.equal(device.formatDateTime(new Date(2026, 10, 8, 9, 5).getTime()),
+    '2026-11-08 09:05');
+});
+
+test('weather helpers map WMO codes and clamp days', () => {
+  assert.equal(device.weatherCodeText(0), '晴');
+  assert.equal(device.weatherCodeText(3), '阴');
+  assert.equal(device.weatherCodeText(63), '中雨');
+  assert.equal(device.weatherCodeText(95), '雷暴');
+  assert.equal(device.weatherCodeText(999), '未知天气');
+  assert.equal(device.clampWeatherDays(0), 1);
+  assert.equal(device.clampWeatherDays(99), device.MAX_WEATHER_DAYS);
+  assert.equal(device.clampWeatherDays(3.7), 3);
+  const url = device.weatherUrl(39.9, 116.4, 20);
+  assert.ok(url.includes('latitude=39.9'));
+  assert.ok(url.includes('longitude=116.4'));
+  assert.ok(url.includes('forecast_days=7'));
+  assert.ok(device.geocodeUrl('北京 朝阳').includes(encodeURIComponent('北京 朝阳')));
+});
+
+test('weather and geocode JSON parse defensively', () => {
+  const geo = device.parseGeoJson(JSON.stringify({
+    results: [{ name: '北京', country: '中国', admin1: '北京市', latitude: 39.9, longitude: 116.4 }]
+  }));
+  assert.equal(geo.name, '北京');
+  assert.equal(geo.latitude, 39.9);
+  assert.equal(device.parseGeoJson('{"results":[]}'), null);
+  assert.equal(device.parseGeoJson('not json'), null);
+  assert.equal(device.parseGeoJson('{"results":[{"name":"x"}]}'), null);
+
+  const report = device.parseWeatherJson(JSON.stringify({
+    current: {
+      time: '2026-11-08T09:00',
+      temperature_2m: 12.3,
+      apparent_temperature: 10.1,
+      relative_humidity_2m: 55,
+      wind_speed_10m: 8.2,
+      precipitation: 0,
+      weather_code: 2
+    },
+    daily: {
+      time: ['2026-11-08', '2026-11-09'],
+      weather_code: [2, 61],
+      temperature_2m_max: [15, 13],
+      temperature_2m_min: [6, 5],
+      precipitation_probability_max: [10, 70]
+    }
+  }));
+  assert.equal(report.current.temperature, 12.3);
+  assert.equal(report.current.code, 2);
+  assert.equal(report.days.length, 2);
+  assert.equal(report.days[1].code, 61);
+  assert.equal(report.days[1].precipitationProbability, 70);
+  const text = device.formatWeatherText('北京 · 中国', report);
+  assert.ok(text.includes('多云'));
+  assert.ok(text.includes('12.3°C'));
+  assert.ok(text.includes('2026-11-09'));
+
+  const empty = device.parseWeatherJson('{}');
+  assert.equal(empty.current, null);
+  assert.deepEqual(empty.days, []);
+  assert.equal(device.parseWeatherJson('garbage').days.length, 0);
+});
+
+test('event and contact formatting stays compact', () => {
+  const start = new Date(2026, 10, 8, 9, 0).getTime();
+  const end = new Date(2026, 10, 8, 10, 30).getTime();
+  assert.equal(device.formatEventLine(7, '周会', start, end, '会议室'),
+    '7 | 2026-11-08 09:00–10:30 | 周会 | 会议室');
+  assert.equal(device.formatEventLine(7, '周会', start, start, ''),
+    '7 | 2026-11-08 09:00– | 周会');
+  assert.equal(device.formatContactBlock('张三', ['13800000000'], ['a@b.c']),
+    '张三 · 13800000000 · a@b.c');
+  assert.equal(device.formatContactBlock('', [], []), '（未命名）');
+  assert.equal(device.formatContactBlock('李四',
+    ['1', '2', '3', '4'], ['x', 'y', 'z']), '李四 · 1 / 2 / 3 · x / y');
+});
+
+test('device tool schema advertises the four capabilities', () => {
+  const tools = catalog.builtinToolDefinitions();
+  for (const name of ['calendar', 'contacts', 'location', 'weather']) {
+    const tool = tools.find((item) => item.name === name);
+    assert.notEqual(tool, undefined, name);
+    assert.equal(tool.parameters.type, 'object');
+  }
 });

@@ -121,6 +121,30 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('max_chars', 'number', '返回内容的最大字符数，默认 8000，最大 20000。'),
     field('milliseconds', 'number', 'wait 的毫秒数，默认 500，最大 10000。')
   ];
+  const calendarFields: FieldEntry[] = [
+    field('action', 'string', 'list（默认）查看时间范围内的事件；create 新建一条事件。'),
+    field('start', 'string',
+      'list 的起始时间，省略为今天 00:00；create 的事件开始时间。' +
+        '格式 YYYY-MM-DD HH:mm、ISO 8601 或毫秒时间戳。'),
+    field('end', 'string',
+      'list 的结束时间，省略为今天之后 7 天；create 的事件结束时间，省略为开始后 1 小时。'),
+    field('title', 'string', 'create 必填，事件标题。'),
+    field('location', 'string', 'create 可选，事件地点。'),
+    field('description', 'string', 'create 可选，事件备注。')
+  ];
+  const contactsFields: FieldEntry[] = [
+    field('action', 'string', 'search（默认）按关键词搜索；list 列出联系人。'),
+    field('query', 'string', 'search 的关键词，匹配姓名、电话或邮箱，大小写不敏感。'),
+    field('limit', 'number', '最多返回多少条，默认 10，最大 20。')
+  ];
+  const locationFields: FieldEntry[] = [
+    field('action', 'string', 'get（默认）读取当前定位坐标。')
+  ];
+  const weatherFields: FieldEntry[] = [
+    field('action', 'string', 'current（默认）当前天气；forecast 未来几天。'),
+    field('city', 'string', '可选城市名；省略时使用设备定位。'),
+    field('days', 'number', 'forecast 的天数，默认 3，最大 7。')
+  ];
   const noFields: FieldEntry[] = [];
 
   const definitions: ToolDefinition[] = [
@@ -200,6 +224,29 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       description: '在内置浏览器中打开网页并交互：导航、点击、输入、读取文本/HTML 或执行 JS。' +
         '适合需要登录态或 JavaScript 渲染的页面；静态接口请求请优先用 fetch_url。',
       parameters: parametersOf(browserFields, ['action'])
+    },
+    {
+      name: 'calendar',
+      description: '读取或创建设备日历事件。需要在设置中开启日历工具，首次使用会请求系统日历权限。' +
+        'list 返回指定范围内的最多 50 条事件；create 写入默认日历。',
+      parameters: parametersOf(calendarFields, [])
+    },
+    {
+      name: 'contacts',
+      description: '搜索设备通讯录。需要在设置中开启通讯录工具，首次使用会请求系统联系人权限。' +
+        '只返回姓名、电话与邮箱，不修改通讯录。',
+      parameters: parametersOf(contactsFields, [])
+    },
+    {
+      name: 'location',
+      description: '读取设备当前经纬度。需要在设置中开启定位工具，首次使用会请求系统定位权限。',
+      parameters: parametersOf(locationFields, [])
+    },
+    {
+      name: 'weather',
+      description: '查询当前天气或未来几天预报（Open-Meteo，无需密钥）。' +
+        '提供 city 时按城市查询；否则使用设备定位（需要定位权限）。',
+      parameters: parametersOf(weatherFields, [])
     },
     {
       name: 'subagent_task',

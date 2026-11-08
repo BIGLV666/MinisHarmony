@@ -130,6 +130,10 @@ export struct SettingsSheet {
   @State imageToolsEnabled: boolean = false;
   @State imageGenEnabled: boolean = false;
   @State clipboardToolsEnabled: boolean = false;
+  @State calendarToolsEnabled: boolean = false;
+  @State contactsToolsEnabled: boolean = false;
+  @State locationToolsEnabled: boolean = false;
+  @State weatherToolsEnabled: boolean = false;
   @State backgroundEnabled: boolean = true;
   @State enterToSend: boolean = false;
   @State thinkingLevel: ThinkingLevel = 'off';
@@ -192,6 +196,10 @@ export struct SettingsSheet {
     this.imageToolsEnabled = copy.imageToolsEnabled;
     this.imageGenEnabled = copy.imageGenEnabled;
     this.clipboardToolsEnabled = copy.clipboardToolsEnabled;
+    this.calendarToolsEnabled = copy.calendarToolsEnabled;
+    this.contactsToolsEnabled = copy.contactsToolsEnabled;
+    this.locationToolsEnabled = copy.locationToolsEnabled;
+    this.weatherToolsEnabled = copy.weatherToolsEnabled;
     this.backgroundEnabled = copy.backgroundEnabled;
     this.enterToSend = copy.enterToSend;
     this.thinkingLevel = copy.thinkingLevel;
@@ -331,6 +339,10 @@ export struct SettingsSheet {
       imageToolsEnabled: this.imageToolsEnabled,
       imageGenEnabled: this.imageGenEnabled,
       clipboardToolsEnabled: this.clipboardToolsEnabled,
+      calendarToolsEnabled: this.calendarToolsEnabled,
+      contactsToolsEnabled: this.contactsToolsEnabled,
+      locationToolsEnabled: this.locationToolsEnabled,
+      weatherToolsEnabled: this.weatherToolsEnabled,
       confirmWriteTools: this.confirmWriteTools,
       backgroundEnabled: this.backgroundEnabled,
       thinkingLevel: this.thinkingLevel,
@@ -790,6 +802,31 @@ export struct SettingsSheet {
     .backgroundColor($r('app.color.surface_alt'))
     .borderRadius(12)
     .alignItems(VerticalAlign.Top)
+  }
+
+  @Builder
+  deviceToggleRow(title: string, description: string, value: boolean,
+    apply: (next: boolean) => void) {
+    Row({ space: 10 }) {
+      Column({ space: 3 }) {
+        Text(title)
+          .fontSize(12)
+          .fontColor($r('app.color.text_primary'))
+        Text(description)
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .lineHeight(14)
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      Toggle({ type: ToggleType.Switch, isOn: value })
+        .selectedColor($r('app.color.accent'))
+        .onChange((next: boolean) => apply(next))
+    }
+    .width('100%')
+    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+    .backgroundColor($r('app.color.surface_alt'))
+    .borderRadius(11)
   }
 
   build() {
@@ -1734,6 +1771,27 @@ export struct SettingsSheet {
                 .padding({ left: 12, right: 12, top: 8, bottom: 8 })
                 .backgroundColor($r('app.color.surface_alt'))
                 .borderRadius(11)
+
+                this.deviceToggleRow('允许读取日历',
+                  '开启后模型可调用 calendar 查看事件或新建事件；首次使用会请求系统日历权限。',
+                  this.calendarToolsEnabled, (next: boolean) => {
+                    this.calendarToolsEnabled = next;
+                  })
+                this.deviceToggleRow('允许搜索通讯录',
+                  '开启后模型可调用 contacts 按姓名/电话/邮箱搜索；只读，不会修改通讯录。',
+                  this.contactsToolsEnabled, (next: boolean) => {
+                    this.contactsToolsEnabled = next;
+                  })
+                this.deviceToggleRow('允许获取定位',
+                  '开启后模型可调用 location 读取当前经纬度；坐标会发送给模型与服务商。',
+                  this.locationToolsEnabled, (next: boolean) => {
+                    this.locationToolsEnabled = next;
+                  })
+                this.deviceToggleRow('允许查询天气',
+                  '开启后模型可调用 weather；未指定城市时使用设备定位（同样需要定位权限）。',
+                  this.weatherToolsEnabled, (next: boolean) => {
+                    this.weatherToolsEnabled = next;
+                  })
               }
 
               Column({ space: 6 }) {

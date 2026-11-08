@@ -59,7 +59,9 @@ export class RemoteToolRuntime implements ToolRuntime {
       }
       if (name === 'subagent_task' || name === 'read_image' ||
         name === 'clipboard_read' || name === 'clipboard_write' ||
-        name === 'browser_use' || name === 'generate_image') {
+        name === 'browser_use' || name === 'generate_image' ||
+        name === 'calendar' || name === 'contacts' ||
+        name === 'location' || name === 'weather') {
         continue;
       }
       if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {

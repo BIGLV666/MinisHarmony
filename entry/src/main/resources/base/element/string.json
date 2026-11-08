@@ -11,6 +11,18 @@
     {
       "name": "EntryAbility_label",
       "value": "Minis"
+    },
+    {
+      "name": "permission_calendar_reason",
+      "value": "用于在模型调用 calendar 工具时读取或创建日程"
+    },
+    {
+      "name": "permission_contacts_reason",
+      "value": "用于在模型调用 contacts 工具时搜索联系人"
+    },
+    {
+      "name": "permission_location_reason",
+      "value": "用于在模型调用 location 或 weather 工具时获取当前位置"
     }
   ]
 }

@@ -44,6 +44,7 @@ copyCore('ToolCatalog', ['ToolTypes']);
 copyCore('ToolProtocol', ['Types']);
 copyCore('Workspace');
 copyCore('Terminal');
+copyCore('SandboxProtocol');
 copyCore('EventLog');
 copyCore('EditPatch');
 copyCore('Memory');
@@ -167,6 +168,7 @@ const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
+const sandboxProtocol = await import(pathToFileURL(join(tmp, 'SandboxProtocol.mts')).href);
 const log = await import(pathToFileURL(join(tmp, 'EventLog.mts')).href);
 const edit = await import(pathToFileURL(join(tmp, 'EditPatch.mts')).href);
 const catalog = await import(pathToFileURL(join(tmp, 'ToolCatalog.mts')).href);
@@ -2723,4 +2725,46 @@ test('sanitizeTerminal bounds huge input before rewriting', () => {
   const cleaned = terminal.sanitizeTerminal(huge);
   assert.ok(cleaned.length < 401000, 'output stays near the pre-trim cap');
   assert.ok(cleaned.includes('characters omitted'));
+});
+
+test('sandbox marker parsing matches the command id only', () => {
+  const text = 'hello\n[sandbox exit=0 id=7]\n';
+  const marker = sandboxProtocol.findSandboxMarker(text, 0, 7);
+  assert.equal(marker.code, 0);
+  assert.equal(marker.index, 6);
+  assert.equal(text.substring(marker.index, marker.end), '[sandbox exit=0 id=7]');
+
+  // A late marker from a command whose caller gave up must not match.
+  assert.equal(sandboxProtocol.findSandboxMarker(text, 0, 8), null);
+  // Negative and multi-digit codes survive the parse.
+  assert.equal(
+    sandboxProtocol.findSandboxMarker('[sandbox exit=-1 id=2]', 0, 2).code, -1);
+  assert.equal(
+    sandboxProtocol.findSandboxMarker('[sandbox exit=128 id=2]', 0, 2).code, 128);
+  // An unterminated marker means the line is still arriving.
+  assert.equal(sandboxProtocol.findSandboxMarker('[sandbox exit=0 id=7', 0, 7), null);
+  // Scanning starts at `from`, and skips markers for other ids.
+  const two = '[sandbox exit=1 id=3]\n[sandbox exit=0 id=4]';
+  assert.equal(sandboxProtocol.findSandboxMarker(two, 0, 4).code, 0);
+  assert.equal(sandboxProtocol.findSandboxMarker(two, 25, 3), null);
+});
+
+test('sandbox command payload matches the harness framing', () => {
+  assert.equal(sandboxProtocol.commandPayload(12, 'ls -la'), 'id=12\nls -la');
+  assert.equal(sandboxProtocol.utf8ByteLength('abc'), 3);
+  assert.equal(sandboxProtocol.utf8ByteLength('中文'), 6);
+  assert.equal(sandboxProtocol.utf8ByteLength('😀'), 4);
+  assert.equal(sandboxProtocol.utf8ByteLength('a中😀'), 8);
+  // id=1\n is five bytes; fill exactly to the 16000-byte limit.
+  assert.equal(sandboxProtocol.commandTooLong('id=1\n' + 'a'.repeat(15995)), false);
+  assert.equal(sandboxProtocol.commandTooLong('id=1\n' + 'a'.repeat(15996)), true);
+  // Bytes, not UTF-16 units: 5400 Chinese chars are 16200 bytes.
+  assert.equal(sandboxProtocol.commandTooLong('id=1\n' + '中'.repeat(5400)), true);
+});
+
+test('sandbox request payload is one key per line', () => {
+  const payload = sandboxProtocol.sandboxRequestPayload(
+    '/r', '/o', '/c', '/w', '/m');
+  assert.equal(payload,
+    'rootfs=/r\noutput=/o\ncommands=/c\nworkspace=/w\nmemory=/m\n');
 });

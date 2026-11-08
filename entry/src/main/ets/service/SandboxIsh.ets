@@ -2,6 +2,8 @@ import { childProcessManager, common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { BusinessError, zlib } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
+import { MAX_COMMAND_BYTES, SandboxMarker, commandPayload, commandTooLong, findSandboxMarker,
+  sandboxRequestPayload } from '../core/SandboxProtocol';
 
 /**
  * Drives the iSH-based on-device Linux sandbox as a persistent daemon.
@@ -47,12 +49,6 @@ export interface SandboxStatus {
   running: boolean;
 }
 
-interface Marker {
-  index: number;
-  end: number;
-  code: number;
-}
-
 export class SandboxIsh {
   private static readonly ARCHIVE: string = 'ish-rootfs.zip';
   private static readonly ROOTFS_DIR: string = 'ish-rootfs';
@@ -63,7 +59,6 @@ export class SandboxIsh {
    */
   private static readonly ROOTFS_VERSION: string = '2';
   private static readonly LEGACY_ROOTFS: string = '/data/local/tmp/minis-ish-rootfs';
-  private static readonly MARKER: string = '[sandbox exit=';
   private static readonly READY: string = '[sandbox ready]';
   /**
    * Completion detection scans only this much of the output tail; the marker
@@ -265,9 +260,9 @@ export class SandboxIsh {
         const sample: string = whole
           ? SandboxIsh.read(SandboxIsh.outputPath)
           : SandboxIsh.readTail(SandboxIsh.outputPath, size, SandboxIsh.TAIL_BYTES);
-        if (SandboxIsh.findMarker(sample, whole ? start : 0, id) !== null) {
+        if (findSandboxMarker(sample, whole ? start : 0, id) !== null) {
           const text: string = whole ? sample : SandboxIsh.read(SandboxIsh.outputPath);
-          const marker: Marker | null = SandboxIsh.findMarker(text, start, id);
+          const marker: SandboxMarker | null = findSandboxMarker(text, start, id);
           if (marker !== null) {
             let output: string = text.substring(start, marker.index);
             if (output.endsWith('\n')) {
@@ -338,11 +333,8 @@ export class SandboxIsh {
     SandboxIsh.startFailure = '';
     SandboxIsh.consumed = 0;
 
-    const request: string = 'rootfs=' + rootfs + '\n' +
-      'output=' + SandboxIsh.outputPath + '\n' +
-      'commands=' + SandboxIsh.commandPath + '\n' +
-      'workspace=' + SandboxIsh.options.workspace + '\n' +
-      'memory=' + SandboxIsh.options.memory + '\n';
+    const request: string = sandboxRequestPayload(rootfs, SandboxIsh.outputPath,
+      SandboxIsh.commandPath, SandboxIsh.options.workspace, SandboxIsh.options.memory);
     if (!SandboxIsh.writeText(SandboxIsh.requestPath, request)) {
       return '无法写入沙箱请求文件：' + SandboxIsh.requestPath;
     }
@@ -388,12 +380,11 @@ export class SandboxIsh {
   /** Write `id=<n>\n<command>` atomically so the harness never reads half. */
   private static writeCommand(id: number, command: string): string {
     const temporary: string = SandboxIsh.commandPath + '.tmp';
-    const body: string = 'id=' + id.toString() + '\n' + command;
-    // The harness reads at most kMaxCommand bytes; a longer command would be
+    const body: string = commandPayload(id, command);
+    // The harness reads at most MAX_COMMAND_BYTES; a longer command would be
     // silently ignored and the caller would wait until the timeout.
-    const bytes: Uint8Array = new util.TextEncoder().encodeInto(body);
-    if (bytes.length > 16000) {
-      return '命令过长（' + bytes.length.toString() + ' 字节，上限 16000 字节）';
+    if (commandTooLong(body)) {
+      return '命令过长（上限 ' + MAX_COMMAND_BYTES.toString() + ' 字节）';
     }
     if (!SandboxIsh.writeText(temporary, body)) {
       return '无法写入沙箱命令文件';
@@ -412,35 +403,6 @@ export class SandboxIsh {
     SandboxIsh.consumed = 0;
     if (SandboxIsh.commandPath.length > 0) {
       SandboxIsh.writeText(SandboxIsh.commandPath, 'id=-1\nstop');
-    }
-  }
-
-  /**
-   * Find `[sandbox exit=<code> id=<id>]` at or after `from`. Output can arrive
-   * in chunks, so a marker without the trailing bracket is simply not there
-   * yet and the caller polls again.
-   */
-  private static findMarker(text: string, from: number, id: number): Marker | null {
-    const tag: string = 'id=' + id.toString() + ']';
-    let search: number = from;
-    while (true) {
-      const index: number = text.indexOf(SandboxIsh.MARKER, search);
-      if (index < 0) {
-        return null;
-      }
-      const end: number = text.indexOf(']', index);
-      if (end < 0) {
-        return null;
-      }
-      const content: string = text.substring(index, end + 1);
-      if (content.indexOf(tag) >= 0) {
-        const equals: number = content.indexOf('=');
-        const space: number = content.indexOf(' ', equals);
-        const digits: string = content.substring(equals + 1, space > 0 ? space : content.length);
-        const code: number = parseInt(digits, 10);
-        return { index: index, end: end + 1, code: isNaN(code) ? -1 : code };
-      }
-      search = index + 1;
     }
   }
 

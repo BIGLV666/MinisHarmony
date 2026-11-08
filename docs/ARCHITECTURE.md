@@ -503,6 +503,15 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 重复提醒。所有调用先检查 `isNotificationEnabled()`，失败一律静默——通知被用户关闭
 或设备不支持时，对话本身不受影响。
 
+## 主题色与字号
+
+`AppSettings.accentColor`（`#RRGGBB`，默认 `#2F6BFF`）与 `fontScale`（0.9–1.3）由
+`normalizeAccentColor()` / `clampFontScale()` 校验。`Index` 在启动和保存设置时调用
+`AppStorage.setOrCreate()`，`MarkdownView`、`MessageBubble`、`ChatView`、`SidebarView`
+用 `@StorageProp` 读取，因此不需要逐层传参。强调色替换了发送按钮、用户气泡、工具卡片、
+链接与选中态；字号通过 `scaleFont()` 放大正文、标题、代码与表格，设置页本身保持系统
+字号。颜色预设与档位标签放在 `core/Appearance.ets`，其余为纯设置字段。
+
 ## 每会话参数
 
 `SessionMeta` 上有三个可选覆盖：`modelOverride`、`thinkingOverride`、`promptOverride`，
@@ -543,6 +552,6 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 
 ## 可测试性
 
-`core/` 十八个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 十九个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

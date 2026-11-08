@@ -25,6 +25,7 @@ export struct MessageBubble {
     completionTokens: 0,
     totalTokens: 0
   };
+  @StorageProp('accentColor') accent: string = '#2F6BFF';
   @State reasoningOpen: boolean = false;
   @State openToolId: string = '';
   @Prop canRegenerate: boolean = false;
@@ -103,7 +104,7 @@ export struct MessageBubble {
       .textAlign(TextAlign.Center)
       .fontSize(14)
       .fontWeight(FontWeight.Bold)
-      .fontColor($r('app.color.accent'))
+      .fontColor(this.accent)
       .backgroundColor($r('app.color.accent_soft'))
   }
 
@@ -117,13 +118,13 @@ export struct MessageBubble {
           .fontColor($r('app.color.text_secondary'))
         Text(this.reasoningOpen ? '收起' : '展开')
           .fontSize(11)
-          .fontColor($r('app.color.accent'))
+          .fontColor(this.accent)
         Blank()
         if (this.message.streaming && this.content().length === 0) {
           LoadingProgress()
             .width(14)
             .height(14)
-            .color($r('app.color.accent'))
+            .color(this.accent)
         }
       }
       .width('100%')
@@ -154,7 +155,7 @@ export struct MessageBubble {
         Text(part.status === TOOL_RUNNING ? '◌' : (part.isError ? '✕' : '✓'))
           .fontSize(11)
           .fontWeight(FontWeight.Bold)
-          .fontColor(part.isError ? $r('app.color.danger') : $r('app.color.accent'))
+          .fontColor(part.isError ? $r('app.color.danger') : this.accent)
         Text(part.toolName)
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
@@ -215,7 +216,7 @@ export struct MessageBubble {
       LoadingProgress()
         .width(15)
         .height(15)
-        .color($r('app.color.accent'))
+        .color(this.accent)
       Text('正在思考…')
         .fontSize(13)
         .fontColor($r('app.color.text_secondary'))
@@ -257,7 +258,7 @@ export struct MessageBubble {
     }
     .alignItems(HorizontalAlign.Start)
     .padding({ left: 14, right: 14, top: 10, bottom: 8 })
-    .backgroundColor($r('app.color.accent'))
+    .backgroundColor(this.accent)
     .borderRadius({ topLeft: 16, topRight: 16, bottomLeft: 16, bottomRight: 5 })
     .constraintSize({ maxWidth: '80%' })
   }
@@ -307,7 +308,7 @@ export struct MessageBubble {
         if (this.canRegenerate) {
           Text(this.message.error ? '重试' : '重新生成')
             .fontSize(11)
-            .fontColor($r('app.color.accent'))
+            .fontColor(this.accent)
             .onClick(() => this.onRegenerate())
         }
         if (this.canRewind) {

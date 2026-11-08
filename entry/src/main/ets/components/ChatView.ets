@@ -1,4 +1,4 @@
-import { ChatMessage, messageKey, modelName } from '../core/Types';
+import { ChatMessage, messageKey, modelName, scaleFont } from '../core/Types';
 import { formatTokens } from '../service/Format';
 import { MessageBubble } from './MessageBubble';
 
@@ -19,6 +19,8 @@ export struct ChatView {
   @Prop hasKey: boolean = false;
   /** Enter submits instead of inserting a newline (physical + soft keyboard). */
   @Prop enterToSend: boolean = false;
+  @StorageProp('accentColor') accent: string = '#2F6BFF';
+  @StorageProp('fontScale') fontScale: number = 1;
   @Link draft: string;
   onSend: () => void = () => {
   };
@@ -178,7 +180,7 @@ export struct ChatView {
         .fontSize(30)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.on_accent'))
-        .backgroundColor($r('app.color.accent'))
+        .backgroundColor(this.accent)
         .margin({ bottom: 8 })
       Text('在平板上，和最强的模型一起工作')
         .fontSize(26)
@@ -222,7 +224,7 @@ export struct ChatView {
       Blank()
       Text('去设置')
         .fontSize(12)
-        .fontColor($r('app.color.accent'))
+        .fontColor(this.accent)
         .onClick(() => this.onSettings())
     }
     .width('100%')
@@ -239,7 +241,7 @@ export struct ChatView {
         TextArea({ text: this.draft, placeholder: '问点什么…' })
           .layoutWeight(1)
           .constraintSize({ minHeight: 42, maxHeight: 150 })
-          .fontSize(15)
+          .fontSize(scaleFont(15, this.fontScale))
           .fontColor($r('app.color.text_primary'))
           .placeholderColor($r('app.color.text_tertiary'))
           .backgroundColor(Color.Transparent)
@@ -267,7 +269,7 @@ export struct ChatView {
           .fontColor(this.streaming ? $r('app.color.on_accent') :
             (this.canSend() ? $r('app.color.on_accent') : $r('app.color.text_tertiary')))
           .backgroundColor(this.streaming ? $r('app.color.danger') :
-            (this.canSend() ? $r('app.color.accent') : $r('app.color.surface_alt')))
+            (this.canSend() ? this.accent : $r('app.color.surface_alt')))
           .onClick(() => {
             if (this.streaming) {
               this.onStop();

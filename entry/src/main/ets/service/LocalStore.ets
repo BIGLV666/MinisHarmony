@@ -16,9 +16,11 @@ import {
   TOOL_PENDING,
   TOOL_RUNNING,
   clampContextBudget,
+  clampFontScale,
   clampMaxTurns,
   cloneSettings,
   defaultSettings,
+  normalizeAccentColor,
   normalizeThinkingLevel,
   normalizeToolNames,
   reasoningPart,
@@ -94,7 +96,9 @@ function normalizeSettings(source: AppSettings): AppSettings {
     enterToSend: source.enterToSend === true,
     disabledTools: normalizeToolNames(source.disabledTools),
     onboardingDone: source.onboardingDone === true,
-    appLockEnabled: source.appLockEnabled === true
+    appLockEnabled: source.appLockEnabled === true,
+    accentColor: normalizeAccentColor(source.accentColor),
+    fontScale: clampFontScale(source.fontScale)
   };
 }
 

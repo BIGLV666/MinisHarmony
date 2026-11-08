@@ -65,6 +65,8 @@ import { SidebarView } from '../components/SidebarView';
 @Entry
 @Component
 struct Index {
+  @StorageProp('accentColor') accent: string = '#2F6BFF';
+  @StorageProp('fontScale') fontScale: number = 1;
   @State settings: AppSettings = defaultSettings();
   @State sessions: SessionMeta[] = [];
   @State searchEntries: SessionSearchEntry[] = [];
@@ -147,6 +149,7 @@ struct Index {
       this.toast('本地存储初始化失败，本次会话不会保存');
     }
     this.settings = await LocalStore.loadSettings();
+    this.applyAppearance(this.settings);
     AppLogger.init(context, this.settings.loggingEnabled);
     const loaded: StoredSession[] = await LocalStore.loadSessions();
     this.store = loaded;
@@ -889,8 +892,15 @@ struct Index {
     }
   }
 
+  /** Publish appearance values so nested components update without prop drilling. */
+  private applyAppearance(settings: AppSettings): void {
+    AppStorage.setOrCreate<string>('accentColor', settings.accentColor);
+    AppStorage.setOrCreate<number>('fontScale', settings.fontScale);
+  }
+
   private applySettings(next: AppSettings): void {
     this.settings = next;
+    this.applyAppearance(next);
     AppLogger.setEnabled(next.loggingEnabled);
     this.showSettings = false;
     LocalStore.saveSettings(next).catch((error: Error) => {
@@ -946,7 +956,7 @@ struct Index {
       LoadingProgress()
         .width(32)
         .height(32)
-        .color($r('app.color.accent'))
+        .color(this.accent)
       Text('正在加载…')
         .fontSize(12)
         .fontColor($r('app.color.text_secondary'))
@@ -1125,7 +1135,7 @@ struct Index {
               .padding({ left: 10, right: 10, top: 7, bottom: 7 })
               .borderRadius(9)
               .backgroundColor(this.paramThinking === value
-                ? $r('app.color.accent')
+                ? this.accent
                 : $r('app.color.surface_alt'))
               .onClick(() => {
                 this.paramThinking = value;
@@ -1173,7 +1183,7 @@ struct Index {
             .height(40)
             .fontSize(13)
             .fontColor($r('app.color.on_accent'))
-            .backgroundColor($r('app.color.accent'))
+            .backgroundColor(this.accent)
             .borderRadius(11)
             .onClick(() => this.saveSessionParams())
         }
@@ -1263,7 +1273,7 @@ struct Index {
         .width(160)
         .fontSize(13)
         .fontColor($r('app.color.on_accent'))
-        .backgroundColor($r('app.color.accent'))
+        .backgroundColor(this.accent)
         .borderRadius(10)
         .enabled(!this.unlocking)
         .onClick(() => {
@@ -1318,7 +1328,7 @@ struct Index {
             .height(40)
             .fontSize(13)
             .fontColor($r('app.color.on_accent'))
-            .backgroundColor($r('app.color.accent'))
+            .backgroundColor(this.accent)
             .borderRadius(11)
             .onClick(() => this.settleToolPermission(true))
         }
@@ -1384,7 +1394,7 @@ struct Index {
             .height(40)
             .fontSize(13)
             .fontColor($r('app.color.on_accent'))
-            .backgroundColor($r('app.color.accent'))
+            .backgroundColor(this.accent)
             .borderRadius(11)
             .onClick(() => this.confirmEdit())
         }
@@ -1439,7 +1449,7 @@ struct Index {
             .height(40)
             .fontSize(13)
             .fontColor($r('app.color.on_accent'))
-            .backgroundColor($r('app.color.accent'))
+            .backgroundColor(this.accent)
             .borderRadius(11)
             .onClick(() => this.performRewind())
         }

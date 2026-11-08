@@ -8,10 +8,13 @@ import {
   parseInline,
   parseMarkdown
 } from '../core/Markdown';
+import { scaleFont } from '../core/Types';
 
 @Component
 export struct MarkdownView {
   @Prop @Watch('onTextChanged') text: string = '';
+  @StorageProp('accentColor') accent: string = '#2F6BFF';
+  @StorageProp('fontScale') fontScale: number = 1;
   @State blocks: MdBlock[] = [];
 
   aboutToAppear(): void {
@@ -24,15 +27,15 @@ export struct MarkdownView {
 
   private headingSize(level: number): number {
     if (level <= 1) {
-      return 22;
+      return scaleFont(22, this.fontScale);
     }
     if (level === 2) {
-      return 19;
+      return scaleFont(19, this.fontScale);
     }
     if (level === 3) {
-      return 17;
+      return scaleFont(17, this.fontScale);
     }
-    return 15;
+    return scaleFont(15, this.fontScale);
   }
 
   private copy(text: string): void {
@@ -68,7 +71,7 @@ export struct MarkdownView {
         Span(segment.text)
           .fontWeight(segment.bold ? FontWeight.Bold : weight)
           .fontStyle(segment.italic ? FontStyle.Italic : FontStyle.Normal)
-          .fontColor(segment.code ? $r('app.color.accent') : color)
+          .fontColor(segment.code ? this.accent : color)
           .fontFamily(segment.code ? 'monospace' : 'HarmonyOS Sans')
           .decoration({ type: segment.link.length > 0 ? TextDecorationType.Underline : TextDecorationType.None })
           .onClick(() => {
@@ -78,9 +81,9 @@ export struct MarkdownView {
           })
       })
     }
-    .fontSize(fontSize)
+    .fontSize(scaleFont(fontSize, this.fontScale))
     .fontColor(color)
-    .lineHeight(fontSize * 1.62)
+    .lineHeight(scaleFont(fontSize * 1.62, this.fontScale))
     .width('100%')
     .copyOption(CopyOptions.LocalDevice)
   }
@@ -96,7 +99,7 @@ export struct MarkdownView {
         Span(segment.text)
           .fontWeight(segment.bold || header ? FontWeight.Bold : FontWeight.Normal)
           .fontStyle(segment.italic ? FontStyle.Italic : FontStyle.Normal)
-          .fontColor(segment.code ? $r('app.color.accent') : $r('app.color.text_primary'))
+          .fontColor(segment.code ? this.accent : $r('app.color.text_primary'))
           .decoration({ type: segment.link.length > 0 ? TextDecorationType.Underline : TextDecorationType.None })
           .onClick(() => {
             if (segment.link.length > 0) {
@@ -105,9 +108,9 @@ export struct MarkdownView {
           })
       })
     }
-    .fontSize(13)
+    .fontSize(scaleFont(13, this.fontScale))
     .fontColor($r('app.color.text_primary'))
-    .lineHeight(19)
+    .lineHeight(scaleFont(19, this.fontScale))
     .layoutWeight(1)
     .padding({ left: 9, right: 9, top: 7, bottom: 7 })
     .backgroundColor(header ? $r('app.color.surface_alt') : $r('app.color.surface'))
@@ -144,11 +147,11 @@ export struct MarkdownView {
     Column() {
       Row() {
         Text(block.lang.length > 0 ? block.lang : 'code')
-          .fontSize(11)
+          .fontSize(scaleFont(11, this.fontScale))
           .fontColor($r('app.color.text_secondary'))
         Blank()
         Text('复制')
-          .fontSize(11)
+          .fontSize(scaleFont(11, this.fontScale))
           .fontColor($r('app.color.text_secondary'))
           .onClick(() => this.copy(block.text))
       }
@@ -156,10 +159,10 @@ export struct MarkdownView {
       .padding({ left: 12, right: 12, top: 8, bottom: 6 })
 
       Text(block.text)
-        .fontSize(13)
+        .fontSize(scaleFont(13, this.fontScale))
         .fontFamily('monospace')
         .fontColor($r('app.color.text_primary'))
-        .lineHeight(20)
+        .lineHeight(scaleFont(20, this.fontScale))
         .width('100%')
         .padding({ left: 12, right: 12, bottom: 12 })
         .copyOption(CopyOptions.LocalDevice)
@@ -174,7 +177,7 @@ export struct MarkdownView {
   listItem(block: MdBlock) {
     Row() {
       Text(block.ordered ? block.index.toString() + '.' : '•')
-        .fontSize(15)
+        .fontSize(scaleFont(15, this.fontScale))
         .fontColor($r('app.color.text_secondary'))
         .width(block.ordered ? 26 : 14)
       Column() {

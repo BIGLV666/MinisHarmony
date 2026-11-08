@@ -10,6 +10,12 @@ import {
   cloneSettings,
   defaultSettings
 } from '../core/Types';
+import {
+  ACCENT_PRESETS,
+  AccentPreset,
+  FONT_SCALE_OPTIONS,
+  fontScaleLabel
+} from '../core/Appearance';
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
 import { formatEventLine } from '../core/EventLog';
 import { MemoryFile } from '../core/Memory';
@@ -87,6 +93,8 @@ export struct SettingsSheet {
   @State enterToSend: boolean = false;
   @State thinkingLevel: ThinkingLevel = 'off';
   @State appLockEnabled: boolean = false;
+  @State accentColor: string = '#2F6BFF';
+  @State fontScale: number = 1;
   @State disabledTools: string[] = [];
   @State showLogs: boolean = false;
   @State logLines: string[] = [];
@@ -119,6 +127,8 @@ export struct SettingsSheet {
     this.enterToSend = copy.enterToSend;
     this.thinkingLevel = copy.thinkingLevel;
     this.appLockEnabled = copy.appLockEnabled;
+    this.accentColor = copy.accentColor;
+    this.fontScale = copy.fontScale;
     this.disabledTools = copy.disabledTools.slice();
   }
 
@@ -182,7 +192,9 @@ export struct SettingsSheet {
       enterToSend: this.enterToSend,
       disabledTools: this.disabledTools.slice(),
       onboardingDone: this.settings.onboardingDone,
-      appLockEnabled: this.appLockEnabled
+      appLockEnabled: this.appLockEnabled,
+      accentColor: this.accentColor,
+      fontScale: this.fontScale
     };
     return next;
   }
@@ -680,6 +692,72 @@ export struct SettingsSheet {
                 }
                 .width('100%')
                 Text('非「关闭」时，请求体带 reasoning_effort。不是所有模型都支持；不支持时会由服务端忽略或报错，可随时改回关闭。')
+                  .fontSize(9)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .lineHeight(14)
+                  .width('100%')
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Column({ space: 10 }) {
+                Text('主题色')
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width('100%')
+                Row({ space: 8 }) {
+                  ForEach(ACCENT_PRESETS, (preset: AccentPreset) => {
+                    Column({ space: 3 }) {
+                      Column()
+                        .width(26)
+                        .height(26)
+                        .borderRadius(13)
+                        .backgroundColor(preset.value)
+                        .border({
+                          width: this.accentColor === preset.value ? 2 : 0,
+                          color: $r('app.color.text_primary')
+                        })
+                      Text(preset.name)
+                        .fontSize(9)
+                        .fontColor(this.accentColor === preset.value
+                          ? $r('app.color.text_primary')
+                          : $r('app.color.text_tertiary'))
+                    }
+                    .layoutWeight(1)
+                    .onClick(() => {
+                      this.accentColor = preset.value;
+                    })
+                  }, (preset: AccentPreset) => preset.value)
+                }
+                .width('100%')
+
+                Text('正文字号')
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width('100%')
+                Row({ space: 6 }) {
+                  ForEach(FONT_SCALE_OPTIONS, (scale: number) => {
+                    Text(fontScaleLabel(scale))
+                      .layoutWeight(1)
+                      .height(32)
+                      .fontSize(11)
+                      .textAlign(TextAlign.Center)
+                      .fontColor(this.fontScale === scale
+                        ? $r('app.color.on_accent')
+                        : $r('app.color.text_secondary'))
+                      .backgroundColor(this.fontScale === scale
+                        ? $r('app.color.accent')
+                        : $r('app.color.surface'))
+                      .borderRadius(8)
+                      .onClick(() => {
+                        this.fontScale = scale;
+                      })
+                  }, (scale: number) => scale.toString())
+                }
+                .width('100%')
+                Text('只影响消息正文与代码的阅读字号；设置页与界面控件保持系统大小。')
                   .fontSize(9)
                   .fontColor($r('app.color.text_tertiary'))
                   .lineHeight(14)

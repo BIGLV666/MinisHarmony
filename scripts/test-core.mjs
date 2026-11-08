@@ -49,6 +49,7 @@ copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
 copyCore('FileListing');
 copyCore('SessionParams', ['Types']);
+copyCore('Appearance');
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -118,6 +119,7 @@ const toolLoop = await import(pathToFileURL(join(tmp, 'ToolLoop.mts')).href);
 const sessionExport = await import(pathToFileURL(join(tmp, 'SessionExport.mts')).href);
 const listing = await import(pathToFileURL(join(tmp, 'FileListing.mts')).href);
 const sessionParams = await import(pathToFileURL(join(tmp, 'SessionParams.mts')).href);
+const appearance = await import(pathToFileURL(join(tmp, 'Appearance.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -317,6 +319,22 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(types.cloneSettings({ ...settings, onboardingDone: true }).onboardingDone, true);
   assert.equal(settings.appLockEnabled, false);
   assert.equal(types.cloneSettings({ ...settings, appLockEnabled: true }).appLockEnabled, true);
+  assert.equal(settings.accentColor, types.DEFAULT_ACCENT_COLOR);
+  assert.equal(settings.fontScale, 1);
+  assert.equal(types.normalizeAccentColor('#abcdef'), '#abcdef');
+  assert.equal(types.normalizeAccentColor('#GGGGGG'), types.DEFAULT_ACCENT_COLOR);
+  assert.equal(types.normalizeAccentColor('red'), types.DEFAULT_ACCENT_COLOR);
+  assert.equal(types.clampFontScale(0.5), 0.9);
+  assert.equal(types.clampFontScale(2), 1.3);
+  assert.equal(types.clampFontScale(Number.NaN), 1);
+  assert.equal(types.scaleFont(10, 1.15), 12);
+  assert.equal(appearance.fontScaleLabel(0.9), '小');
+  assert.equal(appearance.fontScaleLabel(1), '标准');
+  assert.equal(appearance.fontScaleLabel(1.15), '大');
+  assert.equal(appearance.fontScaleLabel(1.3), '特大');
+  assert.equal(appearance.ACCENT_PRESETS.length, 6);
+  assert.equal(types.normalizeAccentColor(appearance.ACCENT_PRESETS[3].value),
+    appearance.ACCENT_PRESETS[3].value);
   assert.deepEqual(
     types.normalizeToolNames(['read_file', 'read_file', '', 'now']),
     ['read_file', 'now']

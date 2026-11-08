@@ -44,6 +44,7 @@
 | 消息内链接 | `core/Markdown.ets#isOpenableUrl` + `MarkdownView` | 裸 URL 与 Markdown 链接可点；协议白名单；经系统浏览器打开 |
 | Markdown 表格 | `MdBlockKind.Table` + `MarkdownView.tableBlock` | GFM 表头/分隔行；等宽列；无 LaTeX 与代码高亮 |
 | OpenMinis 每会话参数 | `core/SessionParams.ets` + 会话操作弹窗 | 模型/思考/追加提示词覆盖；空串继承全局；撤销即恢复全局 |
+| OpenMinis 主题/字号 | `AppSettings.accentColor` / `fontScale` + `AppStorage` | 六种强调色、四档字号；主界面即时生效；设置页不缩放 |
 | OpenMinis `read_image`（原生视觉分支） | `core/ToolProtocol.ets` + `LocalToolRuntime.imageDataUrl()` | tool 消息后追加合成 user `image_url` 消息；无 Vision Group 文本回退 |
 | OpenMinis `/memory` `/thinking` | `Index.handleCommand()` | 记忆为全局开关；思考映射到 `reasoning_effort`，无模型元数据 |
 | Android `ToolJsonRepair.kt` | `core/ToolArgs.ets` | 覆盖围栏/截断/尾逗号；未做类型强转与字段名模糊匹配 |

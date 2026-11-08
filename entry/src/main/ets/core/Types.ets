@@ -91,6 +91,44 @@ export interface AppSettings {
   onboardingDone: boolean;
   /** Ask for the system credential before showing the app at launch. */
   appLockEnabled: boolean;
+  /** Accent colour as `#RRGGBB`; applied to buttons, links and bubbles. */
+  accentColor: string;
+  /** Reading scale for chat text, 0.9–1.3. */
+  fontScale: number;
+}
+
+export const DEFAULT_ACCENT_COLOR: string = '#2F6BFF';
+export const MIN_FONT_SCALE: number = 0.9;
+export const MAX_FONT_SCALE: number = 1.3;
+
+export function normalizeAccentColor(value: string | undefined): string {
+  if (value === undefined || value.length !== 7 || value.charAt(0) !== '#') {
+    return DEFAULT_ACCENT_COLOR;
+  }
+  const digits: string = '0123456789abcdefABCDEF';
+  for (let i = 1; i < 7; i++) {
+    if (digits.indexOf(value.charAt(i)) < 0) {
+      return DEFAULT_ACCENT_COLOR;
+    }
+  }
+  return value;
+}
+
+export function clampFontScale(value: number): number {
+  if (Number.isNaN(value) || !Number.isFinite(value)) {
+    return 1;
+  }
+  if (value < MIN_FONT_SCALE) {
+    return MIN_FONT_SCALE;
+  }
+  if (value > MAX_FONT_SCALE) {
+    return MAX_FONT_SCALE;
+  }
+  return Math.round(value * 100) / 100;
+}
+
+export function scaleFont(size: number, scale: number): number {
+  return Math.round(size * clampFontScale(scale));
 }
 
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
@@ -373,7 +411,9 @@ export function defaultSettings(): AppSettings {
     enterToSend: false,
     disabledTools: [],
     onboardingDone: false,
-    appLockEnabled: false
+    appLockEnabled: false,
+    accentColor: DEFAULT_ACCENT_COLOR,
+    fontScale: 1
   };
 }
 
@@ -420,7 +460,9 @@ export function cloneSettings(source: AppSettings): AppSettings {
     enterToSend: source.enterToSend === true,
     disabledTools: normalizeToolNames(source.disabledTools),
     onboardingDone: source.onboardingDone === true,
-    appLockEnabled: source.appLockEnabled === true
+    appLockEnabled: source.appLockEnabled === true,
+    accentColor: normalizeAccentColor(source.accentColor),
+    fontScale: clampFontScale(source.fontScale)
   };
 }
 

@@ -9,6 +9,7 @@ import { formatRelative } from '../service/Format';
 
 @Component
 export struct SidebarView {
+  @StorageProp('accentColor') accent: string = '#2F6BFF';
   @Prop sessions: SessionMeta[] = [];
   @Prop searchEntries: SessionSearchEntry[] = [];
   @Prop currentId: string = '';
@@ -83,7 +84,7 @@ export struct SidebarView {
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.on_accent'))
-        .backgroundColor($r('app.color.accent'))
+        .backgroundColor(this.accent)
       Column({ space: 1 }) {
         Text('Minis')
           .fontSize(16)
@@ -179,7 +180,7 @@ export struct SidebarView {
       .width('100%')
       .height(42)
       .justifyContent(FlexAlign.Center)
-      .backgroundColor($r('app.color.accent'))
+      .backgroundColor(this.accent)
       .borderRadius(12)
       .onClick(() => this.onNew())
 
@@ -252,7 +253,7 @@ export struct SidebarView {
           .fontColor($r('app.color.text_tertiary'))
         Text('导入会话 JSON')
           .fontSize(11)
-          .fontColor($r('app.color.accent'))
+          .fontColor(this.accent)
           .padding({ top: 4, bottom: 2 })
           .onClick(() => this.onImport())
       }

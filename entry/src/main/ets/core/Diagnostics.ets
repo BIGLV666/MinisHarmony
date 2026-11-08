@@ -13,7 +13,9 @@ import { exportStamp } from './MarkdownExport';
 import { redactSecrets } from './EventLog';
 
 export const DIAGNOSTICS_KIND: string = 'diagnostics';
-export const MAX_CRASH_PARAMS_CHARS: number = 2000;
+// Large enough to keep an OS-provided stack trace; still capped so repeated
+// crashes cannot grow the diagnostics file without bound.
+export const MAX_CRASH_PARAMS_CHARS: number = 20000;
 export const MAX_DIAGNOSTIC_EVENT_LINES: number = 300;
 export const MAX_DIAGNOSTIC_CRASH_LINES: number = 40;
 
@@ -101,6 +103,41 @@ export function crashLine(ts: number, event: string, paramsJson: string): string
     params: redactSecrets(paramsJson).substring(0, MAX_CRASH_PARAMS_CHARS)
   };
   return JSON.stringify(record);
+}
+
+function pad2(value: number): string {
+  return value < 10 ? '0' + value.toString() : value.toString();
+}
+
+/**
+ * Human-readable crash record for the in-app viewer. Params arrive as a JSON
+ * blob from the OS; pretty-print it when possible so stack frames are one per
+ * line instead of a single escaped string.
+ */
+export function formatCrashRecord(line: string): string {
+  const trimmed: string = line.trim();
+  if (trimmed.length === 0) {
+    return '';
+  }
+  try {
+    const record: CrashRecord = JSON.parse(trimmed) as CrashRecord;
+    const ts: number = typeof record.ts === 'number' ? record.ts : 0;
+    const event: string = typeof record.event === 'string' ? record.event : '?';
+    const date: Date = new Date(ts);
+    let text: string = date.getFullYear().toString() + '-' +
+      pad2(date.getMonth() + 1) + '-' + pad2(date.getDate()) + ' ' +
+      pad2(date.getHours()) + ':' + pad2(date.getMinutes()) + ':' +
+      pad2(date.getSeconds()) + '  ' + event;
+    let params: string = typeof record.params === 'string' ? record.params : '';
+    try {
+      params = JSON.stringify(JSON.parse(params), null, 2);
+    } catch (e) {
+      // Not JSON; keep the redacted text as-is.
+    }
+    return params.length > 0 ? text + '\n' + params : text;
+  } catch (e) {
+    return trimmed;
+  }
 }
 
 export function buildDiagnostics(input: DiagnosticsInput): string {

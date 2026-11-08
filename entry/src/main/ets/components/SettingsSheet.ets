@@ -5,6 +5,7 @@ import {
   ProviderPreset,
   SandboxMode,
   ThinkingLevel,
+  clampAutoCompactPercent,
   clampContextBudget,
   clampMaxTurns,
   cloneSettings,
@@ -25,7 +26,16 @@ import {
 import { SkillDoc } from '../core/SkillDoc';
 import { SkillStore } from '../service/SkillStore';
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
-import { formatEventLine } from '../core/EventLog';
+import {
+  LOG_ERROR,
+  LOG_INFO,
+  LOG_WARN,
+  ParsedEventLine,
+  formatEventLine,
+  parseEventLine
+} from '../core/EventLog';
+import { formatCrashRecord } from '../core/Diagnostics';
+import { CrashLog } from '../service/CrashLog';
 import { formatDateTime } from '../core/Device';
 import { MemoryFile } from '../core/Memory';
 import { SOUL_PRESETS, SoulPreset } from '../core/Soul';
@@ -68,6 +78,12 @@ interface ToolChoice {
 interface ThinkingChoice {
   value: ThinkingLevel;
   label: string;
+}
+
+/** Formatted viewer line plus the fields the filters need. */
+interface LogRow {
+  line: string;
+  parsed: ParsedEventLine;
 }
 
 const THINKING_CHOICES: ThinkingChoice[] = [
@@ -145,6 +161,8 @@ export struct SettingsSheet {
   @State ishReport: string = '';
   @State maxTurnsText: string = '200';
   @State contextBudgetText: string = '60000';
+  @State autoCompact: boolean = true;
+  @State autoCompactText: string = '80';
   @State loggingEnabled: boolean = false;
   @State memoryEnabled: boolean = false;
   @State imageToolsEnabled: boolean = false;
@@ -162,7 +180,14 @@ export struct SettingsSheet {
   @State fontScale: number = 1;
   @State disabledTools: string[] = [];
   @State showLogs: boolean = false;
-  @State logLines: string[] = [];
+  @State logRows: LogRow[] = [];
+  /** all / info / warn / error */
+  @State logLevel: string = 'all';
+  @State logEvent: string = 'all';
+  @State logQuery: string = '';
+  @State logTall: boolean = false;
+  @State showCrashes: boolean = false;
+  @State crashRows: string[] = [];
   @State showMemory: boolean = false;
   @State memoryFiles: MemoryFile[] = [];
   @State memoryIndex: number = 0;
@@ -226,6 +251,8 @@ export struct SettingsSheet {
     this.sandboxToken = copy.sandboxToken;
     this.maxTurnsText = copy.maxAgentTurns.toString();
     this.contextBudgetText = copy.contextBudgetChars.toString();
+    this.autoCompact = copy.autoCompact;
+    this.autoCompactText = copy.autoCompactPercent.toString();
     this.loggingEnabled = copy.loggingEnabled;
     this.memoryEnabled = copy.memoryEnabled;
     this.imageToolsEnabled = copy.imageToolsEnabled;
@@ -486,6 +513,8 @@ export struct SettingsSheet {
       sandboxToken: this.sandboxToken.trim(),
       maxAgentTurns: clampMaxTurns(Number(this.maxTurnsText)),
       contextBudgetChars: clampContextBudget(Number(this.contextBudgetText)),
+      autoCompact: this.autoCompact,
+      autoCompactPercent: clampAutoCompactPercent(Number(this.autoCompactText)),
       loggingEnabled: this.loggingEnabled,
       memoryEnabled: this.memoryEnabled,
       imageToolsEnabled: this.imageToolsEnabled,
@@ -736,8 +765,10 @@ export struct SettingsSheet {
 
   private clearLogs(): void {
     const removed: number = AppLogger.clear();
-    this.logLines = [];
+    this.logRows = [];
     this.showLogs = false;
+    this.crashRows = [];
+    this.showCrashes = false;
     this.onToast(removed > 0 ? '已删除 ' + removed.toString() + ' 个日志文件' : '没有可删除的日志文件');
   }
 
@@ -786,13 +817,103 @@ export struct SettingsSheet {
       this.showLogs = false;
       return;
     }
-    const raw: string[] = AppLogger.recent(200);
-    const lines: string[] = [];
+    const raw: string[] = AppLogger.recent(300);
+    const rows: LogRow[] = [];
     for (let i = 0; i < raw.length; i++) {
-      lines.push(formatEventLine(raw[i]));
+      rows.push({ line: formatEventLine(raw[i]), parsed: parseEventLine(raw[i]) });
     }
-    this.logLines = lines;
+    this.logRows = rows;
+    this.logLevel = 'all';
+    this.logEvent = 'all';
+    this.logQuery = '';
     this.showLogs = true;
+  }
+
+  private logLevelLabel(value: string): string {
+    if (value === LOG_INFO) {
+      return '信息';
+    }
+    if (value === LOG_WARN) {
+      return '警告';
+    }
+    if (value === LOG_ERROR) {
+      return '错误';
+    }
+    return '全部';
+  }
+
+  /** `all` plus every event name present in the current page of logs. */
+  private logEventChoices(): string[] {
+    const choices: string[] = ['all'];
+    for (let i = 0; i < this.logRows.length; i++) {
+      const name: string = this.logRows[i].parsed.event;
+      if (name.length > 0 && choices.indexOf(name) < 0) {
+        choices.push(name);
+      }
+    }
+    return choices;
+  }
+
+  private filteredLogRows(): LogRow[] {
+    const keyword: string = this.logQuery.trim().toLowerCase();
+    const result: LogRow[] = [];
+    for (let i = 0; i < this.logRows.length; i++) {
+      const row: LogRow = this.logRows[i];
+      if (this.logLevel !== 'all' && row.parsed.level !== this.logLevel) {
+        continue;
+      }
+      if (this.logEvent !== 'all' && row.parsed.event !== this.logEvent) {
+        continue;
+      }
+      if (keyword.length > 0 && row.line.toLowerCase().indexOf(keyword) < 0) {
+        continue;
+      }
+      result.push(row);
+    }
+    return result;
+  }
+
+  private copyText(text: string, toast: string): void {
+    if (text.length === 0) {
+      this.onToast('没有可复制的内容');
+      return;
+    }
+    const data: pasteboard.PasteData = pasteboard.createData(
+      pasteboard.MIMETYPE_TEXT_PLAIN,
+      text
+    );
+    pasteboard.getSystemPasteboard().setData(data).then(() => {
+      this.onToast(toast);
+    }).catch((error: Error) => {
+      this.onToast('复制失败');
+    });
+  }
+
+  private copyVisibleLogs(): void {
+    const rows: LogRow[] = this.filteredLogRows();
+    const lines: string[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      lines.push(rows[i].line);
+    }
+    this.copyText(lines.join('\n'), '已复制 ' + lines.length.toString() + ' 条日志');
+  }
+
+  private toggleCrashes(): void {
+    if (this.showCrashes) {
+      this.showCrashes = false;
+      return;
+    }
+    const raw: string[] = CrashLog.recent(20);
+    const rows: string[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      rows.push(formatCrashRecord(raw[i]));
+    }
+    this.crashRows = rows;
+    this.showCrashes = true;
+  }
+
+  private copyCrashes(): void {
+    this.copyText(this.crashRows.join('\n\n'), '已复制崩溃记录');
   }
 
   private clearMemory(): void {
@@ -1685,6 +1806,49 @@ export struct SettingsSheet {
                 .lineHeight(14)
                 .width('100%')
 
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text('上下文接近上限时自动压缩')
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                  Text('发送前按最近一次用量判断，先生成摘要再发请求；失败时保留原对话。')
+                    .fontSize(9)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(13)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.autoCompact })
+                  .selectedColor(this.accentColor)
+                  .onChange((on: boolean) => {
+                    this.autoCompact = on;
+                  })
+              }
+              .width('100%')
+
+              if (this.autoCompact) {
+                Row({ space: 10 }) {
+                  Text('触发阈值')
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                    .width(84)
+                  TextInput({ text: this.autoCompactText })
+                    .layoutWeight(1)
+                    .height(38)
+                    .fontSize(12)
+                    .type(InputType.Number)
+                    .backgroundColor($r('app.color.surface_alt'))
+                    .borderRadius(9)
+                    .onChange((value: string) => {
+                      this.autoCompactText = value;
+                    })
+                  Text('%')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                }
+                .width('100%')
+              }
+
               Column({ space: 6 }) {
                 Text('思考档位')
                   .fontSize(11)
@@ -1889,6 +2053,14 @@ export struct SettingsSheet {
                   .backgroundColor($r('app.color.surface_alt'))
                   .borderRadius(9)
                   .onClick(() => this.loadLogs())
+                Button(this.showCrashes ? '收起崩溃' : '崩溃记录')
+                  .layoutWeight(1)
+                  .height(34)
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                  .onClick(() => this.toggleCrashes())
                 Button('清空事件日志')
                   .layoutWeight(1)
                   .height(34)
@@ -1918,26 +2090,162 @@ export struct SettingsSheet {
               .alignItems(HorizontalAlign.Start)
 
               if (this.showLogs) {
-                Column({ space: 4 }) {
-                  if (this.logLines.length === 0) {
+                Column({ space: 8 }) {
+                  Row({ space: 6 }) {
+                    ForEach(['all', LOG_INFO, LOG_WARN, LOG_ERROR], (value: string) => {
+                      Text(this.logLevelLabel(value))
+                        .fontSize(10)
+                        .padding({ left: 8, right: 8, top: 5, bottom: 5 })
+                        .borderRadius(7)
+                        .fontColor(this.logLevel === value
+                          ? $r('app.color.on_accent')
+                          : $r('app.color.text_secondary'))
+                        .backgroundColor(this.logLevel === value
+                          ? this.accentColor
+                          : $r('app.color.surface_alt'))
+                        .onClick(() => {
+                          this.logLevel = value;
+                        })
+                    }, (value: string) => value)
+                    Blank()
+                    Text('复制可见')
+                      .fontSize(10)
+                      .fontColor(this.accentColor)
+                      .onClick(() => this.copyVisibleLogs())
+                    Text(this.logTall ? '还原高度' : '放大')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_secondary'))
+                      .onClick(() => {
+                        this.logTall = !this.logTall;
+                      })
+                  }
+                  .width('100%')
+
+                  Scroll() {
+                    Row({ space: 6 }) {
+                      ForEach(this.logEventChoices(), (value: string) => {
+                        Text(value === 'all' ? '全部事件' : value)
+                          .fontSize(10)
+                          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                          .borderRadius(7)
+                          .fontColor(this.logEvent === value
+                            ? $r('app.color.text_primary')
+                            : $r('app.color.text_tertiary'))
+                          .backgroundColor(this.logEvent === value
+                            ? $r('app.color.surface_alt')
+                            : Color.Transparent)
+                          .border({
+                            width: 1,
+                            color: this.logEvent === value
+                              ? $r('app.color.border')
+                              : Color.Transparent
+                          })
+                          .onClick(() => {
+                            this.logEvent = value;
+                          })
+                      }, (value: string) => value)
+                    }
+                  }
+                  .scrollable(ScrollDirection.Horizontal)
+                  .scrollBar(BarState.Off)
+                  .width('100%')
+
+                  TextInput({
+                    text: this.logQuery,
+                    placeholder: '按关键词或时间筛选，例如 14:32 或 model_done'
+                  })
+                    .height(32)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_primary'))
+                    .placeholderColor($r('app.color.text_tertiary'))
+                    .backgroundColor($r('app.color.surface_alt'))
+                    .borderRadius(8)
+                    .onChange((value: string) => {
+                      this.logQuery = value;
+                    })
+
+                  if (this.logRows.length === 0) {
                     Text('没有日志。需要先打开「记录本地事件日志」，之后产生的事件才会写入。')
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(16)
+                  } else if (this.filteredLogRows().length === 0) {
+                    Text('没有匹配的日志。')
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_tertiary'))
+                  } else {
+                    Scroll() {
+                      Column({ space: 4 }) {
+                        ForEach(this.filteredLogRows(), (row: LogRow, index: number) => {
+                          Row({ space: 8 }) {
+                            Text(row.line)
+                              .fontSize(10)
+                              .fontColor(row.parsed.level === LOG_ERROR
+                                ? $r('app.color.danger')
+                                : $r('app.color.text_secondary'))
+                              .layoutWeight(1)
+                              .textAlign(TextAlign.Start)
+                              .copyOption(CopyOptions.LocalDevice)
+                            Text('复制')
+                              .fontSize(9)
+                              .fontColor($r('app.color.text_tertiary'))
+                              .onClick(() => this.copyText(row.line, '已复制该行'))
+                          }
+                          .width('100%')
+                          .alignItems(VerticalAlign.Top)
+                          .gesture(LongPressGesture().onAction(() => {
+                            this.copyText(row.line, '已复制该行');
+                          }))
+                        }, (row: LogRow, index: number) =>
+                          index.toString() + ':' + row.parsed.raw)
+                      }
+                      .width('100%')
+                    }
+                    .height(this.logTall ? 520 : 240)
+                    .width('100%')
+                    .scrollBar(BarState.Auto)
+                  }
+                }
+                .width('100%')
+                .padding(10)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(9)
+              }
+
+              if (this.showCrashes) {
+                Column({ space: 6 }) {
+                  Row() {
+                    Text('崩溃记录')
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_secondary'))
+                    Blank()
+                    Text('复制全部')
+                      .fontSize(10)
+                      .fontColor(this.accentColor)
+                      .onClick(() => this.copyCrashes())
+                  }
+                  .width('100%')
+
+                  if (this.crashRows.length === 0) {
+                    Text('没有崩溃记录。系统崩溃/冻结事件会在这里显示完整堆栈。')
                       .fontSize(11)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(16)
                   } else {
                     Scroll() {
-                      Column({ space: 3 }) {
-                        ForEach(this.logLines, (line: string, index: number) => {
-                          Text(line)
+                      Column({ space: 8 }) {
+                        ForEach(this.crashRows, (row: string, index: number) => {
+                          Text(row)
                             .fontSize(10)
+                            .fontFamily('monospace')
                             .fontColor($r('app.color.text_secondary'))
                             .width('100%')
-                            .textAlign(TextAlign.Start)
-                        }, (line: string, index: number) => index.toString() + ':' + line)
+                            .copyOption(CopyOptions.LocalDevice)
+                        }, (row: string, index: number) => index.toString() + ':' + row.length)
                       }
                       .width('100%')
                     }
-                    .height(220)
+                    .height(300)
                     .width('100%')
                     .scrollBar(BarState.Auto)
                   }

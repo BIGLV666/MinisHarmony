@@ -81,11 +81,62 @@ export function sanitizeDetail(text: string): string {
 interface RawEventLine {
   ts?: number;
   event?: string;
+  level?: string;
   tool?: string;
   ok?: boolean;
   durationMs?: number;
   detail?: string;
   req?: string;
+}
+
+/** Structured form used by the in-app log viewer for filtering. */
+export interface ParsedEventLine {
+  ts: number;
+  event: string;
+  level: string;
+  tool: string;
+  ok: boolean;
+  durationMs: number;
+  detail: string;
+  req: string;
+  /** The original JSONL text, so copy/export never loses any field. */
+  raw: string;
+}
+
+/**
+ * Parse one stored line for filtering. Corrupt or legacy lines degrade to an
+ * `info` entry with the raw text as the detail, never dropping the line.
+ */
+export function parseEventLine(line: string): ParsedEventLine {
+  const trimmed: string = line.trim();
+  try {
+    const raw: RawEventLine = JSON.parse(trimmed) as RawEventLine;
+    // Stored JSON can contain `null` for any field; type checks keep a
+    // corrupt line from crashing the viewer.
+    return {
+      ts: typeof raw.ts === 'number' ? raw.ts : 0,
+      event: typeof raw.event === 'string' ? raw.event : '?',
+      level: typeof raw.level === 'string' ? raw.level : LOG_INFO,
+      tool: typeof raw.tool === 'string' ? raw.tool : '',
+      ok: raw.ok !== false,
+      durationMs: typeof raw.durationMs === 'number' ? raw.durationMs : 0,
+      detail: typeof raw.detail === 'string' ? raw.detail : '',
+      req: typeof raw.req === 'string' ? raw.req : '',
+      raw: trimmed
+    };
+  } catch (e) {
+    return {
+      ts: 0,
+      event: '?',
+      level: LOG_INFO,
+      tool: '',
+      ok: true,
+      durationMs: 0,
+      detail: trimmed,
+      req: '',
+      raw: trimmed
+    };
+  }
 }
 
 function two(value: number): string {
@@ -103,26 +154,27 @@ export function formatEventLine(line: string): string {
   }
   try {
     const raw: RawEventLine = JSON.parse(trimmed) as RawEventLine;
-    const ts: number = raw.ts !== undefined ? raw.ts : 0;
+    // `null` passes an `!== undefined` check, so type-check every field.
+    const ts: number = typeof raw.ts === 'number' ? raw.ts : 0;
     const date: Date = new Date(ts);
     let text: string = two(date.getMonth() + 1) + '-' + two(date.getDate()) + ' ' +
       two(date.getHours()) + ':' + two(date.getMinutes()) + ':' +
       two(date.getSeconds()) + ' ' +
-      (raw.event !== undefined ? raw.event : '?');
-    const tool: string = raw.tool !== undefined ? raw.tool : '';
+      (typeof raw.event === 'string' ? raw.event : '?');
+    const tool: string = typeof raw.tool === 'string' ? raw.tool : '';
     if (tool.length > 0) {
       text += ' · ' + tool;
     }
     text += raw.ok === false ? ' ✗' : ' ✓';
-    const duration: number = raw.durationMs !== undefined ? raw.durationMs : 0;
+    const duration: number = typeof raw.durationMs === 'number' ? raw.durationMs : 0;
     if (duration > 0) {
       text += ' ' + duration.toString() + 'ms';
     }
-    const req: string = raw.req !== undefined ? raw.req : '';
+    const req: string = typeof raw.req === 'string' ? raw.req : '';
     if (req.length > 0) {
       text += ' · req=' + req;
     }
-    const detail: string = raw.detail !== undefined ? raw.detail : '';
+    const detail: string = typeof raw.detail === 'string' ? raw.detail : '';
     if (detail.length > 0) {
       text += ' · ' + detail;
     }

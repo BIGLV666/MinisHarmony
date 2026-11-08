@@ -919,6 +919,49 @@ test('event log serializes JSONL with a short session tag', () => {
   assert.equal(log.formatEventLine('  '), '');
 });
 
+test('parsed event lines expose level and event for filtering', () => {
+  const line = JSON.stringify({
+    ts: 0,
+    event: 'model_error',
+    level: 'error',
+    tool: '',
+    ok: false,
+    durationMs: 5,
+    detail: 'boom',
+    req: ''
+  });
+  const parsed = log.parseEventLine(line);
+  assert.equal(parsed.level, 'error');
+  assert.equal(parsed.event, 'model_error');
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.raw, line);
+  const broken = log.parseEventLine('garbage');
+  assert.equal(broken.level, 'info');
+  assert.equal(broken.detail, 'garbage');
+
+  const nulls = log.parseEventLine(JSON.stringify({
+    ts: null,
+    event: null,
+    level: null,
+    tool: null,
+    detail: null,
+    req: null
+  }));
+  assert.equal(nulls.event, '?');
+  assert.equal(nulls.level, 'info');
+  assert.equal(nulls.tool, '');
+  assert.equal(nulls.detail, '');
+  assert.equal(nulls.req, '');
+  assert.equal(log.formatEventLine('{"event":null,"tool":null,"detail":null}').includes('✓'), true);
+});
+
+test('auto compaction percent clamps to the safe range', () => {
+  assert.equal(types.clampAutoCompactPercent(NaN), 80);
+  assert.equal(types.clampAutoCompactPercent(10), 50);
+  assert.equal(types.clampAutoCompactPercent(99), 95);
+  assert.equal(types.clampAutoCompactPercent(72.8), 72);
+});
+
 test('exact edit replaces only a unique anchor', () => {
   const source = 'const a = 1;\nconst b = 2;\n';
   const outcome = edit.applyExactEdit(source, 'const b = 2;', 'const b = 3;', false);
@@ -2090,6 +2133,13 @@ test('diagnostics bundle redacts, trims and omits secrets', () => {
   const longParams = 'x'.repeat(diagnostics.MAX_CRASH_PARAMS_CHARS + 500);
   const capped = JSON.parse(diagnostics.crashLine(1, 'APP_FREEZE', longParams));
   assert.equal(capped.params.length, diagnostics.MAX_CRASH_PARAMS_CHARS);
+
+  const viewer = diagnostics.formatCrashRecord(
+    diagnostics.crashLine(1700000000000, 'APP_CRASH', '{"thread":"main","stack":"at foo"}')
+  );
+  assert.match(viewer, /APP_CRASH/);
+  assert.match(viewer, /"stack": "at foo"/);
+  assert.equal(diagnostics.formatCrashRecord('garbage'), 'garbage');
 
   const crashes = [];
   for (let i = 0; i < diagnostics.MAX_DIAGNOSTIC_CRASH_LINES + 5; i++) {

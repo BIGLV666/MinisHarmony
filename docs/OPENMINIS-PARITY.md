@@ -13,7 +13,8 @@
 > 约定：`[~]` 也算未完成项，继续做时把它推进到 `[x]`。
 
 界面/交互层的实机反馈（右侧溢出、思考等级入口、思考链展开、日志复制等）
-单独记录在 [`UI-FEEDBACK.md`](UI-FEEDBACK.md)，当前先做内核沙箱，UI 项不插队。
+单独记录在 [`UI-FEEDBACK.md`](UI-FEEDBACK.md)。2026-11-08 已完成第一轮 UI 修复；
+内核沙箱仍是最高优先级，但 UI 项不再一律让路。
 
 ---
 
@@ -52,7 +53,7 @@
 | - [x] | 本地事件日志 | 结构化日志、脱敏 | `EventLog` + `AppLogger` | — |
 | - [x] | 子代理 `subagent_task` | 最多 3 个并行、steer/cancel/resume、10 分钟 | 独立 `AgentRuntime`、全局并行上限 3 + 排队；默认后台执行，立即返回 job_id，结果以「[后台任务结束 …]」消息送回并自动续跑父对话，`wait=true` 阻塞；`status`/`steer`/`cancel`/`resume` 均支持 job_id 前缀，steer 在子代理下一次请求前读取、不打断工具调用，turn 结束时若有待读纠正会续跑；`max_minutes` 1–60（默认 10），嵌套 2 层（嵌套强制阻塞）；结束时子会话落库为「子代理 · 标签」；崩溃遗留任务标记 `interrupted`，resume 从原始任务说明重启（无子转写可续）；未做 `progress_report` 与按对话的角色名册 | P1 |
 | - [x] | 工具并行执行 | 同一轮多个 tool_calls 并发 | `Promise.all` 并发执行，结果回到各自 part | P1 |
-| - [x] | 上下文压缩（compact） | `/compact` 摘要旧消息 | 保留最近 3 个用户轮次，旧轮次由模型摘要替换 | P1 |
+| - [x] | 上下文压缩（compact） | `/compact` 摘要旧消息 | 保留最近 3 个用户轮次，旧轮次由模型摘要替换；新增自动压缩开关与阈值（默认 80%，50–95），发送前按最近 `prompt+completion` 判断；成功显示可撤销提示，摘要为独立「对话摘要」节点，失败保留原历史；轮次边界对齐用户消息，工具调用/结果不被拆开 | P1 |
 | - [x] | 工具循环检测 | 重复调用同一工具时警告 | 连续相同 `name+args` 达 3 次时在工具结果前追加警告 | P2 |
 | - [x] | tool call 配对修复 | 补齐缺失的 tool 结果 | 中断结果 + 重复 id 去重 + 空工具名跳过 | P2 |
 | - [x] | JSON 参数修复 | 截断/尾逗号自动修复 | 代码围栏 / 截断闭合 / 尾逗号三类修复，失败保留原文 | P2 |
@@ -182,7 +183,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [ ] | 快捷指令 / 小组件 | iOS Widget / Shortcuts | 服务卡片 | P3 |
 | - [x] | 回车键行为 | Enter 发送或换行 | 设置项「Enter 键发送」；输入框切换 `EnterKeyType.Send` / `NEW_LINE`，`onSubmit` 仅在可发送时触发 | P2 |
 | - [x] | 常亮 / 自动聚焦 | 小选项集合 | 生成期间 `setWindowKeepScreenOn(true)`，结束/停止恢复；进入对话后自动聚焦输入框（350 ms 后布局完成再请求焦点） | P3 |
-| - [x] | 日志查看器 UI | 应用内查看 | 设置页内嵌最近 200 条，格式化为时间/事件/耗时/详情，可收起 | P2 |
+| - [x] | 日志查看器 UI | 应用内查看 | 设置页内嵌最近 300 条，格式化为时间/事件/耗时/详情；级别（info/warn/error）与事件类型筛选、关键词/时间搜索、行内长按/按钮复制、复制可见、240/520vp 高度切换；崩溃记录可在应用内查看格式化堆栈并复制 | P2 |
 
 ## 11. 安全 / 隐私 / 诊断
 
@@ -292,3 +293,5 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 流式 `usage:null` 闪退修复 | OpenCode 的部分流式 chunk 带 `"usage":null`，`parseOpenAiData` 直接读 `usage.prompt_tokens` 触发 JsError 导致应用闪退；对 `usage`、`error`、`choices`、`delta`、`tool_calls`、`function` 全部做 null 防御，并新增回归测试；108 项测试通过、重新签名安装 |
 | 2026-11-08 | 流式字符串字段 `null` 闪退修复 | 修完 usage 后仍有 `Cannot read property length of null`（`ChatApi.consumeEvent` 读 `delta.reasoning.length`）：JSON 的 `null` 能通过 `!== undefined` 检查，被赋给字符串字段。三套协议解析器统一改成按 `typeof === 'string'/'number'` 取值（OpenAI 的 `content/reasoning_content/reasoning/finish_reason/error.message/tool_calls`，Anthropic 的 `text/thinking/partial_json/id/name/stop_reason`，Gemini 的 `text/functionCall.name/finishReason/error.message`），并在 `consumeEvent` 再做一层运行时兜底；新增 5 组 null 字段回归；109 项测试通过、重新签名安装 |
 | 2026-11-08 | 板载 Linux 沙箱（iSH 内核） | 实机探针确认：原生子进程可用，但 app 无法 exec 任何 ELF；ptrace 与 `mmap(PROT_EXEC)` 可用。改为在 `childProcessManager.startNativeChildProcess` 内嵌 iSH ARM64 内核 + Asbestos 解释器 + fakefs，guest `/bin/sh` 由内核加载执行。用 OHOS NDK 交叉编译 `libish.a`/`libish_emu.a`/`libfakefs.a` + SQLite amalgamation + 真实 VDSO，打 5 个 Linux/OHOS 可移植性补丁；harness（`entry/src/main/cpp/ish/sandbox_ish.cpp`）挂 rootfs、建设备节点、挂 `/proc`、`/dev/pts`，以文件为 stdio 跑 `/bin/sh -c` 并回写退出码；`scripts/build-ish-ohos.sh` 可从源码一键重建；Alpine 3.21.3 fakefs 以 `rawfile/ish-rootfs.zip`（保留符号链接，3.8 MB）随 HAP 分发，首次运行解压到应用私有目录，避开 `/data/local/tmp` 的 SELinux 限制。运行时冒烟被平板锁屏阻塞，待解锁后验证 |
+| 2026-11-08 | UI 反馈第一轮：布局与思考 | P0 右侧溢出改为「头像 + layoutWeight 列 + 端对齐」，百分比 `maxWidth` 获得确定父宽，`ListItem` 显式 100%，代码块长 token `WordBreak.BREAK_ALL`；顶栏新增思考等级菜单（写入 `SessionMeta.thinkingOverride`，`/thinking` 同源，Anthropic/Gemini/不支持 reasoning 的模型隐藏）；思考链流式自动展开、结束收起为「思考了 N 秒 · 摘要」，手动开合按消息 id 记忆，260vp 内滚动并加左侧细线 |
+| 2026-11-08 | UI 反馈第一轮：压缩、日志与去装饰 | 自动压缩 + 撤销条 + 独立摘要节点 + 失败保留；日志查看器支持筛选/搜索/复制/高度切换与崩溃堆栈；移除 📌/🖼/🔒/⚠️/⏰/⚙ 和营销副标题、常驻提示；助手操作行可换行。111 项纯函数测试通过、HAP 构建成功；平板实机回归待解锁 |

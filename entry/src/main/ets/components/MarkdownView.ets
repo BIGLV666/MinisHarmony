@@ -213,6 +213,9 @@ export struct MarkdownView {
       .fontColor($r('app.color.text_primary'))
       .lineHeight(scaleFont(20, this.fontScale))
       .width('100%')
+      // Long unbroken tokens (URLs, base64) must wrap inside the bubble
+      // instead of widening it past the screen edge.
+      .wordBreak(WordBreak.BREAK_ALL)
       .padding({ left: 12, right: 12, bottom: 12 })
       .copyOption(CopyOptions.LocalDevice)
     }

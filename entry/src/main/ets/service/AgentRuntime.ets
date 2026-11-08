@@ -475,7 +475,7 @@ export class AgentRuntime {
     if (textOf(assistant).length > 0) {
       appendText(assistant, '\n\n');
     }
-    appendText(assistant, '> ⚠️ ' + message);
+    appendText(assistant, '> 注意：' + message);
     assistant.error = true;
     this.callbacks.onError(message);
     this.finish();

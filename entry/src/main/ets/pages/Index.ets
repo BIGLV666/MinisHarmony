@@ -28,7 +28,8 @@ import { ToolRuntime } from '../core/ToolTypes';
 import {
   applySessionParams,
   clearSessionParams,
-  effectiveSettings
+  effectiveSettings,
+  isThinkingOverride
 } from '../core/SessionParams';
 import {
   COMPACT_DEFAULT_KEEP_TURNS,
@@ -118,6 +119,13 @@ import { BrowserPage } from '../components/BrowserPage';
 import { HiddenBrowser } from '../components/HiddenBrowser';
 import { BrowserTool } from '../service/BrowserTool';
 
+/** Snapshot kept only until the compaction notice is dismissed. */
+interface CompactUndo {
+  sessionId: string;
+  messages: ChatMessage[];
+  messageCount: number;
+}
+
 @Entry
 @Component
 struct Index {
@@ -126,6 +134,8 @@ struct Index {
   @StorageProp('pendingShareText') @Watch('onSharedText') sharedText: string = '';
   @StorageProp('pendingDeepLink') @Watch('onDeepLink') deepLink: string = '';
   @State settings: AppSettings = defaultSettings();
+  /** Session-level thinking override mirrored for the chat header. */
+  @State thinkingOverride: string = '';
   @State sessions: SessionMeta[] = [];
   @State searchEntries: SessionSearchEntry[] = [];
   @State messages: ChatMessage[] = [];
@@ -134,6 +144,10 @@ struct Index {
   @State pendingAttachments: ChatAttachment[] = [];
   @State streaming: boolean = false;
   @State compacting: boolean = false;
+  /** One-line notice shown above the composer after a compaction. */
+  @State compactNotice: string = '';
+  /** False once a newer message makes the snapshot unsafe to restore. */
+  @State canUndoCompact: boolean = false;
   @State isWide: boolean = true;
   @State mobileChat: boolean = false;
   @State query: string = '';
@@ -174,6 +188,9 @@ struct Index {
   private store: StoredSession[] = [];
   private pendingImportText: string = '';
   private agent: AgentRuntime | null = null;
+  private compactUndo: CompactUndo | null = null;
+  /** Last turn that triggered auto compaction; prevents a repeat loop. */
+  private autoCompactMarker: string = '';
   private browserTool: BrowserTool = new BrowserTool();
   private workspaceRoot: string = '';
   private saveTimer: number = -1;
@@ -496,6 +513,7 @@ struct Index {
     if (loaded.length > 0) {
       this.currentId = loaded[0].meta.id;
       this.messages = loaded[0].messages.slice();
+      this.syncThinkingOverride();
       this.mobileChat = true;
       if (this.hasPendingBackgroundResult(loaded[0])) {
         this.runAgent(loaded[0], '', false);
@@ -586,6 +604,53 @@ struct Index {
     return session === null ? '新对话' : session.meta.title;
   }
 
+  /** Model actually used for the current conversation (override wins). */
+  private effectiveModelId(): string {
+    const session: StoredSession | null = this.findSession(this.currentId);
+    const override: string = session !== null && session.meta.modelOverride !== undefined
+      ? session.meta.modelOverride.trim()
+      : '';
+    return override.length > 0 ? override : this.settings.modelId;
+  }
+
+  private effectiveThinking(): ThinkingLevel {
+    return isThinkingOverride(this.thinkingOverride)
+      ? this.thinkingOverride as ThinkingLevel
+      : this.settings.thinkingLevel;
+  }
+
+  /** Anthropic/Gemini ignore reasoning_effort, so the entry is hidden there. */
+  private canSetThinking(): boolean {
+    if (this.settings.preset === 'anthropic' || this.settings.preset === 'gemini') {
+      return false;
+    }
+    return capsForModel(this.effectiveModelId()).reasoning;
+  }
+
+  private syncThinkingOverride(): void {
+    const session: StoredSession | null = this.findSession(this.currentId);
+    const value: string = session !== null && session.meta.thinkingOverride !== undefined
+      ? session.meta.thinkingOverride
+      : '';
+    this.thinkingOverride = isThinkingOverride(value) ? value : '';
+  }
+
+  private setThinkingLevel(value: string): void {
+    if (!isThinkingOverride(value)) {
+      return;
+    }
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return;
+    }
+    session.meta.thinkingOverride = value;
+    session.meta.updatedAt = Date.now();
+    this.thinkingOverride = value;
+    this.refreshSessions();
+    this.persistSoon();
+    this.toast(value === 'off' ? '本会话思考已关闭' : '本会话思考强度：' + this.thinkingLabel(value));
+  }
+
   private toast(message: string): void {
     this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 });
   }
@@ -627,6 +692,10 @@ struct Index {
     this.refreshSessions();
     this.currentId = meta.id;
     this.messages = [];
+    this.thinkingOverride = '';
+    this.compactNotice = '';
+    this.compactUndo = null;
+    this.canUndoCompact = false;
     this.draft = '';
     this.mobileChat = true;
     if (persist) {
@@ -645,6 +714,10 @@ struct Index {
     }
     this.currentId = id;
     this.messages = session.messages.slice();
+    this.syncThinkingOverride();
+    this.compactNotice = '';
+    this.compactUndo = null;
+    this.canUndoCompact = false;
     this.draft = '';
     this.mobileChat = true;
     if (!this.streaming && this.hasPendingBackgroundResult(session)) {
@@ -1150,6 +1223,7 @@ struct Index {
     this.refreshSessions();
     this.currentId = meta.id;
     this.messages = copied.slice();
+    this.syncThinkingOverride();
     this.mobileChat = true;
     this.persistSoon();
     this.toast('已复制为新会话');
@@ -1168,26 +1242,34 @@ struct Index {
   }
 
   private saveSessionParams(): void {
-    const session: StoredSession | null = this.findSession(this.paramsId);
+    const id: string = this.paramsId;
+    const session: StoredSession | null = this.findSession(id);
     this.paramsId = '';
     if (session === null) {
       return;
     }
     applySessionParams(session.meta, this.paramModel, this.paramThinking, this.paramPrompt);
     session.meta.updatedAt = Date.now();
+    if (id === this.currentId) {
+      this.syncThinkingOverride();
+    }
     this.refreshSessions();
     this.persistSoon();
     this.toast('会话参数已保存');
   }
 
   private resetSessionParams(): void {
-    const session: StoredSession | null = this.findSession(this.paramsId);
+    const id: string = this.paramsId;
+    const session: StoredSession | null = this.findSession(id);
     this.paramsId = '';
     if (session === null) {
       return;
     }
     clearSessionParams(session.meta);
     session.meta.updatedAt = Date.now();
+    if (id === this.currentId) {
+      this.syncThinkingOverride();
+    }
     this.refreshSessions();
     this.persistSoon();
     this.toast('已恢复为全局设置');
@@ -1208,6 +1290,7 @@ struct Index {
         this.currentId = metas[0].id;
         const next: StoredSession | null = this.findSession(metas[0].id);
         this.messages = next === null ? [] : next.messages.slice();
+        this.syncThinkingOverride();
       } else {
         this.createChat(false);
       }
@@ -1266,7 +1349,7 @@ struct Index {
     this.pendingAttachments = next;
   }
 
-  private sendMessage(): void {
+  private async sendMessage(): Promise<void> {
     const text: string = this.draft.trim();
     const attachments: ChatAttachment[] = this.pendingAttachments.slice();
     if ((text.length === 0 && attachments.length === 0) || this.streaming) {
@@ -1303,6 +1386,13 @@ struct Index {
       this.toast('请先填写远程沙箱地址');
       return;
     }
+
+    // Summarise old turns before the next request when the last reported
+    // usage is already near the window. A failure keeps the history as-is.
+    await this.autoCompactBeforeSend();
+    // A new user turn makes the pre-compaction snapshot stale.
+    this.compactUndo = null;
+    this.canUndoCompact = false;
 
     this.attributeTaskSend(text);
 
@@ -1490,30 +1580,42 @@ struct Index {
   /**
    * Replace old turns with a model-written summary. The recent turns are kept
    * verbatim, so tool results from the current task stay available.
+   *
+   * The transcript is only mutated after a successful summary, so a failed or
+   * timed-out request leaves the conversation untouched. `auto` silences the
+   * "too short" case and labels the notice as automatic.
    */
-  private async compactSession(): Promise<void> {
+  private async compactSession(auto: boolean = false): Promise<boolean> {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
-      return;
+      if (!auto) {
+        this.toast('请先停止当前生成');
+      }
+      return false;
     }
     if (this.compacting) {
-      this.toast('正在压缩上下文');
-      return;
+      if (!auto) {
+        this.toast('正在压缩上下文');
+      }
+      return false;
     }
     const session: StoredSession | null = this.findSession(this.currentId);
     if (session === null) {
-      return;
+      return false;
     }
     const plan: CompactPlan | null =
       planCompact(session.messages, COMPACT_DEFAULT_KEEP_TURNS);
     if (plan === null) {
-      this.toast('对话还太短，或最近几轮已覆盖全部内容');
-      return;
+      if (!auto) {
+        this.toast('对话还太短，或最近几轮已覆盖全部内容');
+      }
+      return false;
     }
+    const original: ChatMessage[] = session.messages.slice();
+    const originalCount: number = session.meta.messageCount;
     const transcript: string =
       transcriptForSummary(plan.head, SUMMARY_TRANSCRIPT_LIMIT);
     this.compacting = true;
-    this.toast('正在生成摘要…');
+    this.toast(auto ? '上下文接近上限，正在自动压缩…' : '正在生成摘要…');
     const summarySettings: AppSettings =
       await OAuthService.decorate(effectiveSettings(this.settings, session.meta));
     const result: SummaryResult = await summarizeConversation(
@@ -1521,18 +1623,111 @@ struct Index {
     );
     this.compacting = false;
     if (!result.ok) {
-      this.toast('压缩失败：' + result.message);
-      return;
+      // Keep the original history; tell the user instead of silently failing.
+      this.toast('压缩失败，原对话已保留：' + result.message);
+      return false;
     }
     const summary: ChatMessage =
       makeSummaryMessage(util.generateRandomUUID(true), result.text);
+    this.compactUndo = {
+      sessionId: session.meta.id,
+      messages: original,
+      messageCount: originalCount
+    };
+    this.canUndoCompact = true;
     session.messages = [summary].concat(plan.tail);
     session.meta.messageCount = session.messages.length;
     session.meta.updatedAt = Date.now();
     this.messages = session.messages.slice();
+    this.autoCompactMarker = this.currentId + ':' +
+      session.messages[session.messages.length - 1].id;
+    this.compactNotice = (auto ? '上下文接近上限，已自动把较早的 ' :
+      '已把较早的 ') + plan.head.length.toString() +
+      ' 条消息压缩为摘要。';
     this.refreshSessions();
     this.persistNow();
-    this.toast('已压缩 ' + plan.head.length.toString() + ' 条早期消息');
+    this.toast(auto ? '已自动压缩较早的对话' :
+      '已压缩 ' + plan.head.length.toString() + ' 条早期消息');
+    return true;
+  }
+
+  private dismissCompactNotice(): void {
+    this.compactUndo = null;
+    this.compactNotice = '';
+    this.canUndoCompact = false;
+  }
+
+  /** Restore the transcript captured just before the last compaction. */
+  private undoCompact(): void {
+    const undo: CompactUndo | null = this.compactUndo;
+    this.compactUndo = null;
+    this.compactNotice = '';
+    this.canUndoCompact = false;
+    if (undo === null || undo.sessionId !== this.currentId) {
+      return;
+    }
+    const session: StoredSession | null = this.findSession(undo.sessionId);
+    if (session === null) {
+      return;
+    }
+    session.messages = undo.messages;
+    session.meta.messageCount = undo.messageCount > 0
+      ? undo.messageCount
+      : undo.messages.length;
+    session.meta.updatedAt = Date.now();
+    this.messages = session.messages.slice();
+    this.autoCompactMarker = '';
+    this.refreshSessions();
+    this.persistNow();
+    this.toast('已恢复压缩前的对话');
+  }
+
+  /** Latest reported prompt+completion, the best local estimate we have. */
+  private contextUsageTokens(): number {
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return 0;
+    }
+    for (let i = session.messages.length - 1; i >= 0; i--) {
+      const message: ChatMessage = session.messages[i];
+      if (message.role === 'assistant' && message.totalTokens > 0) {
+        return message.promptTokens + message.completionTokens;
+      }
+    }
+    return 0;
+  }
+
+  private shouldAutoCompact(): boolean {
+    if (!this.settings.autoCompact || this.streaming || this.compacting) {
+      return false;
+    }
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null || session.messages.length === 0) {
+      return false;
+    }
+    if (planCompact(session.messages, COMPACT_DEFAULT_KEEP_TURNS) === null) {
+      return false;
+    }
+    const last: ChatMessage = session.messages[session.messages.length - 1];
+    // One compaction per settled turn: the transcript still reports the old
+    // usage until the model answers again, so without this guard every send
+    // would summarise the same conversation again.
+    if (this.autoCompactMarker === this.currentId + ':' + last.id) {
+      return false;
+    }
+    const used: number = this.contextUsageTokens();
+    if (used <= 0) {
+      return false;
+    }
+    const window: number = capsForModel(this.effectiveModelId()).contextWindow;
+    return used * 100 >= window * this.settings.autoCompactPercent;
+  }
+
+  private async autoCompactBeforeSend(): Promise<void> {
+    if (!this.shouldAutoCompact()) {
+      return;
+    }
+    await this.compactSession(true);
   }
 
   /**
@@ -1601,16 +1796,12 @@ struct Index {
       return;
     }
     if (command === '/thinking') {
-      const next: ThinkingLevel = cycleThinkingLevel(this.settings.thinkingLevel);
-      this.settings.thinkingLevel = next;
-      LocalStore.saveSettings(this.settings).catch((error: Error) => {
-        this.toast('设置保存失败');
-      });
-      this.toast(next === 'off' ? '思考已关闭' : '思考强度：' + next);
+      const next: ThinkingLevel = cycleThinkingLevel(this.effectiveThinking());
+      this.setThinkingLevel(next);
       this.appendLocalNotice(next === 'off'
-        ? '已关闭思考：请求不再携带 reasoning_effort。部分模型仍可能返回推理内容。'
-        : '已设置思考强度：reasoning_effort=' + next +
-          '。再次输入 /thinking 会切换到下一档；到 high 后再切换即关闭。');
+        ? '已关闭本会话的思考：请求不再携带 reasoning_effort。部分模型仍可能返回推理内容。'
+        : '已设置本会话思考强度：reasoning_effort=' + next +
+          '。再次输入 /thinking 会切换到下一档；新会话仍使用全局设置。');
       return;
     }
     const skill: SkillCommand | null = matchSkillCommand(raw, this.settings.enabledSkills);
@@ -2157,8 +2348,6 @@ struct Index {
   @Builder
   lockScreen() {
     Column({ space: 12 }) {
-      Text('🔒')
-        .fontSize(30)
       Text('Minis Harmony 已锁定')
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
@@ -2489,11 +2678,18 @@ struct Index {
     ChatView({
       messages: this.messages,
       streaming: this.streaming,
-      modelId: this.settings.modelId,
+      modelId: this.effectiveModelId(),
       title: this.currentTitle(),
       isWide: this.isWide,
       hasKey: this.settings.apiKey.trim().length > 0,
       enterToSend: this.settings.enterToSend,
+      canThink: this.canSetThinking(),
+      thinkingLevel: this.effectiveThinking(),
+      onThinkingLevel: (value: string) => this.setThinkingLevel(value),
+      compactNotice: this.compactNotice,
+      canUndoCompact: this.canUndoCompact,
+      onUndoCompact: () => this.undoCompact(),
+      onDismissCompactNotice: () => this.dismissCompactNotice(),
       draft: $draft,
       attachments: this.pendingAttachments,
       onSend: () => this.sendMessage(),

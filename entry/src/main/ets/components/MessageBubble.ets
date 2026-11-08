@@ -14,6 +14,23 @@ import { AttachmentStore } from '../service/AttachmentStore';
 import { formatRelative, formatTokens } from '../service/Format';
 import { MarkdownView } from './MarkdownView';
 
+/**
+ * Per-message reasoning display state. The list rebuilds a bubble whenever
+ * streamed text grows (the ForEach key includes the text length), so local
+ * component state alone cannot remember a manual expand/collapse. Keying by
+ * message id keeps the user's choice across rebuilds and lets us time the
+ * thinking phase without storing a duration in the transcript.
+ */
+interface ReasoningState {
+  manual: boolean;
+  open: boolean;
+  startedAt: number;
+  endedAt: number;
+  sawStreaming: boolean;
+}
+
+const reasoningStates: Map<string, ReasoningState> = new Map<string, ReasoningState>();
+
 @Component
 export struct MessageBubble {
   @Prop message: ChatMessage = {
@@ -51,12 +68,82 @@ export struct MessageBubble {
     return this.message.role === 'user';
   }
 
+  private isSystem(): boolean {
+    return this.message.role === 'system';
+  }
+
+  /** Compaction summaries get a distinct label from ordinary notices. */
+  private isSummary(): boolean {
+    return this.isSystem() &&
+      this.content().startsWith('以下是本次对话较早部分的摘要');
+  }
+
   private content(): string {
     return textOf(this.message);
   }
 
   private reasoning(): string {
     return reasoningOf(this.message);
+  }
+
+  aboutToAppear(): void {
+    const state: ReasoningState = this.reasoningState();
+    // Follow the stream by default; once the user toggles, respect that
+    // choice for the rest of the turn and after it settles.
+    this.reasoningOpen = state.manual
+      ? state.open
+      : (this.message.streaming && this.reasoning().length > 0);
+  }
+
+  private reasoningState(): ReasoningState {
+    let state: ReasoningState | undefined = reasoningStates.get(this.message.id);
+    if (state === undefined) {
+      state = {
+        manual: false,
+        open: false,
+        startedAt: 0,
+        endedAt: 0,
+        sawStreaming: false
+      };
+      reasoningStates.set(this.message.id, state);
+    }
+    if (this.reasoning().length > 0 && state.startedAt === 0) {
+      state.startedAt = Date.now();
+    }
+    if (this.message.streaming) {
+      state.sawStreaming = true;
+    } else if (state.sawStreaming && state.endedAt === 0) {
+      state.endedAt = Date.now();
+    }
+    return state;
+  }
+
+  private reasoningExcerpt(): string {
+    const text: string = this.reasoning().trim();
+    if (text.length === 0) {
+      return '';
+    }
+    const lines: string[] = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line: string = lines[i].trim();
+      if (line.length > 0) {
+        return line.length > 42 ? line.substring(0, 42) + '…' : line;
+      }
+    }
+    return '';
+  }
+
+  /** One collapsed line: elapsed thinking time plus a readable excerpt. */
+  private reasoningSummary(): string {
+    const state: ReasoningState = this.reasoningState();
+    const excerpt: string = this.reasoningExcerpt();
+    let head: string = '思考过程';
+    if (state.sawStreaming && state.startedAt > 0) {
+      const end: number = state.endedAt > 0 ? state.endedAt : Date.now();
+      const seconds: number = Math.max(1, Math.round((end - state.startedAt) / 1000));
+      head = '思考了 ' + seconds.toString() + ' 秒';
+    }
+    return excerpt.length > 0 ? head + ' · ' + excerpt : head;
   }
 
   private calls(): MessagePart[] {
@@ -120,6 +207,36 @@ export struct MessageBubble {
   }
 
   @Builder
+  systemCard() {
+    Column({ space: 6 }) {
+      Row({ space: 8 }) {
+        Text(this.isSummary() ? '对话摘要' : '提示')
+          .fontSize(10)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_secondary'))
+        if (this.isSummary()) {
+          Text('较早内容已压缩')
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+        }
+        Blank()
+        Text(formatRelative(this.message.createdAt))
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+      }
+      .width('100%')
+
+      MarkdownView({ text: this.content(), onOpenLink: this.onOpenLink })
+    }
+    .width('100%')
+    .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+    .backgroundColor($r('app.color.surface_alt'))
+    .borderRadius(10)
+    .border({ width: 1, color: $r('app.color.border') })
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
   avatar() {
     Text('M')
       .width(30)
@@ -136,39 +253,51 @@ export struct MessageBubble {
   reasoningPanel() {
     Column({ space: 8 }) {
       Row({ space: 6 }) {
-        Text(this.message.streaming ? '思考中…' : '思考过程')
+        if (this.message.streaming) {
+          LoadingProgress()
+            .width(13)
+            .height(13)
+            .color(this.accent)
+        }
+        Text(this.message.streaming ? '思考中…' : this.reasoningSummary())
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_secondary'))
+          .layoutWeight(1)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(this.reasoningOpen ? '收起' : '展开')
           .fontSize(11)
           .fontColor(this.accent)
-        Blank()
-        if (this.message.streaming && this.content().length === 0) {
-          LoadingProgress()
-            .width(14)
-            .height(14)
-            .color(this.accent)
-        }
       }
       .width('100%')
       .onClick(() => {
-        this.reasoningOpen = !this.reasoningOpen;
+        const state: ReasoningState = this.reasoningState();
+        state.manual = true;
+        state.open = !this.reasoningOpen;
+        this.reasoningOpen = state.open;
       })
 
       if (this.reasoningOpen) {
-        Text(this.reasoning())
-          .fontSize(12)
-          .fontColor($r('app.color.text_secondary'))
-          .lineHeight(19)
-          .width('100%')
-          .copyOption(CopyOptions.LocalDevice)
+        // Long chains scroll inside the panel instead of stretching the bubble.
+        Scroll() {
+          Text(this.reasoning())
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+            .lineHeight(19)
+            .width('100%')
+            .copyOption(CopyOptions.LocalDevice)
+        }
+        .width('100%')
+        .constraintSize({ maxHeight: 260 })
+        .scrollBar(BarState.Auto)
       }
     }
     .width('100%')
     .padding({ left: 10, right: 10, top: 8, bottom: 8 })
     .backgroundColor($r('app.color.surface_alt'))
     .borderRadius(10)
+    .border({ width: { left: 2 }, color: { left: $r('app.color.border') } })
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -336,39 +465,47 @@ export struct MessageBubble {
           .fontColor($r('app.color.danger'))
       }
 
-      Row({ space: 12 }) {
+      // Actions wrap instead of pushing past the bubble on narrow screens.
+      Flex({ wrap: FlexWrap.Wrap }) {
         Text(formatRelative(this.message.createdAt))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
+          .margin({ right: 12, bottom: 2 })
         if (this.message.totalTokens > 0) {
           Text('↑' + formatTokens(this.message.promptTokens) +
             ' ↓' + formatTokens(this.message.completionTokens))
             .fontSize(10)
             .fontColor($r('app.color.text_tertiary'))
+            .margin({ right: 12, bottom: 2 })
         }
         if (this.content().length > 0 && !this.message.streaming) {
           Text('复制')
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
+            .margin({ right: 12, bottom: 2 })
             .onClick(() => this.copy())
           Text('截图')
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
+            .margin({ right: 12, bottom: 2 })
             .onClick(() => this.onSnapshot())
         }
         if (this.canRegenerate) {
           Text(this.message.error ? '重试' : '重新生成')
             .fontSize(11)
             .fontColor(this.accent)
+            .margin({ right: 12, bottom: 2 })
             .onClick(() => this.onRegenerate())
         }
         if (this.canRewind) {
           Text('回到这里')
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
+            .margin({ right: 12, bottom: 2 })
             .onClick(() => this.onRewind())
         }
       }
+      .width('100%')
     }
     .alignItems(HorizontalAlign.Start)
     .padding({ left: 14, right: 14, top: 11, bottom: 9 })
@@ -399,20 +536,29 @@ export struct MessageBubble {
   }
 
   build() {
-    Row({ space: 10 }) {
-      if (!this.isUser()) {
-        this.avatar()
+    if (this.isSystem()) {
+      this.systemCard()
+    } else {
+      Row({ space: 10 }) {
+        if (!this.isUser()) {
+          this.avatar()
+        }
+        // A weighted column gives the bubble a definite parent width, so the
+        // percentage maxWidth below actually clamps instead of letting long
+        // code lines push the bubble past the screen edge.
+        Column() {
+          if (this.isUser()) {
+            this.userBubble()
+          } else {
+            this.assistantBubble()
+          }
+        }
+        .layoutWeight(1)
+        .alignItems(this.isUser() ? HorizontalAlign.End : HorizontalAlign.Start)
       }
-      if (this.isUser()) {
-        Blank()
-        this.userBubble()
-      } else {
-        this.assistantBubble()
-        Blank()
-      }
+      .width('100%')
+      .alignItems(VerticalAlign.Top)
+      .bindContentCover($$this.previewOpen, this.previewOverlay())
     }
-    .width('100%')
-    .alignItems(VerticalAlign.Top)
-    .bindContentCover($$this.previewOpen, this.previewOverlay())
   }
 }

@@ -27,6 +27,13 @@ export struct ChatView {
   @Prop hasKey: boolean = false;
   /** Enter submits instead of inserting a newline (physical + soft keyboard). */
   @Prop enterToSend: boolean = false;
+  /** False for protocols/models that do not accept reasoning_effort. */
+  @Prop canThink: boolean = false;
+  /** Effective level for this conversation: off / low / medium / high. */
+  @Prop thinkingLevel: string = 'off';
+  /** Non-empty right after a compaction, until dismissed. */
+  @Prop compactNotice: string = '';
+  @Prop canUndoCompact: boolean = false;
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
   @Link draft: string;
@@ -44,6 +51,13 @@ export struct ChatView {
   onScheduledTasks: () => void = () => {
   };
   onPickModel: () => void = () => {
+  };
+  /** Writes the conversation-level override; empty string inherits global. */
+  onThinkingLevel: (value: string) => void = (value: string) => {
+  };
+  onUndoCompact: () => void = () => {
+  };
+  onDismissCompactNotice: () => void = () => {
   };
   onBack: () => void = () => {
   };
@@ -156,6 +170,73 @@ export struct ChatView {
     return value;
   }
 
+  private thinkingLabel(value: string): string {
+    if (value === 'low') {
+      return '低';
+    }
+    if (value === 'medium') {
+      return '中';
+    }
+    if (value === 'high') {
+      return '高';
+    }
+    return '关';
+  }
+
+  @Builder
+  thinkingMenu() {
+    Column({ space: 2 }) {
+      Text('思考等级')
+        .fontSize(10)
+        .fontColor($r('app.color.text_tertiary'))
+        .width('100%')
+        .padding({ left: 10, right: 10, top: 6, bottom: 4 })
+      ForEach(['off', 'low', 'medium', 'high'], (value: string) => {
+        Row({ space: 10 }) {
+          Text(this.thinkingLabel(value))
+            .fontSize(13)
+            .fontColor($r('app.color.text_primary'))
+          Text(value === 'off' ? '不发送 reasoning_effort' : 'reasoning_effort=' + value)
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+          Blank()
+          if (this.thinkingLevel === value) {
+            Text('✓')
+              .fontSize(12)
+              .fontColor(this.accent)
+          }
+        }
+        .width(230)
+        .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+        .borderRadius(8)
+        .backgroundColor(this.thinkingLevel === value
+          ? $r('app.color.surface_alt')
+          : Color.Transparent)
+        .onClick(() => this.onThinkingLevel(value))
+      }, (value: string) => value)
+    }
+    .padding(6)
+  }
+
+  @Builder
+  headerMenu() {
+    Column({ space: 2 }) {
+      Text('定时任务')
+        .width(160)
+        .fontSize(13)
+        .fontColor($r('app.color.text_primary'))
+        .padding(10)
+        .onClick(() => this.onScheduledTasks())
+      Text('设置')
+        .width(160)
+        .fontSize(13)
+        .fontColor($r('app.color.text_primary'))
+        .padding(10)
+        .onClick(() => this.onSettings())
+    }
+    .padding(4)
+  }
+
   @Builder
   header() {
     Row({ space: 10 }) {
@@ -199,6 +280,24 @@ export struct ChatView {
       .borderRadius(9)
       .onClick(() => this.onPickModel())
 
+      if (this.canThink) {
+        Row({ space: 4 }) {
+          Text('思考')
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+          Text(this.thinkingLabel(this.thinkingLevel))
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+          Text('▾')
+            .fontSize(8)
+            .fontColor($r('app.color.text_tertiary'))
+        }
+        .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+        .backgroundColor($r('app.color.surface_alt'))
+        .borderRadius(9)
+        .bindMenu(this.thinkingMenu())
+      }
+
       if (!this.isWide) {
         Text('＋')
           .fontSize(19)
@@ -207,17 +306,25 @@ export struct ChatView {
           .onClick(() => this.onNew())
       }
 
-      Text('⏰')
-        .fontSize(16)
-        .fontColor($r('app.color.text_secondary'))
-        .padding(6)
-        .onClick(() => this.onScheduledTasks())
+      if (this.isWide) {
+        Text('任务')
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+          .padding({ left: 8, right: 8, top: 8, bottom: 8 })
+          .onClick(() => this.onScheduledTasks())
 
-      Text('⚙')
-        .fontSize(18)
-        .fontColor($r('app.color.text_secondary'))
-        .padding(6)
-        .onClick(() => this.onSettings())
+        Text('设置')
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+          .padding({ left: 8, right: 8, top: 8, bottom: 8 })
+          .onClick(() => this.onSettings())
+      } else {
+        Text('更多')
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+          .padding({ left: 8, right: 8, top: 8, bottom: 8 })
+          .bindMenu(this.headerMenu())
+      }
     }
     .width('100%')
     .height(62)
@@ -239,14 +346,10 @@ export struct ChatView {
         .fontColor($r('app.color.on_accent'))
         .backgroundColor(this.accent)
         .margin({ bottom: 8 })
-      Text('在平板上，和最强的模型一起工作')
-        .fontSize(26)
+      Text('新对话')
+        .fontSize(22)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
-        .textAlign(TextAlign.Center)
-      Text('OpenCode Go 订阅开箱即用，会话 ID 自动随每个请求发送')
-        .fontSize(13)
-        .fontColor($r('app.color.text_secondary'))
         .textAlign(TextAlign.Center)
       Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center }) {
         ForEach(SUGGESTIONS, (item: string) => {
@@ -292,6 +395,31 @@ export struct ChatView {
   }
 
   @Builder
+  compactBanner() {
+    Row({ space: 8 }) {
+      Text(this.compactNotice)
+        .fontSize(11)
+        .fontColor($r('app.color.text_secondary'))
+        .layoutWeight(1)
+      if (this.canUndoCompact) {
+        Text('撤销')
+          .fontSize(11)
+          .fontColor(this.accent)
+          .onClick(() => this.onUndoCompact())
+      }
+      Text('知道了')
+        .fontSize(11)
+        .fontColor($r('app.color.text_tertiary'))
+        .onClick(() => this.onDismissCompactNotice())
+    }
+    .width('100%')
+    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+    .backgroundColor($r('app.color.surface_alt'))
+    .borderRadius(9)
+    .margin({ left: 16, right: 16, bottom: 6 })
+  }
+
+  @Builder
   composer() {
     Column({ space: 6 }) {
       if (this.attachments.length > 0) {
@@ -319,9 +447,10 @@ export struct ChatView {
 
       Row({ space: 8 }) {
         if (!this.streaming) {
-          Text('🖼')
-            .fontSize(18)
-            .padding({ left: 4, right: 2, top: 6, bottom: 6 })
+          Text('图片')
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+            .padding({ left: 6, right: 6, top: 10, bottom: 10 })
             .onClick(() => this.onPickImage())
         }
         TextArea({ text: this.draft, placeholder: '问点什么…' })
@@ -370,18 +499,6 @@ export struct ChatView {
       .backgroundColor($r('app.color.surface'))
       .borderRadius(18)
       .border({ width: 1, color: $r('app.color.border') })
-
-      Row() {
-        Text(this.enterToSend ? 'Enter 发送 · 点击箭头也可发送' : 'Enter 换行 · 点击箭头发送')
-          .fontSize(9)
-          .fontColor($r('app.color.text_tertiary'))
-        Blank()
-        Text('x-opencode-session 自动附加')
-          .fontSize(9)
-          .fontColor($r('app.color.text_tertiary'))
-      }
-      .width('100%')
-      .padding({ left: 6, right: 6 })
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 10, bottom: 14 })
@@ -420,12 +537,17 @@ export struct ChatView {
                   onOpenLink: this.onOpenLink
                 })
               }
+              .width('100%')
             }, (message: ChatMessage) => messageKey(message))
           }
           .layoutWeight(1)
           .width('100%')
           .padding({ left: 20, right: 20, top: 14, bottom: 6 })
           .scrollBar(BarState.Auto)
+        }
+
+        if (this.compactNotice.length > 0) {
+          this.compactBanner()
         }
 
         this.composer()

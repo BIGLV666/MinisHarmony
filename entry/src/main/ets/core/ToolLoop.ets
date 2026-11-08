@@ -34,7 +34,7 @@ export class ToolLoopGuard {
 }
 
 export function toolLoopWarning(name: string, count: number): string {
-  return '⚠ 检测到重复工具调用：' + name + ' 已用完全相同的参数连续调用 ' +
+  return '注意：检测到重复工具调用：' + name + ' 已用完全相同的参数连续调用 ' +
     count.toString() + ' 次。继续重复不会得到新信息；请改用其他方法，' +
     '或直接基于已有结果回答。';
 }

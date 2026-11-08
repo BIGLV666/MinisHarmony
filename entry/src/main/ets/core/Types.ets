@@ -90,6 +90,10 @@ export interface AppSettings {
   maxAgentTurns: number;
   /** Character budget before old tool results are trimmed from requests. */
   contextBudgetChars: number;
+  /** Summarise old turns automatically when usage crosses the threshold. */
+  autoCompact: boolean;
+  /** Usage percentage (50–95) that triggers auto compaction. */
+  autoCompactPercent: number;
   /** Write structured, redacted event logs to the app sandbox. */
   loggingEnabled: boolean;
   /** Enable the persistent memory files and memory tools. */
@@ -175,6 +179,25 @@ export const MAX_MAX_AGENT_TURNS: number = 1000;
 export const DEFAULT_CONTEXT_BUDGET_CHARS: number = 60000;
 export const MIN_CONTEXT_BUDGET_CHARS: number = 4000;
 export const MAX_CONTEXT_BUDGET_CHARS: number = 400000;
+
+export const DEFAULT_AUTO_COMPACT_PERCENT: number = 80;
+export const MIN_AUTO_COMPACT_PERCENT: number = 50;
+export const MAX_AUTO_COMPACT_PERCENT: number = 95;
+
+/** Clamp the auto-compaction threshold; invalid input falls back to 80%. */
+export function clampAutoCompactPercent(value: number): number {
+  if (Number.isNaN(value) || !Number.isFinite(value)) {
+    return DEFAULT_AUTO_COMPACT_PERCENT;
+  }
+  const rounded: number = Math.floor(value);
+  if (rounded < MIN_AUTO_COMPACT_PERCENT) {
+    return MIN_AUTO_COMPACT_PERCENT;
+  }
+  if (rounded > MAX_AUTO_COMPACT_PERCENT) {
+    return MAX_AUTO_COMPACT_PERCENT;
+  }
+  return rounded;
+}
 
 /** Clamp the request budget; invalid input falls back to the default. */
 export function clampContextBudget(value: number): number {
@@ -457,6 +480,8 @@ export function defaultSettings(): AppSettings {
     sandboxToken: '',
     maxAgentTurns: DEFAULT_MAX_AGENT_TURNS,
     contextBudgetChars: DEFAULT_CONTEXT_BUDGET_CHARS,
+    autoCompact: true,
+    autoCompactPercent: DEFAULT_AUTO_COMPACT_PERCENT,
     loggingEnabled: false,
     memoryEnabled: false,
     backgroundEnabled: true,
@@ -558,6 +583,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     sandboxToken: source.sandboxToken,
     maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
     contextBudgetChars: clampContextBudget(source.contextBudgetChars),
+    autoCompact: source.autoCompact !== false,
+    autoCompactPercent: clampAutoCompactPercent(source.autoCompactPercent),
     loggingEnabled: source.loggingEnabled === true,
     memoryEnabled: source.memoryEnabled === true,
     backgroundEnabled: source.backgroundEnabled !== false,

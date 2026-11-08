@@ -14,6 +14,7 @@ import {
   StoredSession,
   cloneSettings,
   defaultSettings,
+  clampAutoCompactPercent,
   normalizeThinkingLevel,
   normalizeToolNames
 } from './Types';
@@ -160,6 +161,9 @@ export function parseBackupSettings(text: string): AppSettings | null {
   base.sandboxUrl = stringOr(raw.sandboxUrl, '');
   base.maxAgentTurns = numberOr(raw.maxAgentTurns, base.maxAgentTurns);
   base.contextBudgetChars = numberOr(raw.contextBudgetChars, base.contextBudgetChars);
+  base.autoCompact = boolOr(raw.autoCompact, true);
+  base.autoCompactPercent = clampAutoCompactPercent(
+    numberOr(raw.autoCompactPercent, base.autoCompactPercent));
   base.loggingEnabled = boolOr(raw.loggingEnabled, false);
   base.memoryEnabled = boolOr(raw.memoryEnabled, false);
   base.backgroundEnabled = boolOr(raw.backgroundEnabled, true);

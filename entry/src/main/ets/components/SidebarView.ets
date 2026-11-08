@@ -126,21 +126,15 @@ export struct SidebarView {
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.on_accent'))
         .backgroundColor(this.accent)
-      Column({ space: 1 }) {
-        Text('Minis')
-          .fontSize(16)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
-        Text('鸿蒙平板版')
-          .fontSize(10)
-          .fontColor($r('app.color.text_tertiary'))
-      }
-      .alignItems(HorizontalAlign.Start)
+      Text('Minis')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary'))
       Blank()
-      Text('⚙')
-        .fontSize(18)
+      Text('设置')
+        .fontSize(11)
         .fontColor($r('app.color.text_secondary'))
-        .padding(6)
+        .padding({ left: 8, right: 8, top: 8, bottom: 8 })
         .onClick(() => this.onSettings())
     }
     .width('100%')
@@ -165,8 +159,12 @@ export struct SidebarView {
             .fontColor(this.accent)
         }
         if (item.pinned) {
-          Text('📌')
-            .fontSize(10)
+          Text('置顶')
+            .fontSize(9)
+            .fontColor($r('app.color.text_tertiary'))
+            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+            .backgroundColor($r('app.color.surface'))
+            .borderRadius(4)
         }
         Text(item.title)
           .layoutWeight(1)

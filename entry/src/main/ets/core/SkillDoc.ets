@@ -108,6 +108,44 @@ export function skillCatalogue(docs: SkillDoc[]): string {
   return text.trim();
 }
 
+export interface SkillCommand {
+  /** Canonical id from the enabled list. */
+  id: string;
+  /** Text after the command, may be empty. */
+  rest: string;
+}
+
+/**
+ * Recognises a bare `/skill-id` command. Matching is case-insensitive so
+ * `/Review` works for `review.md`; the returned id keeps its stored spelling.
+ */
+export function matchSkillCommand(text: string, skillIds: string[]): SkillCommand | null {
+  const trimmed: string = text.trim();
+  if (trimmed.length < 2 || trimmed.charAt(0) !== '/') {
+    return null;
+  }
+  let end: number = trimmed.length;
+  for (let i = 1; i < trimmed.length; i++) {
+    if (trimmed.charCodeAt(i) <= 32) {
+      end = i;
+      break;
+    }
+  }
+  const needle: string = trimmed.substring(1, end).toLowerCase();
+  if (needle.length === 0) {
+    return null;
+  }
+  for (let i = 0; i < skillIds.length; i++) {
+    if (skillIds[i].toLowerCase() === needle) {
+      return {
+        id: skillIds[i],
+        rest: end >= trimmed.length ? '' : trimmed.substring(end + 1).trim()
+      };
+    }
+  }
+  return null;
+}
+
 export function findSkill(docs: SkillDoc[], idOrName: string): SkillDoc | null {
   const needle: string = idOrName.trim().toLowerCase();
   if (needle.length === 0) {

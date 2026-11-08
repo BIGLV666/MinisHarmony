@@ -294,6 +294,22 @@ test('SKILL.md frontmatter and catalogue', () => {
   assert.equal(skilldoc.findSkill([doc], 'nope'), null);
 });
 
+test('skill slash commands match enabled ids', () => {
+  const ids = ['deploy-helper', 'review'];
+  const bare = skilldoc.matchSkillCommand('/review', ids);
+  assert.equal(bare.id, 'review');
+  assert.equal(bare.rest, '');
+  const withArgs = skilldoc.matchSkillCommand('  /Deploy-Helper 检查构建  ', ids);
+  assert.equal(withArgs.id, 'deploy-helper');
+  assert.equal(withArgs.rest, '检查构建');
+  const tab = skilldoc.matchSkillCommand('/review\t这个 PR', ids);
+  assert.equal(tab.rest, '这个 PR');
+  assert.equal(skilldoc.matchSkillCommand('/unknown arg', ids), null);
+  assert.equal(skilldoc.matchSkillCommand('/Deploy Helper', ['deploy-helper']), null);
+  assert.equal(skilldoc.matchSkillCommand('review', ids), null);
+  assert.equal(skilldoc.matchSkillCommand('/', ids), null);
+});
+
 test('session params merge over global settings', () => {
   const settings = types.defaultSettings();
   settings.modelId = 'global-model';

@@ -525,6 +525,12 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 `read_skill`，工具返回该文件正文。这样技能库再大也只占几行上下文。未启用任何技能时，
 `read_skill` 不会出现在工具列表里。导入走系统文档选择器，上限 512 KB。
 
+每个已启用技能同时注册为斜杠命令：`matchSkillCommand()` 对输入首词做大小写不敏感
+的 id 匹配，命中后 `Index` 把技能正文放进 `pendingSkillBody`，下一轮 `runAgent()`
+把它追加到系统提示（不进入气泡），命令后的文字作为本轮用户输入；没有附加文字时
+发送一句默认指令。`/help` 会按当前启用列表动态列出这些命令。未启用的技能不响应
+命令，也不会出现在 `/help` 里。
+
 ## 人格（Soul）
 
 `core/Soul.ets` 提供五种内置人格的固定提示词；`AppSettings.soulId` 记录选择，

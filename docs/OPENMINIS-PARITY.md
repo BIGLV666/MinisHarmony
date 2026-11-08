@@ -103,7 +103,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 记忆开关 | 每会话可关闭 | `AppSettings.memoryEnabled`，默认关闭 | P1 |
 | - [x] | 记忆查看 / 编辑 UI | 记忆页 | 设置内嵌文件选择 + 编辑器，可保存 GLOBAL.md 与任意 YYYY-MM-DD.md | P2 |
 | - [x] | Skills | `SKILL.md` + frontmatter，按会话启用 | 设置页导入单个 `.md`、开关启用；系统提示只放名称/简介，模型用 `read_skill` 取正文；全局开关而非按会话 | P2 |
-| - [ ] | Skills 斜杠命令 | 技能注册为 `/命令` | 与斜杠命令合并 | P2 |
+| - [x] | Skills 斜杠命令 | 技能注册为 `/命令` | 已启用技能自动成为 `/技能id`；正文注入本轮系统提示，命令后的文字作为用户输入；`/help` 列出 | P2 |
 | - [x] | Soul / 人格 | `SOUL.md` 身份层 | 内置 5 种人格（通用/严谨工程师/简洁/耐心讲解/创意写作），作为系统提示前缀；无外部 `SOUL.md` 导入 | P2 |
 | - [ ] | 提示词预设库 | ——（OpenMinis 也没有） | 不做 | - |
 
@@ -251,3 +251,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | Skills | 导入 SKILL.md（frontmatter name/description）、开关、删除；目录存应用私有 `skills/`；系统提示注入简介，`read_skill` 按 id 读正文；49 项测试通过 |
 | 2026-11-08 | 生成时保持常亮 | `service/ScreenWake.ets` 在开始生成时 `setWindowKeepScreenOn(true)`，完成或停止恢复；失败静默 |
 | 2026-11-08 | tool call 配对加固 | 全历史重复 `tool_call_id` 追加 `_2`/`_3` 后缀并同步结果；空工具名的调用不再发送；中断调用仍回填合成结果；51 项测试通过 |
+| 2026-11-08 | Skills 斜杠命令 | 已启用技能按 id 注册为 `/命令`，大小写不敏感；正文作为本轮系统提示注入、不显示在气泡；命令后文字作为用户输入；`/help` 动态列出；52 项测试通过 |

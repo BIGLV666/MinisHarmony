@@ -46,6 +46,7 @@ import {
   saveSessionMarkdown
 } from '../service/ExportService';
 import { MemoryStore } from '../service/MemoryStore';
+import { SkillDoc, SkillCommand, matchSkillCommand } from '../core/SkillDoc';
 import { SkillStore } from '../service/SkillStore';
 import { keepScreenOn } from '../service/ScreenWake';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
@@ -109,6 +110,8 @@ struct Index {
   private saveTimer: number = -1;
   private confirmResolve: ((allowed: boolean) => void) | null = null;
   private pageVisible: boolean = true;
+  /** Skill body queued by a `/skill-id` command, consumed by the next run. */
+  private pendingSkillBody: string = '';
 
   aboutToAppear(): void {
     this.bootstrap();
@@ -540,17 +543,20 @@ struct Index {
       return;
     }
     if (this.settings.apiKey.trim().length === 0) {
+      this.pendingSkillBody = '';
       this.showSettings = true;
       this.toast('请先填写 API Key');
       return;
     }
     if (this.settings.baseUrl.trim().length === 0) {
+      this.pendingSkillBody = '';
       this.showSettings = true;
       this.toast('请先填写 API 地址');
       return;
     }
     if (this.settings.toolsEnabled && this.settings.sandboxMode === 'remote' &&
       this.settings.sandboxUrl.trim().length === 0) {
+      this.pendingSkillBody = '';
       this.showSettings = true;
       this.toast('请先填写远程沙箱地址');
       return;
@@ -582,6 +588,12 @@ struct Index {
       effective.systemPrompt = effective.systemPrompt.trim().length > 0
         ? effective.systemPrompt + '\n\n' + skills
         : skills;
+    }
+    if (this.pendingSkillBody.length > 0) {
+      effective.systemPrompt = effective.systemPrompt.trim().length > 0
+        ? effective.systemPrompt + '\n\n' + this.pendingSkillBody
+        : this.pendingSkillBody;
+      this.pendingSkillBody = '';
     }
     const runtime: ToolRuntime = this.makeToolRuntime(effective);
     this.streaming = true;
@@ -773,16 +785,26 @@ struct Index {
       return;
     }
     if (command === '/help') {
-      this.appendLocalNotice(
+      let help: string =
         '可用命令：\n' +
           '/new — 新建对话\n' +
           '/clear — 清空当前对话\n' +
           '/compact — 用模型摘要较早的对话，保留最近几轮\n' +
           '/memory — 开启/关闭持久记忆与记忆工具\n' +
           '/thinking — 循环切换思考档位（off → low → medium → high）\n' +
-          '/help — 显示本帮助\n\n' +
-          '长对话接近上下文预算时，发送前会自动裁剪较早的工具结果。'
-      );
+          '/help — 显示本帮助\n';
+      const docs: SkillDoc[] = SkillStore.list();
+      let skillLines: string = '';
+      for (let i = 0; i < docs.length; i++) {
+        if (this.settings.enabledSkills.indexOf(docs[i].id) >= 0) {
+          skillLines += '\n/' + docs[i].id + ' — 使用技能：' + docs[i].name;
+        }
+      }
+      if (skillLines.length > 0) {
+        help += '\n已启用的技能命令：' + skillLines;
+      }
+      help += '\n\n长对话接近上下文预算时，发送前会自动裁剪较早的工具结果。';
+      this.appendLocalNotice(help);
       return;
     }
     if (command === '/clear') {
@@ -823,6 +845,20 @@ struct Index {
         ? '已关闭思考：请求不再携带 reasoning_effort。部分模型仍可能返回推理内容。'
         : '已设置思考强度：reasoning_effort=' + next +
           '。再次输入 /thinking 会切换到下一档；到 high 后再切换即关闭。');
+      return;
+    }
+    const skill: SkillCommand | null = matchSkillCommand(raw, this.settings.enabledSkills);
+    if (skill !== null) {
+      const doc: SkillDoc | null = SkillStore.get(skill.id);
+      if (doc === null || doc.body.trim().length === 0) {
+        this.toast('技能内容为空：' + skill.id);
+        return;
+      }
+      this.pendingSkillBody = '# 技能：' + doc.name + '\n\n' + doc.body;
+      this.draft = skill.rest.length > 0
+        ? skill.rest
+        : '请按照技能「' + doc.name + '」的说明处理当前任务。';
+      this.sendMessage();
       return;
     }
     this.toast('未知命令，输入 /help 查看');

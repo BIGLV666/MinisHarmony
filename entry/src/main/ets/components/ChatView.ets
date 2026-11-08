@@ -17,6 +17,8 @@ export struct ChatView {
   @Prop title: string = '新对话';
   @Prop isWide: boolean = true;
   @Prop hasKey: boolean = false;
+  /** Enter submits instead of inserting a newline (physical + soft keyboard). */
+  @Prop enterToSend: boolean = false;
   @Link draft: string;
   onSend: () => void = () => {
   };
@@ -246,6 +248,14 @@ export struct ChatView {
           .onChange((value: string) => {
             this.draft = value;
           })
+          .enterKeyType(this.enterToSend ? EnterKeyType.Send : EnterKeyType.NEW_LINE)
+          .onSubmit(() => {
+            // NEW_LINE never fires onSubmit; Send does. Ignore while streaming
+            // so Enter cannot restart a run from a half-written draft.
+            if (this.canSend()) {
+              this.onSend();
+            }
+          })
 
         Text(this.streaming ? '■' : '↑')
           .width(38)
@@ -273,7 +283,7 @@ export struct ChatView {
       .border({ width: 1, color: $r('app.color.border') })
 
       Row() {
-        Text('Enter 换行 · 点击箭头发送')
+        Text(this.enterToSend ? 'Enter 发送 · 点击箭头也可发送' : 'Enter 换行 · 点击箭头发送')
           .fontSize(9)
           .fontColor($r('app.color.text_tertiary'))
         Blank()

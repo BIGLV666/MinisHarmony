@@ -67,6 +67,8 @@ export interface AppSettings {
   backgroundEnabled: boolean;
   /** Sent as `reasoning_effort` when not `off`. */
   thinkingLevel: ThinkingLevel;
+  /** Physical/soft Enter sends instead of inserting a newline. */
+  enterToSend: boolean;
 }
 
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
@@ -340,7 +342,8 @@ export function defaultSettings(): AppSettings {
     loggingEnabled: false,
     memoryEnabled: false,
     backgroundEnabled: true,
-    thinkingLevel: 'off'
+    thinkingLevel: 'off',
+    enterToSend: false
   };
 }
 
@@ -364,7 +367,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     loggingEnabled: source.loggingEnabled === true,
     memoryEnabled: source.memoryEnabled === true,
     backgroundEnabled: source.backgroundEnabled !== false,
-    thinkingLevel: normalizeThinkingLevel(source.thinkingLevel)
+    thinkingLevel: normalizeThinkingLevel(source.thinkingLevel),
+    enterToSend: source.enterToSend === true
   };
 }
 

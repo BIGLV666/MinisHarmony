@@ -395,6 +395,15 @@ filesDir/memory/
 `/thinking` 才会开启；不支持时再次输入即可关闭。关闭只会省略字段，无法阻止那些
 服务端默认就推理的模型继续返回 `reasoning_content`。
 
+## 输入框回车行为
+
+`AppSettings.enterToSend`（默认关闭）由设置页与 `ChatView` 的 `@Prop` 共享。
+开启时 `TextArea.enterKeyType` 为 `EnterKeyType.Send`，并挂 `onSubmit`；关闭时用
+`EnterKeyType.NEW_LINE`。按 SDK 约定 `NEW_LINE` 不会触发 `onSubmit`，因此同一段
+回调不会在换行模式下误发送。`onSubmit` 复用了发送按钮的 `canSend()`
+（非空且不在流式输出中），流式期间按 Enter 不会打断或重复发起请求。
+输入框下方的提示文字随设置切换，避免用户猜测当前行为。
+
 ## 视觉输入
 
 `read_image`（默认关闭，设置里需显式开启）只检查路径、格式与大小，最多 5 MB。
@@ -449,6 +458,6 @@ filesDir/memory/
 
 ## 可测试性
 
-`core/` 十三个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 十五个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

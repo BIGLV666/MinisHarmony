@@ -237,16 +237,20 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(settings.sandboxMode, 'local');
   assert.equal(settings.backgroundEnabled, true);
   assert.equal(settings.thinkingLevel, 'off');
+  assert.equal(settings.enterToSend, false);
   assert.equal(types.normalizeThinkingLevel('high'), 'high');
   assert.equal(types.normalizeThinkingLevel('bogus'), 'off');
   assert.equal(types.normalizeThinkingLevel(undefined), 'off');
   const legacy = types.cloneSettings({
     ...settings,
     backgroundEnabled: undefined,
-    thinkingLevel: undefined
+    thinkingLevel: undefined,
+    enterToSend: undefined
   });
   assert.equal(legacy.backgroundEnabled, true);
   assert.equal(legacy.thinkingLevel, 'off');
+  assert.equal(legacy.enterToSend, false);
+  assert.equal(types.cloneSettings({ ...settings, enterToSend: true }).enterToSend, true);
   assert.equal(
     types.cloneSettings({ ...settings, thinkingLevel: 'medium' }).thinkingLevel,
     'medium'

@@ -1047,6 +1047,7 @@ struct Index {
       title: this.currentTitle(),
       isWide: this.isWide,
       hasKey: this.settings.apiKey.trim().length > 0,
+      enterToSend: this.settings.enterToSend,
       draft: $draft,
       onSend: () => this.sendMessage(),
       onStop: () => this.stopStream(),

@@ -88,7 +88,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     loggingEnabled: source.loggingEnabled === true,
     memoryEnabled: source.memoryEnabled === true,
     backgroundEnabled: source.backgroundEnabled !== false,
-    thinkingLevel: normalizeThinkingLevel(source.thinkingLevel)
+    thinkingLevel: normalizeThinkingLevel(source.thinkingLevel),
+    enterToSend: source.enterToSend === true
   };
 }
 

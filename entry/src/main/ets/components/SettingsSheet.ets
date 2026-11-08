@@ -48,6 +48,7 @@ export struct SettingsSheet {
   @State memoryEnabled: boolean = false;
   @State imageToolsEnabled: boolean = false;
   @State backgroundEnabled: boolean = true;
+  @State enterToSend: boolean = false;
   @State showLogs: boolean = false;
   @State logLines: string[] = [];
   @State showMemory: boolean = false;
@@ -75,6 +76,7 @@ export struct SettingsSheet {
     this.memoryEnabled = copy.memoryEnabled;
     this.imageToolsEnabled = copy.imageToolsEnabled;
     this.backgroundEnabled = copy.backgroundEnabled;
+    this.enterToSend = copy.enterToSend;
   }
 
   private selectPreset(value: ProviderPreset): void {
@@ -115,7 +117,8 @@ export struct SettingsSheet {
       memoryEnabled: this.memoryEnabled,
       imageToolsEnabled: this.imageToolsEnabled,
       backgroundEnabled: this.backgroundEnabled,
-      thinkingLevel: this.settings.thinkingLevel
+      thinkingLevel: this.settings.thinkingLevel,
+      enterToSend: this.enterToSend
     };
     return next;
   }
@@ -625,6 +628,29 @@ export struct SettingsSheet {
                   .selectedColor($r('app.color.accent'))
                   .onChange((on: boolean) => {
                     this.backgroundEnabled = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text('Enter 键发送')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text('开启后按 Enter 直接发送，适合外接键盘；关闭时 Enter 换行，点箭头发送。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.enterToSend })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.enterToSend = on;
                   })
               }
               .width('100%')

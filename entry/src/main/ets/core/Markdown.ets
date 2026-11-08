@@ -180,6 +180,35 @@ export function parseMarkdown(source: string): MdBlock[] {
   return blocks;
 }
 
+/** Schemes the app is willing to hand to another ability. */
+export function isOpenableUrl(url: string): boolean {
+  const lower: string = url.trim().toLowerCase();
+  return lower.startsWith('http://') || lower.startsWith('https://') ||
+    lower.startsWith('mailto:') || lower.startsWith('tel:');
+}
+
+function isUrlTerminator(ch: string): boolean {
+  return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' ||
+    ch === '<' || ch === '>' || ch === '"' || ch === '）' || ch === '】' ||
+    ch === '」' || ch === '》' || ch === '，' || ch === '。' || ch === '；' ||
+    ch === '：' || ch === '！' || ch === '？' || ch === '、' || ch === '“' ||
+    ch === '”' || ch === '‘' || ch === '’';
+}
+
+function trimUrlTail(url: string): string {
+  let end: number = url.length;
+  while (end > 0) {
+    const ch: string = url.charAt(end - 1);
+    if (ch === '.' || ch === ',' || ch === ';' || ch === ':' || ch === '!' ||
+      ch === '?') {
+      end--;
+    } else {
+      break;
+    }
+  }
+  return url.substring(0, end);
+}
+
 export function parseInline(input: string): MdInline[] {
   const output: MdInline[] = [];
   let plain: string = '';
@@ -239,6 +268,24 @@ export function parseInline(input: string): MdInline[] {
           link: ''
         });
         i = end + 1;
+        continue;
+      }
+    }
+
+    // Bare URLs inside prose. Markdown links are handled below; trailing
+    // sentence punctuation is left in the paragraph so `见 https://a.b。`
+    // keeps its full stop (and does not become part of the target).
+    if (input.substring(i, i + 7) === 'http://' ||
+      input.substring(i, i + 8) === 'https://') {
+      let end: number = i;
+      while (end < input.length && !isUrlTerminator(input.charAt(end))) {
+        end++;
+      }
+      const raw: string = trimUrlTail(input.substring(i, end));
+      if (raw.length > 8 && isOpenableUrl(raw)) {
+        flushPlain();
+        output.push({ text: raw, bold: false, italic: false, code: false, link: raw });
+        i += raw.length;
         continue;
       }
     }

@@ -36,7 +36,7 @@
 | - [x] | 斜杠命令 | `/clear` `/compact` `/memory` `/thinking` | `/new` `/clear` `/compact` `/memory` `/thinking` `/help`；记忆开关为全局而非每会话，思考用请求级 `reasoning_effort`（无模型元数据） | P1 |
 | - [ ] | 消息内图片预览 | 附件缩略图、点开大图 | 依赖附件功能 | P2 |
 | - [ ] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | 当前仅基础 Markdown | P2 |
-| - [ ] | 消息内链接点击 | 内置浏览器打开 | `Want` 拉起系统浏览器 | P2 |
+| - [x] | 消息内链接点击 | 内置浏览器打开 | Markdown 链接与裸 URL 可点击，经 `Want`（viewData + browsable）拉起系统浏览器；仅允许 http/https/mailto/tel | P2 |
 
 ## 2. Agent 运行时
 
@@ -243,3 +243,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 思考档位 UI | 设置页四档选择，`/thinking` 改为 off→low→medium→high 循环；`cycleThinkingLevel` 纯函数可测 |
 | 2026-11-08 | 应用锁 | 启动锁；`service/AppLock.ets` 调用系统认证，取消后显示锁定页可重试；设备无认证时 fail-open |
 | 2026-11-08 | 生成状态通知 | `service/Notify.ets`：后台生成常驻通知 + 完成提醒，`wantAgent` 点按回应用；前台不打扰，通知关闭时静默跳过 |
+| 2026-11-08 | 消息内链接 | Markdown 链接与裸 URL 均可点击；尾部标点保留；`isOpenableUrl()` 只放行安全协议；46 项测试通过 |

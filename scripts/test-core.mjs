@@ -233,6 +233,20 @@ test('Markdown inline parsing', () => {
   assert.equal(parts.some((p) => p.text === 'd' && p.link === 'https://x.y'), true);
 });
 
+test('Markdown bare URLs keep punctuation and reject unsafe schemes', () => {
+  const parts = md.parseInline('见 https://example.com/a?b=1。以及 http://x.y,');
+  assert.deepEqual(
+    parts.filter((p) => p.link.length > 0).map((p) => p.link),
+    ['https://example.com/a?b=1', 'http://x.y']
+  );
+  assert.equal(parts.some((p) => p.text === '。以及 '), true);
+  assert.equal(parts.some((p) => p.text === ','), true);
+  assert.equal(md.isOpenableUrl('HTTPS://x.y'), true);
+  assert.equal(md.isOpenableUrl('mailto:a@b.c'), true);
+  assert.equal(md.isOpenableUrl('javascript:alert(1)'), false);
+  assert.equal(md.isOpenableUrl('file:///etc/passwd'), false);
+});
+
 test('defaults target the canonical Go endpoint and enable tools', () => {
   const settings = types.defaultSettings();
   assert.equal(types.OPENCODE_GO_BASE, 'https://opencode.ai/zen/go/v1');

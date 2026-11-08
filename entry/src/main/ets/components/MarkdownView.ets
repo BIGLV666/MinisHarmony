@@ -1,8 +1,10 @@
 import { pasteboard } from '@kit.BasicServicesKit';
+import { common, Want } from '@kit.AbilityKit';
 import {
   MdBlock,
   MdBlockKind,
   MdInline,
+  isOpenableUrl,
   parseInline,
   parseMarkdown
 } from '../core/Markdown';
@@ -42,6 +44,23 @@ export struct MarkdownView {
     });
   }
 
+  /** Hand an http(s) link to the system browser without leaving the chat. */
+  private openLink(url: string): void {
+    if (!isOpenableUrl(url)) {
+      this.getUIContext().getPromptAction().showToast({ message: '不支持的链接类型' });
+      return;
+    }
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const want: Want = {
+      action: 'ohos.want.action.viewData',
+      entities: ['entity.system.browsable'],
+      uri: url
+    };
+    context.startAbility(want).catch((error: Error) => {
+      this.getUIContext().getPromptAction().showToast({ message: '没有可打开该链接的应用' });
+    });
+  }
+
   @Builder
   inlineText(text: string, fontSize: number, color: ResourceColor, weight: FontWeight) {
     Text() {
@@ -52,6 +71,11 @@ export struct MarkdownView {
           .fontColor(segment.code ? $r('app.color.accent') : color)
           .fontFamily(segment.code ? 'monospace' : 'HarmonyOS Sans')
           .decoration({ type: segment.link.length > 0 ? TextDecorationType.Underline : TextDecorationType.None })
+          .onClick(() => {
+            if (segment.link.length > 0) {
+              this.openLink(segment.link);
+            }
+          })
       })
     }
     .fontSize(fontSize)

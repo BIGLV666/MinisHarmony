@@ -379,6 +379,16 @@ filesDir/memory/
 遍历 parts。索引在会话列表变化时重建，**流式输出期间不重建**，避免每个 token
 扫描全部历史。
 
+## 消息渲染与链接
+
+`core/Markdown.ets` 把回复拆成块（段落、标题、列表、引用、代码、分割线），行内再拆成
+`bold / italic / code / link` 片段。除 `[文本](url)` 外，`parseInline()` 也识别裸
+`http://` / `https://`，并在遇到空白、中文标点或右括号处截断；句末的 `.,;:!?` 会留在
+正文里，不会进入链接目标。`MarkdownView` 为链接片段加下划线并绑定 `Span.onClick`，
+点击后通过 `Want`（`ohos.want.action.viewData` + `entity.system.browsable`）交给系统
+浏览器。`isOpenableUrl()` 只放行 http / https / mailto / tel，`javascript:`、`file:`
+等协议直接拒绝并提示。
+
 ## 导出 Markdown / JSON
 
 `core/MarkdownExport.ets` 是纯函数：把 `StoredSession` 渲染成标题、模型/日期、

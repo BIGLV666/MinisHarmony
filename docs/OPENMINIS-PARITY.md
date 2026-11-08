@@ -145,8 +145,8 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 |---|---|---|---|---|
 | - [x] | 切后台继续生成 | 前台服务 / 后台模式 | 已实现，见 2. 后台继续生成 | P1 |
 | - [x] | 生成状态通知 | 通知栏显示进度 | `service/Notify.ets`：离开前台且仍在生成时发布常驻通知，完成/停止后替换为完成提醒；回前台自动清除 | P2 |
-| - [ ] | 定时任务 | AlarmManager / Shortcuts | `agent-powered reminder` 或后台代理提醒 | P3 |
-| - [ ] | 任务运行历史 | 列表 + 结果 | 依赖定时任务 | P3 |
+| - [x] | 定时任务 | AlarmManager / Shortcuts | `core/ScheduledTask.ets` + `service/ReminderScheduler.ets` + `components/ScheduledTasksSheet.ets`：用 `reminderAgentManager` 发布一次性日历提醒（`PUBLISH_AGENT_REMINDER`），通知带 `minis://task/<id>` wantAgent；点击后只把提示词填回输入框，不自动发请求、不偷偷花 token。支持快捷时间/日期/时间选择、删除、手动填入，任务持久化在 preferences | P3 |
+| - [x] | 任务运行历史 | 列表 + 结果 | `TaskRun` 记录在 `task_runs`（最多 50 条）：仅当任务预填的提示词原样发送时归属该任务，完成后写入成功/失败/取消与回答摘要；任务为一次性，运行后自动从列表移除。历史可在定时任务面板展开、清空 | P3 |
 
 ## 9. 分享 / 导入导出 / 同步
 
@@ -277,4 +277,5 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 图像生成 | `core/ImageGen.ets` 纯函数：端点拼接（复用 `normalizeBaseUrl`）、请求体、尺寸白名单、响应解析（b64/url/错误）、魔数识别图片格式；`service/ImageGen.ets` 走 `http` POST `/images/generations`，URL 结果二次下载，写入附件目录；新增 `generate_image` 工具与 `ImageGenHandler` 边界、设置开关 `imageGenEnabled`（默认关）；`MessageBubble` 工具卡片显示图片缩略图并复用全屏预览；远程沙箱不暴露；82 项测试通过、构建通过 |
 | 2026-11-08 | 单轮截图分享 | `components/ShareCardView.ets` 全局 `@Builder` 卡片（问题条 + Markdown 正文 + 工具摘要 + 时间/token 页脚）；`service/Screenshot.ets` 用 `UIContext.getComponentSnapshot().createFromBuilder` 离屏渲染（不受滚动位置裁剪）、`image.createImagePacker` 转 PNG、`DocumentViewPicker` 保存；`MarkdownView.plainMath` 让离屏卡片用 Unicode 公式；`core/ShareCard.ets` 负责文件名与 12000 字/12 工具的边界；`ChatView` 找到上一条用户消息一并入图；83 项测试通过、构建通过 |
 | 2026-11-08 | 崩溃 / 诊断导出 | `core/Diagnostics.ets` 定义诊断文档（环境、非密钥设置摘要、计数、崩溃、事件）与文件名，`crashLine` 对系统上报参数再次脱敏并截断到 2000 字；`service/CrashLog.ets` 用 `hiAppEvent.addWatcher` 订阅 `APP_CRASH`/`APP_FREEZE`，落 `crashes.jsonl` 保留 40 条；`service/Diagnostics.ets` 汇总 `deviceInfo`、`bundleManager`、`i18n`、`AppLogger.recent(300)` 并经文档选择器导出；设置页「导出诊断包」；84 项测试通过、构建通过 |
+| 2026-11-08 | 定时任务 / 运行历史 | `core/ScheduledTask.ets` 纯逻辑（提示词清洗与 4000 字上限、标题/通知文案派生、1 分钟–1 年时间校验、排序、今天/明天/日期显示、任务与运行记录的防御式解析、运行历史 50 条上限）；`service/ReminderScheduler.ets` 用 `reminderAgentManager` 发布一次性日历提醒（新增 `PUBLISH_AGENT_REMINDER` 权限），wantAgent 指向 `minis://task/<id>`；`core/DeepLink.ets` 支持该深链；`components/ScheduledTasksSheet.ets` 提供提示词、快捷时间（1 小时后/今晚 20:00/明早 09:00）、DatePicker/TimePicker、删除/填入与可展开历史；顶栏 ⏰ 打开；Index 预填后仅在提示词原样发送时归属任务，完成/失败/取消写入 `TaskRun` 并移除一次性任务；任务与历史存 preferences；92 项测试通过、构建通过 |
 | 2026-11-08 | 远程备份 WebDAV | `core/WebDav.ets` 负责地址规范化、文件 URL 与「日期快照 + latest」目标；`service/WebDav.ets` 用 Basic 认证 PUT 加密信封、GET latest 供恢复；`AppSettings` 新增 `webDavUrl/webDavUser/webDavPassword`，密码走 `SecureStore` 新增别名并在保存设置时从 preferences 剔除；`redactedSettings` 清空 WebDAV 密码、备份恢复保留当前密码；设置页新增「远程备份（WebDAV）」区块（地址/账号/密码 + 上传/恢复），草稿凭据直接用于当次操作；86 项测试通过、构建通过 |

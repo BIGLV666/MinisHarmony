@@ -50,6 +50,7 @@ copyCore('MarkdownExport', ['Types']);
 copyCore('ShareCard', ['MarkdownExport']);
 copyCore('Diagnostics', ['MarkdownExport', 'EventLog']);
 copyCore('WebDav', ['BackupCrypto', 'Backup', 'SessionExport']);
+copyCore('ScheduledTask');
 copyCore('ToolArgs');
 copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
@@ -191,6 +192,7 @@ const webUrl = await import(pathToFileURL(join(tmp, 'WebUrl.mts')).href);
 const shareCard = await import(pathToFileURL(join(tmp, 'ShareCard.mts')).href);
 const diagnostics = await import(pathToFileURL(join(tmp, 'Diagnostics.mts')).href);
 const webDav = await import(pathToFileURL(join(tmp, 'WebDav.mts')).href);
+const scheduled = await import(pathToFileURL(join(tmp, 'ScheduledTask.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -2146,4 +2148,101 @@ test('backup redaction clears every credential including WebDAV', () => {
   const merged = backup.mergeBackupSettings(settings, restored);
   assert.equal(merged.webDavPassword, 'dav-password');
   assert.equal(merged.apiKey, 'sk-secret-value');
+});
+
+test('scheduled task titles and notification text are single-line and capped', () => {
+  assert.equal(scheduled.taskTitle('  # 总结今天的邮件  '), '总结今天的邮件');
+  assert.equal(scheduled.taskTitle(''), '定时任务');
+  assert.equal(scheduled.taskTitle('   \n\t '), '定时任务');
+  const longLine = '一'.repeat(40);
+  assert.equal(scheduled.taskTitle(longLine), '一'.repeat(20) + '…');
+  assert.equal(scheduled.taskNotificationContent('第一行\n第二行'), '第一行 第二行');
+  assert.equal(scheduled.taskNotificationContent('  '), '点击填入提示词');
+  assert.equal(scheduled.taskNotificationContent('y'.repeat(100)).length, 81);
+});
+
+test('scheduled task prompt is trimmed and capped', () => {
+  assert.equal(scheduled.normalizeTaskPrompt('  hello  '), 'hello');
+  const over = 'x'.repeat(scheduled.MAX_TASK_PROMPT + 50);
+  assert.equal(scheduled.normalizeTaskPrompt(over).length, scheduled.MAX_TASK_PROMPT);
+});
+
+test('validateTaskAt enforces a one-minute lead and one-year horizon', () => {
+  const now = new Date(2026, 10, 8, 9, 0, 0).getTime();
+  assert.equal(scheduled.validateTaskAt(now + 2 * 60 * 1000, now), '');
+  assert.match(scheduled.validateTaskAt(now + 30 * 1000, now), /1 分钟/);
+  assert.match(scheduled.validateTaskAt(now - 1000, now), /1 分钟/);
+  assert.match(scheduled.validateTaskAt(now + 400 * 24 * 60 * 60 * 1000, now), /一年/);
+  assert.equal(scheduled.validateTaskAt(0, now), '请选择提醒时间');
+});
+
+test('formatTaskTime distinguishes today, tomorrow and other dates', () => {
+  const now = new Date(2026, 10, 8, 9, 0, 0).getTime();
+  const today = new Date(2026, 10, 8, 18, 5, 0).getTime();
+  const tomorrow = new Date(2026, 10, 9, 8, 0, 0).getTime();
+  const later = new Date(2026, 11, 24, 7, 30, 0).getTime();
+  const nextYear = new Date(2027, 0, 2, 7, 30, 0).getTime();
+  assert.equal(scheduled.formatTaskTime(today, now), '今天 18:05');
+  assert.equal(scheduled.formatTaskTime(tomorrow, now), '明天 08:00');
+  assert.equal(scheduled.formatTaskTime(later, now), '12-24 07:30');
+  assert.equal(scheduled.formatTaskTime(nextYear, now), '2027-01-02 07:30');
+});
+
+test('tasks sort by time and parse defensively', () => {
+  const now = Date.now();
+  const late = scheduled.makeTask('b', 'later', now + 7200 * 1000, now);
+  const early = scheduled.makeTask('a', 'sooner', now + 3600 * 1000, now);
+  const sorted = scheduled.sortTasks([late, early]);
+  assert.deepEqual(sorted.map((t) => t.id), ['a', 'b']);
+
+  const text = scheduled.tasksJson([late, early]);
+  const parsed = scheduled.parseTasks(text);
+  assert.deepEqual(parsed.map((t) => t.id), ['a', 'b']);
+  assert.equal(parsed[0].reminderId, 0);
+
+  assert.deepEqual(scheduled.parseTasks('not json'), []);
+  assert.deepEqual(scheduled.parseTasks('{"id":"x"}'), []);
+  const filtered = scheduled.parseTasks(JSON.stringify([
+    { id: 'ok', prompt: ' 真实任务 ', at: now + 60000 },
+    { id: '', prompt: 'no id', at: now + 60000 },
+    { id: 'empty', prompt: '   ', at: now + 60000 }
+  ]));
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].prompt, '真实任务');
+});
+
+test('task runs record outcome and keep only the newest 50', () => {
+  const task = scheduled.makeTask('t1', '晨间简报', 0, 0);
+  const okRun = scheduled.makeRun('r1', task, 1000, '  今天的天气晴朗。 ', '', 2000);
+  assert.equal(okRun.ok, true);
+  assert.equal(okRun.title, '晨间简报');
+  assert.equal(okRun.summary, '今天的天气晴朗。');
+  const failed = scheduled.makeRun('r2', task, 1000, '', '网络不可用', 2000);
+  assert.equal(failed.ok, false);
+  assert.equal(failed.summary, '网络不可用');
+  const empty = scheduled.makeRun('r3', task, 1000, '', '', 2000);
+  assert.equal(empty.ok, false);
+  assert.equal(empty.summary, '没有返回内容');
+
+  const runs = [];
+  for (let i = 0; i < scheduled.MAX_TASK_RUNS + 8; i++) {
+    runs.push({
+      id: 'run-' + i,
+      taskId: 't1',
+      title: '任务',
+      startedAt: i,
+      finishedAt: i,
+      ok: true,
+      summary: ''
+    });
+  }
+  const trimmed = scheduled.trimRuns(runs);
+  assert.equal(trimmed.length, scheduled.MAX_TASK_RUNS);
+  assert.equal(trimmed[0].id, 'run-' + (scheduled.MAX_TASK_RUNS + 7));
+  assert.equal(trimmed[trimmed.length - 1].id, 'run-8');
+
+  const parsed = scheduled.parseRuns(scheduled.runsJson(runs));
+  assert.equal(parsed.length, scheduled.MAX_TASK_RUNS);
+  assert.deepEqual(scheduled.parseRuns(''), []);
+  assert.deepEqual(scheduled.parseRuns('{}'), []);
 });

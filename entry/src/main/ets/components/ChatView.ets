@@ -41,6 +41,8 @@ export struct ChatView {
   };
   onSettings: () => void = () => {
   };
+  onScheduledTasks: () => void = () => {
+  };
   onPickModel: () => void = () => {
   };
   onBack: () => void = () => {
@@ -204,6 +206,12 @@ export struct ChatView {
           .padding(6)
           .onClick(() => this.onNew())
       }
+
+      Text('⏰')
+        .fontSize(16)
+        .fontColor($r('app.color.text_secondary'))
+        .padding(6)
+        .onClick(() => this.onScheduledTasks())
 
       Text('⚙')
         .fontSize(18)

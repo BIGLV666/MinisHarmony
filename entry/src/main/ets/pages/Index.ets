@@ -79,11 +79,28 @@ import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { McpRegistry, McpRuntime } from '../service/McpRuntime';
 import { mergeBackupSettings } from '../core/Backup';
 import { parseDeepLink, DeepLink } from '../core/DeepLink';
+import {
+  ScheduledTask,
+  TaskRun,
+  formatTaskTime,
+  makeRun,
+  makeTask,
+  normalizeTaskPrompt,
+  sortTasks,
+  trimRuns,
+  validateTaskAt
+} from '../core/ScheduledTask';
+import {
+  ReminderOutcome,
+  cancelTaskReminder,
+  scheduleTaskReminder
+} from '../service/ReminderScheduler';
 import { SubagentRunner } from '../service/SubagentRunner';
 import { titleFrom } from '../service/Format';
 import { ChatView } from '../components/ChatView';
 import { ModelPicker } from '../components/ModelPicker';
 import { SettingsSheet } from '../components/SettingsSheet';
+import { ScheduledTasksSheet } from '../components/ScheduledTasksSheet';
 import { WorkspaceSheet } from '../components/WorkspaceSheet';
 import { OnboardingView } from '../components/OnboardingView';
 import { authenticate } from '../service/AppLock';
@@ -119,6 +136,9 @@ struct Index {
   @State showSettings: boolean = false;
   @State showModels: boolean = false;
   @State showWorkspace: boolean = false;
+  @State showTasks: boolean = false;
+  @State tasks: ScheduledTask[] = [];
+  @State taskRuns: TaskRun[] = [];
   @State showBrowser: boolean = false;
   @State browserUrl: string = '';
   @State showOnboarding: boolean = false;
@@ -159,6 +179,12 @@ struct Index {
   private pendingSkillBody: string = '';
   /** Deep link received before bootstrap finished. */
   private pendingDeepLinkUri: string = '';
+  /** Prompt prefilled by a fired task; attributed only if sent unchanged. */
+  private pendingTaskId: string = '';
+  private pendingTaskPrompt: string = '';
+  /** Task whose run is currently streaming, for the run history entry. */
+  private activeTaskId: string = '';
+  private activeTaskStartedAt: number = 0;
 
   aboutToAppear(): void {
     this.bootstrap();
@@ -190,12 +216,208 @@ struct Index {
       this.createChat();
       return;
     }
+    if (link.kind === 'task') {
+      const task: ScheduledTask | null = this.findTask(link.value);
+      if (task === null) {
+        this.toast('定时任务已不存在');
+        return;
+      }
+      // The reminder only restores the prompt; sending stays a user action.
+      this.pendingTaskId = task.id;
+      this.pendingTaskPrompt = task.prompt;
+      this.draft = task.prompt;
+      if (task.triggeredAt === 0) {
+        this.markTaskTriggered(task);
+      }
+      this.mobileChat = true;
+      this.toast('定时任务已填入输入框，确认后发送');
+      return;
+    }
     if (this.findSession(link.value) === null) {
       this.toast('链接指向的会话不存在');
       return;
     }
     this.mobileChat = true;
     this.selectSession(link.value);
+  }
+
+  private findTask(id: string): ScheduledTask | null {
+    for (let i = 0; i < this.tasks.length; i++) {
+      if (this.tasks[i].id === id) {
+        return this.tasks[i];
+      }
+    }
+    return null;
+  }
+
+  /** Replaces the list through a fresh array so @State observers fire. */
+  private replaceTasks(next: ScheduledTask[]): void {
+    this.tasks = sortTasks(next);
+    LocalStore.saveScheduledTasks(this.tasks).catch((error: Error) => {
+      this.toast('定时任务保存失败');
+    });
+  }
+
+  private markTaskTriggered(task: ScheduledTask): void {
+    const next: ScheduledTask[] = [];
+    for (let i = 0; i < this.tasks.length; i++) {
+      const item: ScheduledTask = this.tasks[i];
+      if (item.id !== task.id) {
+        next.push(item);
+      } else {
+        next.push({
+          id: item.id,
+          prompt: item.prompt,
+          at: item.at,
+          reminderId: item.reminderId,
+          createdAt: item.createdAt,
+          triggeredAt: Date.now()
+        });
+      }
+    }
+    this.replaceTasks(next);
+  }
+
+  private async createScheduledTask(prompt: string, at: number): Promise<void> {
+    const text: string = normalizeTaskPrompt(prompt);
+    const reason: string = validateTaskAt(at, Date.now());
+    if (text.length === 0) {
+      this.toast('请填写提示词');
+      return;
+    }
+    if (reason.length > 0) {
+      this.toast(reason);
+      return;
+    }
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const task: ScheduledTask =
+      makeTask(util.generateRandomUUID(true), text, at, Date.now());
+    const outcome: ReminderOutcome = await scheduleTaskReminder(context, task);
+    if (!outcome.ok) {
+      this.toast(outcome.message);
+      return;
+    }
+    task.reminderId = outcome.reminderId;
+    this.replaceTasks(this.tasks.concat([task]));
+    this.toast('已安排提醒：' + formatTaskTime(at, Date.now()));
+  }
+
+  private async cancelScheduledTask(id: string): Promise<void> {
+    const task: ScheduledTask | null = this.findTask(id);
+    if (task === null) {
+      return;
+    }
+    await cancelTaskReminder(task.reminderId);
+    const next: ScheduledTask[] = [];
+    for (let i = 0; i < this.tasks.length; i++) {
+      if (this.tasks[i].id !== id) {
+        next.push(this.tasks[i]);
+      }
+    }
+    this.replaceTasks(next);
+    if (this.pendingTaskId === id) {
+      this.pendingTaskId = '';
+      this.pendingTaskPrompt = '';
+    }
+    this.toast('已删除定时任务');
+  }
+
+  private fillTask(id: string): void {
+    const task: ScheduledTask | null = this.findTask(id);
+    if (task === null) {
+      return;
+    }
+    this.pendingTaskId = task.id;
+    this.pendingTaskPrompt = task.prompt;
+    this.draft = task.prompt;
+    this.showTasks = false;
+    this.toast('已填入输入框，确认后发送');
+  }
+
+  private clearTaskRuns(): void {
+    this.taskRuns = [];
+    LocalStore.saveTaskRuns([]).catch((error: Error) => {
+      this.toast('历史记录保存失败');
+    });
+  }
+
+  /** A run counts as the task's only when the prefilled prompt was sent as-is. */
+  private attributeTaskSend(text: string): void {
+    if (this.pendingTaskId.length === 0) {
+      return;
+    }
+    if (text.trim() === this.pendingTaskPrompt) {
+      this.activeTaskId = this.pendingTaskId;
+      this.activeTaskStartedAt = Date.now();
+    }
+    this.pendingTaskId = '';
+    this.pendingTaskPrompt = '';
+  }
+
+  private appendTaskRun(
+    task: ScheduledTask,
+    startedAt: number,
+    replyText: string,
+    errorText: string
+  ): void {
+    const run: TaskRun = makeRun(util.generateRandomUUID(true), task, startedAt,
+      replyText, errorText, Date.now());
+    this.taskRuns = trimRuns([run].concat(this.taskRuns));
+    LocalStore.saveTaskRuns(this.taskRuns).catch((error: Error) => {
+      this.toast('运行历史保存失败');
+    });
+    // One-shot: the reminder has served its purpose.
+    const remaining: ScheduledTask[] = [];
+    for (let i = 0; i < this.tasks.length; i++) {
+      if (this.tasks[i].id !== task.id) {
+        remaining.push(this.tasks[i]);
+      }
+    }
+    this.replaceTasks(remaining);
+  }
+
+  private finishTaskRun(session: StoredSession): void {
+    const taskId: string = this.activeTaskId;
+    if (taskId.length === 0) {
+      return;
+    }
+    const started: number = this.activeTaskStartedAt > 0
+      ? this.activeTaskStartedAt
+      : Date.now();
+    this.activeTaskId = '';
+    this.activeTaskStartedAt = 0;
+    const task: ScheduledTask | null = this.findTask(taskId);
+    if (task === null) {
+      return;
+    }
+    let reply: string = '';
+    let failed: boolean = false;
+    for (let i = session.messages.length - 1; i >= 0; i--) {
+      const message: ChatMessage = session.messages[i];
+      if (message.role === 'assistant') {
+        reply = textOf(message);
+        failed = message.error;
+        break;
+      }
+    }
+    this.appendTaskRun(task, started, failed ? '' : reply, failed ? reply : '');
+  }
+
+  /** Stopping keeps a short record instead of losing the run silently. */
+  private abandonTaskRun(): void {
+    const taskId: string = this.activeTaskId;
+    if (taskId.length === 0) {
+      return;
+    }
+    const started: number = this.activeTaskStartedAt > 0
+      ? this.activeTaskStartedAt
+      : Date.now();
+    this.activeTaskId = '';
+    this.activeTaskStartedAt = 0;
+    const task: ScheduledTask | null = this.findTask(taskId);
+    if (task !== null) {
+      this.appendTaskRun(task, started, '', '已取消');
+    }
   }
 
   /** Another app shared text: prefill the composer, never auto-send. */
@@ -257,6 +479,8 @@ struct Index {
     const loaded: StoredSession[] = await LocalStore.loadSessions();
     this.store = loaded;
     this.refreshSessions();
+    this.tasks = await LocalStore.loadScheduledTasks();
+    this.taskRuns = await LocalStore.loadTaskRuns();
     if (loaded.length > 0) {
       this.currentId = loaded[0].meta.id;
       this.messages = loaded[0].messages.slice();
@@ -931,6 +1155,8 @@ struct Index {
       return;
     }
 
+    this.attributeTaskSend(text);
+
     let session: StoredSession | null = this.findSession(this.currentId);
     if (session === null) {
       this.createChat(false);
@@ -988,6 +1214,7 @@ struct Index {
         if (!running) {
           this.agent = null;
           this.searchEntries = this.buildSearchIndex();
+          this.finishTaskRun(session);
           BackgroundGuard.end().catch((error: Error) => {});
           keepScreenOn(getContext(this) as common.UIAbilityContext, false)
             .catch((error: Error) => {});
@@ -1343,6 +1570,7 @@ struct Index {
     // Children the turn is synchronously waiting on would otherwise keep
     // running with nobody to receive their result; background jobs survive.
     SubagentRunner.cancelBlocking(this.currentId);
+    this.abandonTaskRun();
     if (this.agent !== null) {
       this.agent.cancel();
       this.agent = null;
@@ -2118,6 +2346,9 @@ struct Index {
       onSettings: () => {
         this.showSettings = true;
       },
+      onScheduledTasks: () => {
+        this.showTasks = true;
+      },
       onPickModel: () => {
         this.showModels = true;
       },
@@ -2231,6 +2462,28 @@ struct Index {
           },
           onDownloadRemoteBackup: (url: string, user: string, password: string) => {
             this.restoreRemoteBackup(url, user, password);
+          }
+        })
+      }
+
+      if (this.showTasks) {
+        ScheduledTasksSheet({
+          tasks: this.tasks,
+          runs: this.taskRuns,
+          onCreate: (prompt: string, at: number) => {
+            this.createScheduledTask(prompt, at);
+          },
+          onCancelTask: (id: string) => {
+            this.cancelScheduledTask(id);
+          },
+          onFill: (id: string) => {
+            this.fillTask(id);
+          },
+          onClearRuns: () => {
+            this.clearTaskRuns();
+          },
+          onClose: () => {
+            this.showTasks = false;
           }
         })
       }

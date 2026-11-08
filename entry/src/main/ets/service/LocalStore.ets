@@ -2,6 +2,14 @@ import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { SecureStore } from './SecureStore';
 import { SubagentJobRecord } from '../core/SubagentJob';
+import {
+  ScheduledTask,
+  TaskRun,
+  parseRuns,
+  parseTasks,
+  runsJson,
+  tasksJson
+} from '../core/ScheduledTask';
 import { normalizeSoulId } from '../core/Soul';
 import { normalizeModelOverrides } from '../core/ModelOverride';
 import { normalizeMcpServers } from '../core/McpProtocol';
@@ -37,6 +45,8 @@ const KEY_SETTINGS: string = 'settings';
 const KEY_SESSIONS: string = 'sessions';
 /** Only active subagent jobs are stored; leftovers become `interrupted`. */
 const KEY_SUBAGENT_JOBS: string = 'subagent_jobs';
+const KEY_SCHEDULED_TASKS: string = 'scheduled_tasks';
+const KEY_TASK_RUNS: string = 'task_runs';
 
 interface LegacyMessage {
   content?: string;
@@ -412,6 +422,50 @@ export class LocalStore {
       return;
     }
     await prefs.put(KEY_SUBAGENT_JOBS, JSON.stringify(jobs));
+    await prefs.flush();
+  }
+
+  static async loadScheduledTasks(): Promise<ScheduledTask[]> {
+    const prefs: preferences.Preferences | null = LocalStore.prefs;
+    if (prefs === null) {
+      return [];
+    }
+    try {
+      const raw: string = await prefs.get(KEY_SCHEDULED_TASKS, '') as string;
+      return parseTasks(raw);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static async saveScheduledTasks(tasks: ScheduledTask[]): Promise<void> {
+    const prefs: preferences.Preferences | null = LocalStore.prefs;
+    if (prefs === null) {
+      return;
+    }
+    await prefs.put(KEY_SCHEDULED_TASKS, tasksJson(tasks));
+    await prefs.flush();
+  }
+
+  static async loadTaskRuns(): Promise<TaskRun[]> {
+    const prefs: preferences.Preferences | null = LocalStore.prefs;
+    if (prefs === null) {
+      return [];
+    }
+    try {
+      const raw: string = await prefs.get(KEY_TASK_RUNS, '') as string;
+      return parseRuns(raw);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static async saveTaskRuns(runs: TaskRun[]): Promise<void> {
+    const prefs: preferences.Preferences | null = LocalStore.prefs;
+    if (prefs === null) {
+      return;
+    }
+    await prefs.put(KEY_TASK_RUNS, runsJson(runs));
     await prefs.flush();
   }
 }

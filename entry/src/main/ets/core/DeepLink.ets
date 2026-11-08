@@ -5,6 +5,7 @@
  *   minis://session/<id>   open an existing conversation
  *   minis://chat/<id>      alias for session
  *   minis://new            start a new conversation
+ *   minis://task/<id>      scheduled reminder: restore its prompt
  *
  * Anything else is rejected rather than guessed. Query strings and fragments
  * are ignored; the id is kept verbatim (ids are UUIDs).
@@ -49,6 +50,12 @@ export function parseDeepLink(uri: string): DeepLink | null {
       return null;
     }
     return { kind: 'session', value: value };
+  }
+  if (host === 'task') {
+    if (value.length === 0) {
+      return null;
+    }
+    return { kind: 'task', value: value };
   }
   return null;
 }

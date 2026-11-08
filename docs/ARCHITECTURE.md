@@ -426,7 +426,14 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 1..当前版本内的文件，逐条重建 message/part（未知字段丢弃、未知角色丢弃、空消息丢弃）。
 导入的会话总是换新 ID，标题追加「（导入）」，`updatedAt` 设为当前时间以便排在顶部；
 状态仍是 pending/running 的工具调用改为 error，已有部分结果保留。文件读取限制 8 MB，
-在 `ExportService.importSessionJson()` 里完成；解析本身不碰文件系统，可单测。
+在 `ExportService.importSessionsJson()` 里完成；解析本身不碰文件系统，可单测。
+
+多选导出复用同一套消息清洗，把信封里的 `session` 换成 `sessions` 数组
+（`sessionBundleJson()`，文件名 `minis-sessions-YYYY-MM-DD.json`）。侧栏的「选择会话」
+模式在行首显示复选框，选中后一次写入一个文件；导入端统一走
+`parseSessionsExport(text, newId, now)`，它同时接受单会话信封与 bundle，为每个会话
+调用 `newId()` 分配新 ID，无法解析的条目跳过——只有全部失败时才报错，避免一个坏
+会话毁掉整包。bundle 不打包附件（当前会话还没有附件），因此没有 zip。
 
 ## 工具参数修复与循环检测
 

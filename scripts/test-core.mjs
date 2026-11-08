@@ -1081,6 +1081,44 @@ test('session JSON import validates the envelope and rebuilds parts', () => {
   assert.equal(original.meta.pinned, true);
 });
 
+test('multi-session bundle round-trips every session with fresh ids', () => {
+  const now = new Date(2026, 10, 8, 9, 0);
+  const makeSession = (id, title) => ({
+    meta: {
+      id, title, modelId: 'kimi-k3', updatedAt: 1,
+      messageCount: 1, pinned: false, archived: false
+    },
+    messages: [types.newChatMessage('u-' + id, 'user', 'hi ' + id)]
+  });
+  const bundle = sessionExport.sessionBundleJson(
+    [makeSession('a', 'First'), makeSession('b', 'Second')], now);
+  const parsed = JSON.parse(bundle);
+  assert.equal(parsed.app, 'MinisHarmony');
+  assert.equal(parsed.sessions.length, 2);
+  assert.equal(parsed.session, undefined);
+  assert.equal(sessionExport.sessionBundleFileName(now), 'minis-sessions-2026-11-08.json');
+
+  let counter = 0;
+  const imported = sessionExport.parseSessionsExport(bundle, () => 'n' + (++counter), now);
+  assert.equal(imported.ok, true);
+  assert.equal(imported.sessions.length, 2);
+  assert.equal(imported.sessions[0].meta.id, 'n1');
+  assert.equal(imported.sessions[1].meta.id, 'n2');
+  assert.equal(imported.sessions[0].meta.title, 'First（导入）');
+
+  // A single-session export is accepted by the same importer.
+  const single = sessionExport.parseSessionsExport(
+    sessionExport.sessionExportJson(makeSession('c', 'Solo'), now),
+    () => 'one', now);
+  assert.equal(single.ok, true);
+  assert.equal(single.sessions.length, 1);
+  assert.equal(single.sessions[0].meta.id, 'one');
+
+  const empty = sessionExport.parseSessionsExport(
+    JSON.stringify({ app: 'MinisHarmony', version: 1, sessions: [] }), () => 'x', now);
+  assert.equal(empty.ok, false);
+});
+
 test('workspace listing sorts directories first and formats sizes', () => {
   const entries = [
     { name: 'b.txt', path: 'b.txt', isDir: false, size: 2048 },

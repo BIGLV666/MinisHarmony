@@ -50,41 +50,79 @@ function settledMessage(message: ChatMessage): ChatMessage {
   };
 }
 
+function settledMessages(session: StoredSession): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+  for (let i = 0; i < session.messages.length; i++) {
+    messages.push(settledMessage(session.messages[i]));
+  }
+  return messages;
+}
+
+function settledSession(session: StoredSession, messages: ChatMessage[]): StoredSession {
+  return {
+    meta: {
+      id: session.meta.id,
+      title: session.meta.title,
+      updatedAt: session.meta.updatedAt,
+      modelId: session.meta.modelId,
+      messageCount: messages.length,
+      pinned: session.meta.pinned,
+      archived: session.meta.archived,
+      modelOverride: session.meta.modelOverride,
+      thinkingOverride: session.meta.thinkingOverride,
+      promptOverride: session.meta.promptOverride
+    },
+    messages: messages
+  };
+}
+
 /**
  * Serialise one session as pretty-printed JSON. `now` is injected so the
  * output is deterministic in tests.
  */
 export function sessionExportJson(session: StoredSession, now: Date): string {
-  const messages: ChatMessage[] = [];
-  for (let i = 0; i < session.messages.length; i++) {
-    messages.push(settledMessage(session.messages[i]));
-  }
+  const messages: ChatMessage[] = settledMessages(session);
   const envelope: SessionExportEnvelope = {
     app: SESSION_EXPORT_APP,
     version: SESSION_EXPORT_VERSION,
     exportedAt: now.toISOString(),
     exportedOn: exportStamp(now),
-    session: {
-      meta: {
-        id: session.meta.id,
-        title: session.meta.title,
-        updatedAt: session.meta.updatedAt,
-        modelId: session.meta.modelId,
-        messageCount: messages.length,
-        pinned: session.meta.pinned,
-        archived: session.meta.archived,
-        modelOverride: session.meta.modelOverride,
-        thinkingOverride: session.meta.thinkingOverride,
-        promptOverride: session.meta.promptOverride
-      },
-      messages: messages
-    }
+    session: settledSession(session, messages)
+  };
+  return JSON.stringify(envelope, null, 2);
+}
+
+export interface SessionBundleEnvelope {
+  app: string;
+  version: number;
+  exportedAt: string;
+  exportedOn: string;
+  sessions: StoredSession[];
+}
+
+/** One file for a multi-session selection; the array replaces `session`. */
+export function sessionBundleJson(sessions: StoredSession[], now: Date): string {
+  const copies: StoredSession[] = [];
+  for (let i = 0; i < sessions.length; i++) {
+    const messages: ChatMessage[] = settledMessages(sessions[i]);
+    copies.push(settledSession(sessions[i], messages));
+  }
+  const envelope: SessionBundleEnvelope = {
+    app: SESSION_EXPORT_APP,
+    version: SESSION_EXPORT_VERSION,
+    exportedAt: now.toISOString(),
+    exportedOn: exportStamp(now),
+    sessions: copies
   };
   return JSON.stringify(envelope, null, 2);
 }
 
 export function sessionJsonFileName(title: string, now: Date): string {
   return safeFileBase(title) + '-' + exportStamp(now) + '.json';
+}
+
+export function sessionBundleFileName(now: Date): string {
+  return 'minis-sessions-' + exportStamp(now) + '.json';
 }
 
 export interface SessionImportResult {
@@ -226,9 +264,22 @@ export function parseSessionExport(
       ? '未知' : root.version.toString()), session: null };
   }
   const raw: RawSession = root.session as RawSession;
+  const result: RawImport = importRawSession(raw, newId, now);
+  if (result.session === null) {
+    return { ok: false, error: result.error, session: null };
+  }
+  return { ok: true, error: '', session: result.session };
+}
+
+interface RawImport {
+  session: StoredSession | null;
+  error: string;
+}
+
+function importRawSession(raw: RawSession, newId: string, now: Date): RawImport {
   if (raw === null || raw === undefined || raw.meta === undefined ||
     !Array.isArray(raw.messages)) {
-    return { ok: false, error: '文件里没有会话数据', session: null };
+    return { session: null, error: '文件里没有会话数据' };
   }
   const messages: ChatMessage[] = [];
   for (let i = 0; i < raw.messages.length; i++) {
@@ -238,7 +289,7 @@ export function parseSessionExport(
     }
   }
   if (messages.length === 0) {
-    return { ok: false, error: '会话里没有可导入的消息', session: null };
+    return { session: null, error: '会话里没有可导入的消息' };
   }
   let title: string = raw.meta.title !== undefined && raw.meta.title.trim().length > 0
     ? raw.meta.title.trim()
@@ -247,8 +298,6 @@ export function parseSessionExport(
     title = title + '（导入）';
   }
   return {
-    ok: true,
-    error: '',
     session: {
       meta: {
         id: newId,
@@ -263,6 +312,79 @@ export function parseSessionExport(
         promptOverride: raw.meta.promptOverride !== undefined ? raw.meta.promptOverride : ''
       },
       messages: messages
-    }
+    },
+    error: ''
   };
+}
+
+export interface SessionBundleImportResult {
+  ok: boolean;
+  error: string;
+  sessions: StoredSession[];
+}
+
+interface RawEnvelopeRoot {
+  app?: string;
+  version?: number;
+  session?: RawSession;
+  sessions?: RawSession[];
+}
+
+/**
+ * Accepts either a single-session export or a bundle. Each imported session
+ * gets an id from `newId()` so a bundle cannot collide with local ids; an
+ * unreadable entry is skipped and only reported when nothing could be read.
+ */
+export function parseSessionsExport(
+  text: string,
+  newId: () => string,
+  now: Date
+): SessionBundleImportResult {
+  let root: RawEnvelopeRoot;
+  try {
+    root = JSON.parse(text) as RawEnvelopeRoot;
+  } catch (e) {
+    return { ok: false, error: '文件不是有效的 JSON', sessions: [] };
+  }
+  if (root === null || root === undefined || root.app !== SESSION_EXPORT_APP) {
+    return { ok: false, error: '不是 MinisHarmony 导出的会话', sessions: [] };
+  }
+  if (root.version === undefined || root.version < 1 ||
+    root.version > SESSION_EXPORT_VERSION) {
+    return {
+      ok: false,
+      error: '不支持的导出版本：' + (root.version === undefined
+        ? '未知' : root.version.toString()),
+      sessions: []
+    };
+  }
+  const rawList: RawSession[] = [];
+  if (Array.isArray(root.sessions)) {
+    for (let i = 0; i < root.sessions.length; i++) {
+      rawList.push(root.sessions[i]);
+    }
+  } else if (root.session !== undefined && root.session !== null) {
+    rawList.push(root.session);
+  }
+  if (rawList.length === 0) {
+    return { ok: false, error: '文件里没有会话数据', sessions: [] };
+  }
+  const imported: StoredSession[] = [];
+  let firstError: string = '';
+  for (let i = 0; i < rawList.length; i++) {
+    const result: RawImport = importRawSession(rawList[i], newId(), now);
+    if (result.session !== null) {
+      imported.push(result.session);
+    } else if (firstError.length === 0) {
+      firstError = result.error;
+    }
+  }
+  if (imported.length === 0) {
+    return {
+      ok: false,
+      error: firstError.length > 0 ? firstError : '没有可导入的会话',
+      sessions: []
+    };
+  }
+  return { ok: true, error: '', sessions: imported };
 }

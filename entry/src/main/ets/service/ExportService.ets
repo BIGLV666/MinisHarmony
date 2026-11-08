@@ -5,7 +5,9 @@ import { util } from '@kit.ArkTS';
 import { StoredSession } from '../core/Types';
 import { exportFileName, exportMarkdown } from '../core/MarkdownExport';
 import {
-  parseSessionExport,
+  parseSessionsExport,
+  sessionBundleFileName,
+  sessionBundleJson,
   sessionExportJson,
   sessionJsonFileName
 } from '../core/SessionExport';
@@ -69,20 +71,39 @@ export async function saveSessionMarkdown(
   );
 }
 
-export interface ImportOutcome {
+export interface BundleImportOutcome {
   ok: boolean;
   message: string;
-  session: StoredSession | null;
+  sessions: StoredSession[];
+}
+
+/** Multi-session export: one JSON file with a `sessions` array. */
+export async function saveSessionBundle(
+  context: common.UIAbilityContext,
+  sessions: StoredSession[]
+): Promise<ExportOutcome> {
+  if (sessions.length === 0) {
+    return { ok: false, message: '没有选中会话' };
+  }
+  const now: Date = new Date();
+  return saveText(
+    context,
+    sessionBundleFileName(now),
+    'JSON|.json',
+    sessionBundleJson(sessions, now),
+    '已导出 ' + sessions.length.toString() + ' 个会话'
+  );
 }
 
 /**
- * Read a JSON file chosen by the user and parse it into a fresh session.
- * Parsing is pure and defensive; this function only does file I/O.
+ * Read a JSON file chosen by the user and parse it into fresh sessions.
+ * Accepts both a single-session export and a multi-session bundle. Parsing is
+ * pure and defensive; this function only does file I/O.
  */
-export async function importSessionJson(
+export async function importSessionsJson(
   context: common.UIAbilityContext,
-  newId: string
-): Promise<ImportOutcome> {
+  newId: () => string
+): Promise<BundleImportOutcome> {
   try {
     const options: picker.DocumentSelectOptions = new picker.DocumentSelectOptions();
     options.maxSelectNumber = 1;
@@ -91,14 +112,14 @@ export async function importSessionJson(
       new picker.DocumentViewPicker(context);
     const uris: string[] = await documentPicker.select(options);
     if (uris.length === 0) {
-      return { ok: false, message: '已取消导入', session: null };
+      return { ok: false, message: '已取消导入', sessions: [] };
     }
     const stat = fs.statSync(uris[0]);
     if (stat.size <= 0) {
-      return { ok: false, message: '文件是空的', session: null };
+      return { ok: false, message: '文件是空的', sessions: [] };
     }
     if (stat.size > MAX_IMPORT_BYTES) {
-      return { ok: false, message: '文件超过 8 MB，拒绝导入', session: null };
+      return { ok: false, message: '文件超过 8 MB，拒绝导入', sessions: [] };
     }
     const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
     const file = fs.openSync(uris[0], fs.OpenMode.READ_ONLY);
@@ -108,14 +129,20 @@ export async function importSessionJson(
       fs.closeSync(file);
     }
     const text: string = decoder.decodeToString(new Uint8Array(buffer));
-    const parsed = parseSessionExport(text, newId, new Date());
-    if (!parsed.ok || parsed.session === null) {
-      return { ok: false, message: parsed.error, session: null };
+    const parsed = parseSessionsExport(text, newId, new Date());
+    if (!parsed.ok || parsed.sessions.length === 0) {
+      return { ok: false, message: parsed.error, sessions: [] };
     }
-    return { ok: true, message: '已导入会话', session: parsed.session };
+    return {
+      ok: true,
+      message: parsed.sessions.length === 1
+        ? '已导入会话'
+        : '已导入 ' + parsed.sessions.length.toString() + ' 个会话',
+      sessions: parsed.sessions
+    };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return { ok: false, message: '导入失败：' + error.message, session: null };
+    return { ok: false, message: '导入失败：' + error.message, sessions: [] };
   }
 }
 

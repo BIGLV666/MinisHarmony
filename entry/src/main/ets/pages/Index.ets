@@ -39,9 +39,10 @@ import { BackgroundGuard } from '../service/BackgroundGuard';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
 import {
+  BundleImportOutcome,
   ExportOutcome,
-  ImportOutcome,
-  importSessionJson,
+  importSessionsJson,
+  saveSessionBundle,
   saveSessionJson,
   saveSessionMarkdown
 } from '../service/ExportService';
@@ -417,20 +418,38 @@ struct Index {
       return;
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-    const outcome: ImportOutcome =
-      await importSessionJson(context, util.generateRandomUUID(true));
-    if (!outcome.ok || outcome.session === null) {
+    const outcome: BundleImportOutcome = await importSessionsJson(context,
+      () => util.generateRandomUUID(true));
+    if (!outcome.ok || outcome.sessions.length === 0) {
       this.toast(outcome.message);
       return;
     }
-    const session: StoredSession = outcome.session;
-    this.store = [session].concat(this.store);
+    const imported: StoredSession[] = outcome.sessions;
+    this.store = imported.concat(this.store);
     this.refreshSessions();
-    this.currentId = session.meta.id;
-    this.messages = session.messages.slice();
+    this.currentId = imported[0].meta.id;
+    this.messages = imported[0].messages.slice();
     this.draft = '';
     this.mobileChat = true;
     this.persistSoon();
+    this.toast(outcome.message);
+  }
+
+  /** Export the sidebar selection as one JSON bundle. */
+  private async exportSelectedSessions(ids: string[]): Promise<void> {
+    const picked: StoredSession[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      const session: StoredSession | null = this.findSession(ids[i]);
+      if (session !== null) {
+        picked.push(session);
+      }
+    }
+    if (picked.length === 0) {
+      this.toast('没有可导出的会话');
+      return;
+    }
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const outcome: ExportOutcome = await saveSessionBundle(context, picked);
     this.toast(outcome.message);
   }
 
@@ -1536,6 +1555,9 @@ struct Index {
       onMore: (id: string) => this.requestActions(id),
       onSettings: () => {
         this.showSettings = true;
+      },
+      onExportSelected: (ids: string[]) => {
+        this.exportSelectedSessions(ids);
       }
     })
   }

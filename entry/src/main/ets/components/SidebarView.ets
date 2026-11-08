@@ -15,6 +15,8 @@ export struct SidebarView {
   @Prop currentId: string = '';
   @Prop showArchived: boolean = false;
   @Link query: string;
+  @State selecting: boolean = false;
+  @State selectedIds: string[] = [];
   onToggleArchived: () => void = () => {
   };
   onNew: () => void = () => {
@@ -27,6 +29,41 @@ export struct SidebarView {
   };
   onSettings: () => void = () => {
   };
+  onExportSelected: (ids: string[]) => void = (ids: string[]) => {
+  };
+
+  private isSelected(id: string): boolean {
+    return this.selectedIds.indexOf(id) >= 0;
+  }
+
+  private toggleSelected(id: string): void {
+    const next: string[] = [];
+    let removed: boolean = false;
+    for (let i = 0; i < this.selectedIds.length; i++) {
+      if (this.selectedIds[i] === id) {
+        removed = true;
+      } else {
+        next.push(this.selectedIds[i]);
+      }
+    }
+    if (!removed) {
+      next.push(id);
+    }
+    this.selectedIds = next;
+  }
+
+  private setSelecting(on: boolean): void {
+    this.selecting = on;
+    this.selectedIds = [];
+  }
+
+  private exportSelected(): void {
+    if (this.selectedIds.length === 0) {
+      return;
+    }
+    this.onExportSelected(this.selectedIds.slice());
+    this.setSelecting(false);
+  }
 
   private blobFor(id: string): string {
     for (let i = 0; i < this.searchEntries.length; i++) {
@@ -118,6 +155,11 @@ export struct SidebarView {
   sessionRow(item: SessionMeta) {
     Column({ space: 4 }) {
       Row({ space: 5 }) {
+        if (this.selecting) {
+          Text(this.isSelected(item.id) ? '☑' : '☐')
+            .fontSize(15)
+            .fontColor(this.accent)
+        }
         if (item.pinned) {
           Text('📌')
             .fontSize(10)
@@ -156,11 +198,23 @@ export struct SidebarView {
     .width('100%')
     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
     .borderRadius(10)
-    .backgroundColor(this.currentId === item.id ? $r('app.color.accent_soft') : Color.Transparent)
-    .onClick(() => this.onSelect(item.id))
+    .backgroundColor(this.selecting && this.isSelected(item.id)
+      ? $r('app.color.accent_soft')
+      : (this.currentId === item.id ? $r('app.color.accent_soft') : Color.Transparent))
+    .onClick(() => {
+      if (this.selecting) {
+        this.toggleSelected(item.id);
+      } else {
+        this.onSelect(item.id);
+      }
+    })
     .gesture(
       LongPressGesture({ repeat: false, duration: 520 })
-        .onAction(() => this.onMore(item.id))
+        .onAction(() => {
+          if (!this.selecting) {
+            this.onMore(item.id);
+          }
+        })
     )
   }
 
@@ -213,6 +267,22 @@ export struct SidebarView {
         .onClick(() => this.onToggleArchived())
       }
 
+      Row({ space: 8 }) {
+        Text(this.selecting ? '取消选择' : '选择会话')
+          .fontSize(11)
+          .fontColor($r('app.color.text_tertiary'))
+          .onClick(() => this.setSelecting(!this.selecting))
+        Blank()
+        if (this.selecting) {
+          Text('导出所选 (' + this.selectedIds.length.toString() + ')')
+            .fontSize(11)
+            .fontColor(this.selectedIds.length > 0 ? this.accent : $r('app.color.text_tertiary'))
+            .onClick(() => this.exportSelected())
+        }
+      }
+      .width('100%')
+      .padding({ left: 4, right: 4 })
+
       if (this.filtered().length === 0) {
         Column({ space: 6 }) {
           Text(this.sessions.length === 0 ? '还没有对话' : '没有匹配的对话')
@@ -235,7 +305,8 @@ export struct SidebarView {
                 }
               }, (item: SessionMeta) => item.id + ':' + item.title + ':' + item.updatedAt + ':' +
                 item.modelId + ':' + (this.currentId === item.id ? '1' : '0') + ':' +
-                (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : ''))
+                (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : '') + ':' +
+                (this.selecting && this.isSelected(item.id) ? 's' : ''))
             }
           }, (group: SessionGroup) => group.label + ':' + group.sessions.length.toString())
         }

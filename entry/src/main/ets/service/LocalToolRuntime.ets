@@ -1,6 +1,11 @@
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
-import { ToolDefinition, ToolResult, ToolRuntime } from '../core/ToolTypes';
+import {
+  SubagentHandler,
+  ToolDefinition,
+  ToolResult,
+  ToolRuntime
+} from '../core/ToolTypes';
 import { builtinToolDefinitions } from '../core/ToolCatalog';
 import {
   normalizeRelativePath,
@@ -66,6 +71,11 @@ interface MemoryGetArgs {
   limit?: number;
 }
 
+interface SubagentArgs {
+  prompt?: string;
+  label?: string;
+}
+
 function clamp(value: number, min: number, max: number): number {
   if (value < min) {
     return min;
@@ -99,11 +109,18 @@ export class LocalToolRuntime implements ToolRuntime {
   private root: string;
   private allowWrite: boolean;
   private memoryEnabled: boolean;
+  private subagent: SubagentHandler | null;
 
-  constructor(workspaceRoot: string, allowWrite: boolean, memoryEnabled: boolean) {
+  constructor(
+    workspaceRoot: string,
+    allowWrite: boolean,
+    memoryEnabled: boolean,
+    subagent: SubagentHandler | null = null
+  ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
     this.memoryEnabled = memoryEnabled;
+    this.subagent = subagent;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -125,6 +142,9 @@ export class LocalToolRuntime implements ToolRuntime {
         continue;
       }
       if (memoryTool && !this.memoryEnabled) {
+        continue;
+      }
+      if (name === 'subagent_task' && this.subagent === null) {
         continue;
       }
       available.push(all[i]);
@@ -165,11 +185,27 @@ export class LocalToolRuntime implements ToolRuntime {
       if (name === 'fetch_url') {
         return await this.fetchUrl(argumentsJson);
       }
+      if (name === 'subagent_task') {
+        return await this.runSubagent(argumentsJson);
+      }
       return { ok: false, content: '未知工具：' + name };
     } catch (e) {
       const error: Error = e as Error;
       return { ok: false, content: '工具执行失败：' + error.message };
     }
+  }
+
+  private async runSubagent(argumentsJson: string): Promise<ToolResult> {
+    if (this.subagent === null) {
+      return { ok: false, content: '当前模式不支持子代理。' };
+    }
+    const args: SubagentArgs = JSON.parse(argumentsJson) as SubagentArgs;
+    const prompt: string = args.prompt !== undefined ? args.prompt.trim() : '';
+    if (prompt.length === 0) {
+      return { ok: false, content: 'subagent_task 需要非空的 prompt。' };
+    }
+    const label: string = args.label !== undefined ? args.label.trim() : '';
+    return this.subagent.run(prompt, label);
   }
 
   private resolvePath(raw: string, allowRoot: boolean): string {

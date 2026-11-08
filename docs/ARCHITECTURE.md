@@ -23,6 +23,7 @@ pages/Index.ets
         │     ChatApi          HTTP + SSE + OpenCode header
         │     LocalToolRuntime 应用工作区工具
         │     RemoteToolRuntime 远程 HTTP 工具服务
+        │     SubagentRunner   subagent_task 的独立会话与并行/超时控制
         │     MemoryStore      每日记忆文件读写、注入上下文、检索
         │     LocalStore       preferences 读写与旧数据迁移
         │     AppLogger        事件日志落盘、轮转、清理
@@ -181,6 +182,20 @@ Authorization: Bearer <token>   (可选)
 写入与本地模式共用 `allowWriteTools` 开关：关闭时 `write_file` / `file_edit`
 既不暴露给模型，`execute()` 也会直接拒绝。记忆工具**只在本机模式**出现：
 记忆属于设备，不应让远程服务读取或写入。
+
+### SubagentRunner
+
+`subagent_task` 只在本机模式暴露（`LocalToolRuntime` 的第四个构造参数为 null 时
+不声明该工具）。执行时：
+
+- 克隆父设置，关闭记忆，追加“你是独立子代理”的系统提示；
+- 用同一工作区与写权限新建一个 `LocalToolRuntime`，嵌套深度 < 2 时继续传入
+  `SubagentRunner`，否则不再暴露子代理；
+- 子会话只存在内存中（不进入 `sessions` 列表），标题取 `label`；
+- 只把最后一条 assistant 文本作为工具结果返回；
+- 静态计数器限制同时 3 个，超出直接返回错误；10 分钟未完成则 `cancel()`。
+
+远程模式与参考服务都不实现子代理，`RemoteToolRuntime` 会过滤并拒绝该工具。
 
 ### 未来的 QEMU 后端
 

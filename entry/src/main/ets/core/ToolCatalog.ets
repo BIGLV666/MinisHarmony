@@ -76,6 +76,10 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('days', 'number', '回看最近多少天，默认 7，最大 90。'),
     field('limit', 'number', '最多返回多少条，默认 20，最大 100。')
   ];
+  const subagentFields: FieldEntry[] = [
+    field('prompt', 'string', '交给子代理的完整任务说明。子代理看不到当前对话，必须写清目标、输入和期望输出。'),
+    field('label', 'string', '可选短标签，用于日志与子会话标题。')
+  ];
   const noFields: FieldEntry[] = [];
 
   const definitions: ToolDefinition[] = [
@@ -123,6 +127,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'memory_get',
       description: '按关键词检索本机记忆，返回带日期的片段。没有命中时返回最近记录。',
       parameters: parametersOf(memoryGetFields, [])
+    },
+    {
+      name: 'subagent_task',
+      description: '把一个独立、边界清晰的子任务交给子代理执行。子代理有自己的工具循环，完成后只返回最终文本；适合并行调研或独立的多步操作。',
+      parameters: parametersOf(subagentFields, ['prompt'])
     }
   ];
   return definitions;

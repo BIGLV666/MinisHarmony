@@ -34,3 +34,11 @@ export interface ToolRuntime {
   definitions(): ToolDefinition[];
   execute(name: string, argumentsJson: string): Promise<ToolResult>;
 }
+
+/**
+ * Optional capability behind `subagent_task`. Implemented by SubagentRunner;
+ * the local runtime only advertises the tool when a handler is supplied.
+ */
+export interface SubagentHandler {
+  run(prompt: string, label: string): Promise<ToolResult>;
+}

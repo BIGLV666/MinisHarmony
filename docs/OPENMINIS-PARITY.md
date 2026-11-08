@@ -47,7 +47,7 @@
 | - [x] | 轮次上限可配置 | `MAX_AGENT_TURNS = 200` | 默认 200，1–1000，可续跑 | — |
 | - [x] | 中断工具补结果 | 避免悬空 tool_call | `interruptToolCalls` + `INTERRUPTED_RESULT` | — |
 | - [x] | 本地事件日志 | 结构化日志、脱敏 | `EventLog` + `AppLogger` | — |
-| - [ ] | 子代理 `subagent_task` | 最多 3 个并行、steer/cancel/resume、10 分钟 | 独立 `AgentRuntime` 实例 + 子会话 | P1 |
+| - [~] | 子代理 `subagent_task` | 最多 3 个并行、steer/cancel/resume、10 分钟 | 独立 `AgentRuntime` + 内存子会话、并行上限 3、10 分钟超时、嵌套 2 层；无 steer/resume，子会话不落库 | P1 |
 | - [x] | 工具并行执行 | 同一轮多个 tool_calls 并发 | `Promise.all` 并发执行，结果回到各自 part | P1 |
 | - [x] | 上下文压缩（compact） | `/compact` 摘要旧消息 | 保留最近 3 个用户轮次，旧轮次由模型摘要替换 | P1 |
 | - [ ] | 工具循环检测 | 重复调用同一工具时警告 | 按 `name+args` 计数，超阈值提示 | P2 |
@@ -73,7 +73,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [ ] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | 附件 + base64 image part | P1 |
 | - [ ] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集（导航/点击/取值/JS） | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |
-| - [ ] | 子代理 | `subagent_task` | 同 2. 子代理 | P1 |
+| - [~] | 子代理 | `subagent_task` | 本机模式已实现，见 2. 子代理；远程模式不暴露 | P1 |
 | - [ ] | 图像生成 | `minis-model-use` 调用 `/images/generations` | 可选，取决于订阅模型 | P3 |
 | - [ ] | 工具开关 UI | 逐工具启用/禁用 | 目前只有总开关与写入开关 | P2 |
 | - [ ] | 工具权限确认 | 危险操作弹出确认 | 写入默认关闭，可加逐次确认 | P2 |
@@ -222,3 +222,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 会话置顶 / 归档 | `pinned` / `archived` 持久化；置顶优先排序，归档默认隐藏且仍可搜索；34 项测试通过 |
 | 2026-11-08 | 修复 | `refreshSessions()` 自调用导致启动时无限递归；改为构建 meta 列表 |
 | 2026-11-08 | 上下文压缩 / 自动裁剪 | `/compact` 用模型摘要旧轮次并保留最近 3 轮；请求前按 `contextBudgetChars` 裁剪旧工具结果；37 项测试通过 |
+| 2026-11-08 | 子代理 `subagent_task` | 独立内存会话 + 相同工具；最多 3 并行、10 分钟超时、嵌套 2 层；远程模式不暴露 |

@@ -39,15 +39,15 @@ export class RemoteToolRuntime implements ToolRuntime {
 
   definitions(): ToolDefinition[] {
     const all: ToolDefinition[] = builtinToolDefinitions();
-    if (this.allowWrite) {
-      return all;
-    }
-    // Keep the remote workspace read-only unless the user opted in. Memory
-    // stays on the tablet: the helper process has no access to it.
+    // Memory stays on the tablet (the helper has no access to it), and the
+    // remote helper contract has no subagent loop. Writes are opt-in.
     const available: ToolDefinition[] = [];
     for (let i = 0; i < all.length; i++) {
       const name: string = all[i].name;
       if (name === 'memory_write' || name === 'memory_get') {
+        continue;
+      }
+      if (name === 'subagent_task') {
         continue;
       }
       if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {
@@ -63,6 +63,12 @@ export class RemoteToolRuntime implements ToolRuntime {
       return {
         ok: false,
         content: '持久记忆只在本机工作区模式下可用，远程沙箱不会转发记忆工具。'
+      };
+    }
+    if (name === 'subagent_task') {
+      return {
+        ok: false,
+        content: '子代理只在本机工作区模式下运行。'
       };
     }
     if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {

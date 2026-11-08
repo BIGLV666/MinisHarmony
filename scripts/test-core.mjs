@@ -517,6 +517,10 @@ test('tool catalogue exposes file_edit with a safe schema', () => {
   assert.notEqual(owner, undefined);
   assert.deepEqual(owner.parameters.required, ['path', 'old_string', 'new_string']);
   assert.equal(owner.parameters.properties.replace_all.type, 'boolean');
+  const subagent = tools.find((tool) => tool.name === 'subagent_task');
+  assert.notEqual(subagent, undefined);
+  assert.deepEqual(subagent.parameters.required, ['prompt']);
+  assert.equal(subagent.parameters.properties.label.type, 'string');
 });
 
 test('pinned sessions sort above recency and archive state is independent', () => {

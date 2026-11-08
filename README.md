@@ -153,6 +153,7 @@ SDK Manager 里实际安装的版本，然后 Sync。
 | `file_edit` | 精确替换 | `old_string` 必须唯一，或 `replace_all=true`；与写入共用开关 |
 | `search_text` | 搜索文本 | 最多 2000 个文件 / 512 KB，跳过依赖与二进制 |
 | `memory_write` / `memory_get` | 持久记忆 | 需在设置中开启；写入 `filesDir/memory`，按天归档 |
+| `subagent_task` | 子代理 | 仅本机模式；独立内存会话，最多 3 个并行、10 分钟超时 |
 | `fetch_url` | 抓网页 | `http(s)`，30 秒读超时，结果截断 |
 | `now` | 当前时间 | 设备本地时间 |
 

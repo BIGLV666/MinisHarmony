@@ -32,6 +32,7 @@ import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
 import { MemoryStore } from '../service/MemoryStore';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
+import { SubagentRunner } from '../service/SubagentRunner';
 import { titleFrom } from '../service/Format';
 import { ChatView } from '../components/ChatView';
 import { ModelPicker } from '../components/ModelPicker';
@@ -621,7 +622,12 @@ struct Index {
     return new LocalToolRuntime(
       this.workspaceRoot,
       this.settings.allowWriteTools,
-      this.settings.memoryEnabled
+      this.settings.memoryEnabled,
+      new SubagentRunner(
+        this.settings,
+        this.workspaceRoot,
+        this.settings.allowWriteTools
+      )
     );
   }
 

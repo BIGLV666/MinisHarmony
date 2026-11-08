@@ -28,6 +28,7 @@ import {
 import { AgentRuntime } from '../service/AgentRuntime';
 import { SummaryResult, summarizeConversation } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
+import { BackgroundGuard } from '../service/BackgroundGuard';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
 import { ExportOutcome, saveSessionMarkdown } from '../service/ExportService';
@@ -84,6 +85,7 @@ struct Index {
       this.agent.cancel();
       this.agent = null;
     }
+    BackgroundGuard.end().catch((error: Error) => {});
   }
 
   private async bootstrap(): Promise<void> {
@@ -406,6 +408,10 @@ struct Index {
   private runAgent(session: StoredSession, userText: string, fresh: boolean): void {
     const runtime: ToolRuntime = this.makeToolRuntime();
     this.streaming = true;
+    if (this.settings.backgroundEnabled) {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      BackgroundGuard.begin(context).catch((error: Error) => {});
+    }
     this.agent = new AgentRuntime(this.settings, runtime, session, {
       onUpdate: (messages: ChatMessage[], running: boolean) => {
         this.messages = messages;
@@ -417,6 +423,7 @@ struct Index {
         if (!running) {
           this.agent = null;
           this.searchEntries = this.buildSearchIndex();
+          BackgroundGuard.end().catch((error: Error) => {});
         }
       },
       onError: (message: string) => {
@@ -653,6 +660,7 @@ struct Index {
       this.agent = null;
     }
     this.streaming = false;
+    BackgroundGuard.end().catch((error: Error) => {});
     this.persistSoon();
   }
 

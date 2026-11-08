@@ -44,6 +44,7 @@ export struct SettingsSheet {
   @State contextBudgetText: string = '60000';
   @State loggingEnabled: boolean = false;
   @State memoryEnabled: boolean = false;
+  @State backgroundEnabled: boolean = true;
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -63,6 +64,7 @@ export struct SettingsSheet {
     this.contextBudgetText = copy.contextBudgetChars.toString();
     this.loggingEnabled = copy.loggingEnabled;
     this.memoryEnabled = copy.memoryEnabled;
+    this.backgroundEnabled = copy.backgroundEnabled;
   }
 
   private selectPreset(value: ProviderPreset): void {
@@ -100,7 +102,8 @@ export struct SettingsSheet {
       maxAgentTurns: clampMaxTurns(Number(this.maxTurnsText)),
       contextBudgetChars: clampContextBudget(Number(this.contextBudgetText)),
       loggingEnabled: this.loggingEnabled,
-      memoryEnabled: this.memoryEnabled
+      memoryEnabled: this.memoryEnabled,
+      backgroundEnabled: this.backgroundEnabled
     };
     return next;
   }
@@ -531,6 +534,29 @@ export struct SettingsSheet {
                   .selectedColor($r('app.color.accent'))
                   .onChange((on: boolean) => {
                     this.loggingEnabled = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text('切到后台继续生成')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text('生成期间启动长时任务，切换到其他应用时保持连接；系统会显示一条持续通知。不可用时自动退回前台生成。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.backgroundEnabled })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.backgroundEnabled = on;
                   })
               }
               .width('100%')

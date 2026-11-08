@@ -84,7 +84,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
     contextBudgetChars: clampContextBudget(source.contextBudgetChars),
     loggingEnabled: source.loggingEnabled === true,
-    memoryEnabled: source.memoryEnabled === true
+    memoryEnabled: source.memoryEnabled === true,
+    backgroundEnabled: source.backgroundEnabled !== false
   };
 }
 

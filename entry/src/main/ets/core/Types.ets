@@ -52,6 +52,8 @@ export interface AppSettings {
   loggingEnabled: boolean;
   /** Enable the persistent memory files and memory tools. */
   memoryEnabled: boolean;
+  /** Keep a running reply alive when the app moves to the background. */
+  backgroundEnabled: boolean;
 }
 
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
@@ -259,7 +261,8 @@ export function defaultSettings(): AppSettings {
     maxAgentTurns: DEFAULT_MAX_AGENT_TURNS,
     contextBudgetChars: DEFAULT_CONTEXT_BUDGET_CHARS,
     loggingEnabled: false,
-    memoryEnabled: false
+    memoryEnabled: false,
+    backgroundEnabled: true
   };
 }
 
@@ -280,7 +283,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
     contextBudgetChars: clampContextBudget(source.contextBudgetChars),
     loggingEnabled: source.loggingEnabled === true,
-    memoryEnabled: source.memoryEnabled === true
+    memoryEnabled: source.memoryEnabled === true,
+    backgroundEnabled: source.backgroundEnabled !== false
   };
 }
 

@@ -231,6 +231,9 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(settings.toolsEnabled, true);
   assert.equal(settings.allowWriteTools, false);
   assert.equal(settings.sandboxMode, 'local');
+  assert.equal(settings.backgroundEnabled, true);
+  const legacy = types.cloneSettings({ ...settings, backgroundEnabled: undefined });
+  assert.equal(legacy.backgroundEnabled, true);
   const cloned = types.cloneSettings(settings);
   cloned.apiKey = 'changed';
   assert.equal(settings.apiKey, '');

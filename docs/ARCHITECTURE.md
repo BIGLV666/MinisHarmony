@@ -27,6 +27,7 @@ pages/Index.ets
         │     MemoryStore      每日记忆文件读写、注入上下文、检索
         │     LocalStore       preferences 读写与旧数据迁移
         │     AppLogger        事件日志落盘、轮转、清理
+        │     BackgroundGuard  生成期间的 dataTransfer 长时任务
         │     ExportService    文档选择器保存 Markdown
         │     Format           时间 / 标题 / token 格式化
         │
@@ -355,6 +356,19 @@ filesDir/memory/
 `picker.DocumentViewPicker`，让用户选择保存位置（`newFileNames` 预填文件名，
 `fileSuffixChoices` 限定 `.md`），再用 `fileIo` 写入返回的 URI。因此不需要
 申请宽泛的存储权限，也不会上传到应用之外，除非用户自己选择云盘目录。
+
+## 后台生成
+
+`settings.backgroundEnabled`（默认开启）打开时，`Index.runAgent()` 在开始生成前调用
+`BackgroundGuard.begin(context)`，结束时（含停止生成、页面销毁）调用 `end()`。
+实现用 `backgroundTaskManager.startBackgroundRunning()` 申请
+`BackgroundMode.DATA_TRANSFER` 长时任务，让进程在切换应用后不被挂起，SSE 连接得以
+继续。`module.json5` 声明 `ohos.permission.KEEP_BACKGROUND_RUNNING` 与
+`backgroundModes: ["dataTransfer"]`。
+
+`BackgroundGuard` 内部用 `wanted` 与递增的 `token` 处理竞态：如果请求还没返回本轮
+就已经结束，`begin()` 会在拿到任务后立刻 `end()`，不会留下悬挂的持续通知。任何
+失败（未授权、设备不支持、通知被关闭）都被吞掉，聊天继续在前台运行，不影响功能。
 
 ## 平板布局
 

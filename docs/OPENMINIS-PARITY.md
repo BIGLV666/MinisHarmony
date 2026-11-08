@@ -53,7 +53,7 @@
 | - [ ] | 工具循环检测 | 重复调用同一工具时警告 | 按 `name+args` 计数，超阈值提示 | P2 |
 | - [ ] | tool call 配对修复 | 补齐缺失的 tool 结果 | 已有 synth result，可加强 | P2 |
 | - [ ] | JSON 参数修复 | 截断/尾逗号自动修复 | 解析失败时尝试修补 | P2 |
-| - [ ] | 后台继续生成 | 前台服务 / 后台模式 | `backgroundTaskManager` + 通知 | P1 |
+| - [x] | 后台继续生成 | 前台服务 / 后台模式 | 生成期间启动 `dataTransfer` 长时任务，结束/停止即释放；失败静默回退 | P1 |
 | - [x] | 达到上下文上限自动截断 | 按 token 预算裁剪旧工具结果 | 发送前按字符预算截断较早的工具结果，不改动已存记录 | P1 |
 
 ## 3. 工具面
@@ -143,7 +143,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 
 | | 功能 | OpenMinis 行为 | MinisHarmony 方案 | 优先级 |
 |---|---|---|---|---|
-| - [ ] | 切后台继续生成 | 前台服务 / 后台模式 | `backgroundTaskManager` 长时任务 | P1 |
+| - [x] | 切后台继续生成 | 前台服务 / 后台模式 | 已实现，见 2. 后台继续生成 | P1 |
 | - [ ] | 生成状态通知 | 通知栏显示进度 | `notificationManager` + 进度模板 | P2 |
 | - [ ] | 定时任务 | AlarmManager / Shortcuts | `agent-powered reminder` 或后台代理提醒 | P3 |
 | - [ ] | 任务运行历史 | 列表 + 结果 | 依赖定时任务 | P3 |
@@ -225,3 +225,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 子代理 `subagent_task` | 独立内存会话 + 相同工具；最多 3 并行、10 分钟超时、嵌套 2 层；远程模式不暴露 |
 | 2026-11-08 | 密钥安全存储 | API Key / 沙箱 Token 迁入 Asset Store Kit；旧 preferences 明文自动迁移；不可用时回退 |
 | 2026-11-08 | 导出 Markdown | 长按会话「导出为 Markdown」，系统文档选择器选择位置；38 项测试通过 |
+| 2026-11-08 | 后台继续生成 | `KEEP_BACKGROUND_RUNNING` + `backgroundModes: dataTransfer`；生成开始/结束成对启停长时任务，失败静默回退 |

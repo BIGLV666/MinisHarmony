@@ -535,6 +535,12 @@ test('event log serializes JSONL with a short session tag', () => {
 
   const date = new Date(2026, 10, 7);
   assert.equal(log.logFileName(date), 'events-2026-11-07.jsonl');
+
+  const viewed = log.formatEventLine(line);
+  assert.match(viewed, /11-08 \d\d:\d\d:\d\d model_done/);
+  assert.match(viewed, /42ms/);
+  assert.equal(log.formatEventLine('garbage'), 'garbage');
+  assert.equal(log.formatEventLine('  '), '');
 });
 
 test('exact edit replaces only a unique anchor', () => {

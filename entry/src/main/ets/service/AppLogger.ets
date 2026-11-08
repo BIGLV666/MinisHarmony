@@ -70,6 +70,38 @@ export class AppLogger {
     }
   }
 
+  /**
+   * Newest-first raw JSONL lines for the in-app viewer. Reads the current file
+   * through a separate handle, so it does not disturb the append writer.
+   */
+  static recent(limit: number): string[] {
+    if (AppLogger.dir.length === 0 || limit <= 0) {
+      return [];
+    }
+    const out: string[] = [];
+    try {
+      const names: string[] = fileIo.listFileSync(AppLogger.dir);
+      names.sort();
+      for (let i = names.length - 1; i >= 0 && out.length < limit; i--) {
+        const name: string = names[i];
+        if (!name.startsWith('events-') || !name.endsWith('.jsonl')) {
+          continue;
+        }
+        const text: string = fileIo.readTextSync(AppLogger.dir + '/' + name);
+        const lines: string[] = text.split('\n');
+        for (let j = lines.length - 1; j >= 0 && out.length < limit; j--) {
+          const line: string = lines[j].trim();
+          if (line.length > 0) {
+            out.push(line);
+          }
+        }
+      }
+    } catch (e) {
+      // Viewer is diagnostic; return whatever was collected.
+    }
+    return out;
+  }
+
   /** Delete every event log. Returns how many files were removed. */
   static clear(): number {
     AppLogger.close();

@@ -10,6 +10,7 @@ import {
   defaultSettings
 } from '../core/Types';
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
+import { formatEventLine } from '../core/EventLog';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
@@ -46,6 +47,8 @@ export struct SettingsSheet {
   @State memoryEnabled: boolean = false;
   @State imageToolsEnabled: boolean = false;
   @State backgroundEnabled: boolean = true;
+  @State showLogs: boolean = false;
+  @State logLines: string[] = [];
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -114,7 +117,23 @@ export struct SettingsSheet {
 
   private clearLogs(): void {
     const removed: number = AppLogger.clear();
+    this.logLines = [];
+    this.showLogs = false;
     this.onToast(removed > 0 ? '已删除 ' + removed.toString() + ' 个日志文件' : '没有可删除的日志文件');
+  }
+
+  private loadLogs(): void {
+    if (this.showLogs) {
+      this.showLogs = false;
+      return;
+    }
+    const raw: string[] = AppLogger.recent(200);
+    const lines: string[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      lines.push(formatEventLine(raw[i]));
+    }
+    this.logLines = lines;
+    this.showLogs = true;
   }
 
   private clearMemory(): void {
@@ -568,13 +587,56 @@ export struct SettingsSheet {
               .backgroundColor($r('app.color.surface_alt'))
               .borderRadius(11)
 
-              Button('清空事件日志')
-                .height(34)
-                .fontSize(11)
-                .fontColor($r('app.color.text_secondary'))
-                .backgroundColor($r('app.color.surface_alt'))
+              Row({ space: 8 }) {
+                Button(this.showLogs ? '收起日志' : '查看事件日志')
+                  .layoutWeight(1)
+                  .height(34)
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                  .onClick(() => this.loadLogs())
+                Button('清空事件日志')
+                  .layoutWeight(1)
+                  .height(34)
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                  .onClick(() => this.clearLogs())
+              }
+              .width('100%')
+
+              if (this.showLogs) {
+                Column({ space: 4 }) {
+                  if (this.logLines.length === 0) {
+                    Text('没有日志。需要先打开「记录本地事件日志」，之后产生的事件才会写入。')
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(16)
+                  } else {
+                    Scroll() {
+                      Column({ space: 3 }) {
+                        ForEach(this.logLines, (line: string, index: number) => {
+                          Text(line)
+                            .fontSize(10)
+                            .fontColor($r('app.color.text_secondary'))
+                            .width('100%')
+                            .textAlign(TextAlign.Start)
+                        }, (line: string, index: number) => index.toString() + ':' + line)
+                      }
+                      .width('100%')
+                    }
+                    .height(220)
+                    .width('100%')
+                    .scrollBar(BarState.Auto)
+                  }
+                }
+                .width('100%')
+                .padding(10)
+                .backgroundColor($r('app.color.surface'))
                 .borderRadius(9)
-                .onClick(() => this.clearLogs())
+              }
             }
             .width('100%')
 

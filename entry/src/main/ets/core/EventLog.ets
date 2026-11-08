@@ -76,6 +76,55 @@ export function sanitizeDetail(text: string): string {
   return value;
 }
 
+interface RawEventLine {
+  ts?: number;
+  event?: string;
+  tool?: string;
+  ok?: boolean;
+  durationMs?: number;
+  detail?: string;
+}
+
+function two(value: number): string {
+  return value < 10 ? '0' + value.toString() : value.toString();
+}
+
+/**
+ * Turn one stored JSONL line into a compact viewer line. Unknown/corrupt
+ * lines are returned as-is so debugging is never blocked by a parser.
+ */
+export function formatEventLine(line: string): string {
+  const trimmed: string = line.trim();
+  if (trimmed.length === 0) {
+    return '';
+  }
+  try {
+    const raw: RawEventLine = JSON.parse(trimmed) as RawEventLine;
+    const ts: number = raw.ts !== undefined ? raw.ts : 0;
+    const date: Date = new Date(ts);
+    let text: string = two(date.getMonth() + 1) + '-' + two(date.getDate()) + ' ' +
+      two(date.getHours()) + ':' + two(date.getMinutes()) + ':' +
+      two(date.getSeconds()) + ' ' +
+      (raw.event !== undefined ? raw.event : '?');
+    const tool: string = raw.tool !== undefined ? raw.tool : '';
+    if (tool.length > 0) {
+      text += ' · ' + tool;
+    }
+    text += raw.ok === false ? ' ✗' : ' ✓';
+    const duration: number = raw.durationMs !== undefined ? raw.durationMs : 0;
+    if (duration > 0) {
+      text += ' ' + duration.toString() + 'ms';
+    }
+    const detail: string = raw.detail !== undefined ? raw.detail : '';
+    if (detail.length > 0) {
+      text += ' · ' + detail;
+    }
+    return text;
+  } catch (e) {
+    return trimmed;
+  }
+}
+
 export function newLogEvent(event: string, level: string): LogEvent {
   return {
     ts: Date.now(),

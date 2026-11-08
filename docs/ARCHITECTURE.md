@@ -273,6 +273,10 @@ JSON 中的字段置空。加载时从 Asset Store 读回；若读到旧版本�
 
 ## 事件日志
 
+`core/EventLog.ets` 还提供 `formatEventLine()`，把一行 JSONL 转成
+`11-08 12:30:05 model_done · kimi-k3 ✓ 4210ms · …` 的查看器文本，损坏行原样返回；
+`AppLogger.recent(limit)` 用独立句柄从最新的日文件往前读，不影响正在追加的写入器。
+
 `core/EventLog.ets` 只负责事件形状、脱敏与文件名；`service/AppLogger.ets` 负责
 文件 I/O。两者分开后，格式与脱敏可以在 Node 下测试，文件 API 只在真机路径上运行。
 

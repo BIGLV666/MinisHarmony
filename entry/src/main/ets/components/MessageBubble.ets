@@ -2,6 +2,7 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import {
   ChatMessage,
   MessagePart,
+  PART_IMAGE,
   TOOL_DONE,
   TOOL_ERROR,
   TOOL_RUNNING,
@@ -9,6 +10,7 @@ import {
   textOf,
   toolCallsOf
 } from '../core/Types';
+import { AttachmentStore } from '../service/AttachmentStore';
 import { formatRelative, formatTokens } from '../service/Format';
 import { MarkdownView } from './MarkdownView';
 
@@ -28,6 +30,8 @@ export struct MessageBubble {
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @State reasoningOpen: boolean = false;
   @State openToolId: string = '';
+  @State previewOpen: boolean = false;
+  @State previewPath: string = '';
   @Prop canRegenerate: boolean = false;
   @Prop canEdit: boolean = false;
   /** Earlier messages offer a checkpoint; the latest one has nothing to trim. */
@@ -53,6 +57,22 @@ export struct MessageBubble {
 
   private calls(): MessagePart[] {
     return toolCallsOf(this.message);
+  }
+
+  private images(): MessagePart[] {
+    const result: MessagePart[] = [];
+    for (let i = 0; i < this.message.parts.length; i++) {
+      const part: MessagePart = this.message.parts[i];
+      if (part.kind === PART_IMAGE && part.uri.length > 0) {
+        result.push(part);
+      }
+    }
+    return result;
+  }
+
+  private openPreview(part: MessagePart): void {
+    this.previewPath = AttachmentStore.absolutePath(part.uri);
+    this.previewOpen = true;
   }
 
   private toolKey(part: MessagePart): string {
@@ -227,6 +247,16 @@ export struct MessageBubble {
   @Builder
   userBubble() {
     Column({ space: 6 }) {
+      if (this.images().length > 0) {
+        ForEach(this.images(), (part: MessagePart) => {
+          Image('file://' + AttachmentStore.absolutePath(part.uri))
+            .width(180)
+            .height(130)
+            .borderRadius(10)
+            .objectFit(ImageFit.Cover)
+            .onClick(() => this.openPreview(part))
+        }, (part: MessagePart) => part.uri)
+      }
       Text(this.content())
         .fontSize(15)
         .lineHeight(23)
@@ -327,6 +357,26 @@ export struct MessageBubble {
     .constraintSize({ maxWidth: '82%' })
   }
 
+  @Builder
+  previewOverlay() {
+    Column({ space: 12 }) {
+      Image('file://' + this.previewPath)
+        .width('100%')
+        .layoutWeight(1)
+        .objectFit(ImageFit.Contain)
+      Text('点击任意处关闭')
+        .fontSize(12)
+        .fontColor('#CCFFFFFF')
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('#000000')
+    .onClick(() => {
+      this.previewOpen = false;
+    })
+  }
+
   build() {
     Row({ space: 10 }) {
       if (!this.isUser()) {
@@ -342,5 +392,6 @@ export struct MessageBubble {
     }
     .width('100%')
     .alignItems(VerticalAlign.Top)
+    .bindContentCover($$this.previewOpen, this.previewOverlay())
   }
 }

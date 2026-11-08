@@ -34,7 +34,7 @@
 | - [x] | 上下文压力提示 | 接近窗口上限变色 | 顶栏显示 `上下文 12.3k`（最近一次 prompt+completion） | P0 |
 | - [x] | 失败重试 | 一键重发上一条 | 错误回复显示「重试」，复用重新生成 | P1 |
 | - [x] | 斜杠命令 | `/clear` `/compact` `/memory` `/thinking` | `/new` `/clear` `/compact` `/memory` `/thinking` `/help`；记忆开关为全局而非每会话，思考用请求级 `reasoning_effort`（无模型元数据） | P1 |
-| - [ ] | 消息内图片预览 | 附件缩略图、点开大图 | 依赖附件功能 | P2 |
+| - [x] | 消息内图片预览 | 附件缩略图、点开大图 | 用户气泡显示缩略图，点按全屏 `bindContentCover` 查看；图片副本存应用私有目录 | P2 |
 | - [~] | 表格 / LaTeX / 语法高亮 | Markdown 完整渲染 | GFM 表格已支持（表头、对齐分隔行、缺列补空）；代码高亮与 LaTeX 仍仅等宽/原文显示 | P2 |
 | - [x] | 消息内链接点击 | 内置浏览器打开 | Markdown 链接与裸 URL 可点击，经 `Want`（viewData + browsable）拉起系统浏览器；仅允许 http/https/mailto/tel | P2 |
 
@@ -116,7 +116,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [ ] | MCP OAuth | PKCE | 可复用浏览器/Web 组件 | P3 |
 | - [ ] | 内置浏览器 | 多标签、历史、下载、Cookie | ArkWeb + 动作脚本 | P2 |
 | - [x] | 工作区文件浏览 | `minis://workspace` 文件页 | 设置 →「工作区文件 → 浏览」：目录浏览、上一级、文本预览（256 KB）、跳过符号链接；只读 | P2 |
-| - [ ] | 附件命名空间 | `minis://attachments` | 应用私有目录 | P2 |
+| - [x] | 附件命名空间 | `minis://attachments` | `filesDir/attachments/`，消息 part 存 `attachment:<文件名>`；无对外 URI scheme | P2 |
 | - [ ] | 深链 | `minis://` 打开会话/文件 | `Want` + `uris` 配置 | P3 |
 | - [ ] | 从其他应用分享进来 | Share Extension / ShareReceiver | `Want` + `ohos.want.action.sendData` | P2 |
 
@@ -130,7 +130,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 通知 | `notification` | 后台生成时 `notificationManager` 发布「正在生成」，完成替换为「回复已完成」，点按回到应用 | P2 |
 | - [ ] | 日历 | `calendar` | `CalendarKit` | P3 |
 | - [ ] | 通讯录 | `contacts` | `ContactsKit` | P3 |
-| - [ ] | 照片 / 相机 | `photos` | `PhotoPicker` / `CameraKit` | P2 |
+| - [x] | 照片 / 相机 | `photos` | 系统相册 `PhotoViewPicker` 多选（最多 4 张、10 MB），复制到应用私有目录；相机拍摄未接 | P2 |
 | - [ ] | 定位 | `location` | `LocationKit` | P3 |
 | - [ ] | 天气 | `weather` | 第三方 API | P3 |
 | - [ ] | 语音识别 | `speech` / ASR | `CoreSpeechKit` | P2 |
@@ -255,3 +255,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 模型能力元数据 | `core/ModelCaps.ets` 家族前缀估计上下文/最大输出/视觉/推理；顶栏显示窗口占比、模型列表显示标签；请求 `max_tokens` 夹取到模型上限；未知模型回退 128k/8k；53 项测试通过 |
 | 2026-11-08 | 剪贴板工具 | `clipboard_read` / `clipboard_write` 经 `pasteboard` 读写纯文本；默认关闭，设置页「允许访问剪贴板」；读取截断到 24k 字符、写入上限 100k；子代理继承，远程模式不暴露 |
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
+| 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |

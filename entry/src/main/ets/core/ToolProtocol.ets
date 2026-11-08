@@ -7,6 +7,7 @@
 
 import {
   ChatMessage,
+  PART_IMAGE,
   PART_REASONING,
   PART_TEXT,
   PART_TOOL_CALL,
@@ -145,10 +146,33 @@ export function toApiMessages(
         }
       }
     } else if (message.role === 'user' || message.role === 'system') {
-      if (text.length === 0) {
-        continue;
+      const imageUrls: string[] = [];
+      if (message.role === 'user' && resolveImage !== null) {
+        for (let j = 0; j < message.parts.length; j++) {
+          const part = message.parts[j];
+          if (part.kind === PART_IMAGE && part.uri.length > 0) {
+            const dataUrl: string = resolveImage(part.uri, part.mimeType);
+            if (dataUrl.length > 0) {
+              imageUrls.push(dataUrl);
+            }
+          }
+        }
       }
-      out.push({ role: message.role, content: text });
+      if (imageUrls.length === 0) {
+        if (text.length === 0) {
+          continue;
+        }
+        out.push({ role: message.role, content: text });
+      } else {
+        const parts: ApiContentPart[] = [];
+        if (text.length > 0) {
+          parts.push({ type: 'text', text: text });
+        }
+        for (let j = 0; j < imageUrls.length; j++) {
+          parts.push({ type: 'image_url', image_url: { url: imageUrls[j] } });
+        }
+        out.push({ role: message.role, content: parts });
+      }
     }
   }
   return out;

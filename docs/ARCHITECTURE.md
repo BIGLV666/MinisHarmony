@@ -485,6 +485,21 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 纯文本模型会拒绝 `image_url`，所以该工具默认不出现，必须由用户确认当前模型支持
 视觉后开启。
 
+## 图片附件
+
+`AttachmentStore` 把相册选择器返回的临时 URI 复制到 `filesDir/attachments/<uuid>.<ext>`
+（只接受 png/jpg/jpeg/webp/gif/bmp，单张 10 MB），消息 part 只存
+`attachment:<文件名>` 与 mimeType，不把 base64 写进持久化 JSON。输入栏最多同时挂
+4 张，发送时 `AgentRuntime.start()` 把它们追加为 `PART_IMAGE` part；编辑消息时保留
+非文本 part，因此改文案不会丢图。
+
+发请求时 `AgentRuntime` 的解析器按前缀分流：`attachment:` 走 `AttachmentStore.dataUrl()`
+（编码结果按文件名缓存），其余仍走 `LocalToolRuntime.imageDataUrl()`。
+`ToolProtocol.toApiMessages()` 对 user 角色收集图片，有图时把 `content` 从字符串换成
+`[{type:'text'},{type:'image_url',...}]`；解析失败或没有图片时退回纯文本，不会产生
+空消息。`read_image` 与用户附件共用同一条 `image_url` 通路，但开关互不影响。
+模型能力表未标记视觉时只提示，不阻止发送。
+
 ## 剪贴板工具
 
 `clipboard_read` / `clipboard_write` 走 `@kit.BasicServicesKit` 的 `pasteboard`，

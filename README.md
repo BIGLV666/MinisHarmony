@@ -40,6 +40,7 @@ x-opencode-session`，或者缓存永远不命中。
 | **OpenCode Go 预设** | 一键填入当前基址，自动注入 `x-opencode-session` |
 | **OpenAI 兼容** | 任意兼容 `/chat/completions` 的服务，可自定义基址与模型 |
 | **流式输出** | SSE 增量解析，思考过程（`reasoning_content` / `reasoning`）折叠展示 |
+| **图片消息** | 输入栏从系统相册多选（最多 4 张、10 MB），随消息以多模态 `image_url` 发送；气泡缩略图可点开全屏 |
 | **工具调用循环** | 解析流式 `tool_calls`，同一轮多个工具并行执行，默认最多 200 轮模型/工具往返（可调整），工具卡片可展开 |
 | **本机工具** | 工作区内的 `list_dir` / `read_file` / `write_file` / `file_edit` / `search_text`，以及 `fetch_url` / `now`；设置里可逐工具关闭 |
 | **剪贴板** | 可选的 `clipboard_read` / `clipboard_write`，默认关闭；开启后模型可读写设备剪贴板，内容会发送给模型；远程沙箱不转发 |
@@ -310,6 +311,7 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - JSON 导出 / 导入：版本化信封、parts 保留、流式标记归零、文件名校验、导入重写 ID 与未完成工具；
 - 多会话 bundle：`sessions` 数组往返、逐会话新 ID、单会话文件兼容导入；
 - 视觉输入：`read_image` 的 data URL 作为合成 user 消息紧跟工具结果；
+- 用户图片附件：文本 + 多张 `image_url` 组成多模态 content，解析失败时回退纯文本；
 - 侧栏分组：置顶与今天 / 昨天 / 最近 7 天 / 更早；
 - 工具参数修复：围栏、截断闭合、尾逗号；
 - 循环检测：只统计连续相同调用；
@@ -318,7 +320,7 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - 模型能力：家族前缀估计、窗口占比、`max_tokens` 夹取；
 - Markdown 块级与行内解析。
 
-当前结果：**54 项全部通过**。
+当前结果：**55 项全部通过**。
 
 另外做了静态与编译检查：
 

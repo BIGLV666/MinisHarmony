@@ -25,6 +25,7 @@ import {
   toolLoopWarning
 } from '../core/ToolLoop';
 import { truncateText } from '../core/Workspace';
+import { AttachmentStore } from './AttachmentStore';
 import {
   EVENT_AGENT_FINISH,
   EVENT_AGENT_START,
@@ -117,13 +118,16 @@ export class AgentRuntime {
     return this.running;
   }
 
-  start(userText: string): void {
+  start(userText: string, attachments: MessagePart[] = []): void {
     if (this.running) {
       return;
     }
-    this.session.messages.push(
-      newChatMessage(util.generateRandomUUID(true), 'user', userText)
-    );
+    const message: ChatMessage = newChatMessage(
+      util.generateRandomUUID(true), 'user', userText);
+    for (let i = 0; i < attachments.length; i++) {
+      message.parts.push(attachments[i]);
+    }
+    this.session.messages.push(message);
     this.beginRun('new');
   }
 
@@ -277,7 +281,9 @@ export class AgentRuntime {
           this.onModelError(assistant, message);
         }
       },
-      (uri: string, mimeType: string) => this.tools.imageDataUrl(uri, mimeType)
+      (uri: string, mimeType: string) => AttachmentStore.isAttachmentUri(uri)
+        ? AttachmentStore.dataUrl(uri, mimeType)
+        : this.tools.imageDataUrl(uri, mimeType)
     );
     this.handle = handle;
     if (!this.running || this.cancelled) {

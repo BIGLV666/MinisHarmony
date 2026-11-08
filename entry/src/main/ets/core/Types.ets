@@ -349,6 +349,15 @@ export function searchableText(session: StoredSession): string {
   return value.substring(0, SEARCH_BLOB_LIMIT).toLowerCase();
 }
 
+/** A picked image waiting to be sent with the next user message. */
+export interface ChatAttachment {
+  /** `attachment:<file name>` persisted in the message part. */
+  uri: string;
+  mimeType: string;
+  /** Absolute sandbox path used by the composer thumbnail. */
+  path: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
@@ -508,6 +517,14 @@ export function makePart(kind: string): MessagePart {
 export function textPart(text: string): MessagePart {
   const part: MessagePart = makePart(PART_TEXT);
   part.text = text;
+  return part;
+}
+
+/** User attachment. `uri` is `attachment:<file name>` inside the app sandbox. */
+export function imagePart(uri: string, mimeType: string): MessagePart {
+  const part: MessagePart = makePart(PART_IMAGE);
+  part.uri = uri;
+  part.mimeType = mimeType;
   return part;
 }
 

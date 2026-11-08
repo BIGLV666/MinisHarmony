@@ -1,9 +1,12 @@
 import { common } from '@kit.AbilityKit';
+import { picker } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import {
   AppSettings,
+  ChatAttachment,
   ChatMessage,
   MessagePart,
+  PART_TEXT,
   SessionMeta,
   SessionSearchEntry,
   StoredSession,
@@ -11,6 +14,7 @@ import {
   cloneSettings,
   cycleThinkingLevel,
   defaultSettings,
+  imagePart,
   newChatMessage,
   rewindMessages,
   searchableText,
@@ -18,6 +22,7 @@ import {
   textOf,
   textPart
 } from '../core/Types';
+import { capsForModel } from '../core/ModelCaps';
 import { ToolRuntime } from '../core/ToolTypes';
 import {
   applySessionParams,
@@ -46,6 +51,7 @@ import {
   saveSessionJson,
   saveSessionMarkdown
 } from '../service/ExportService';
+import { AttachmentStore } from '../service/AttachmentStore';
 import { MemoryStore } from '../service/MemoryStore';
 import { SkillDoc, SkillCommand, matchSkillCommand } from '../core/SkillDoc';
 import { SkillStore } from '../service/SkillStore';
@@ -77,6 +83,7 @@ struct Index {
   @State messages: ChatMessage[] = [];
   @State currentId: string = '';
   @State draft: string = '';
+  @State pendingAttachments: ChatAttachment[] = [];
   @State streaming: boolean = false;
   @State compacting: boolean = false;
   @State isWide: boolean = true;
@@ -150,6 +157,7 @@ struct Index {
     this.workspaceRoot = context.filesDir + '/workspace';
     MemoryStore.init(context.filesDir + '/memory');
     SkillStore.init(context.filesDir + '/skills');
+    AttachmentStore.init(context.filesDir + '/attachments');
     try {
       await LocalStore.init(context);
     } catch (e) {
@@ -548,16 +556,68 @@ struct Index {
     this.persistSoon();
   }
 
+  /** Pick up to four photos and copy them into the app sandbox. */
+  private async pickImages(): Promise<void> {
+    try {
+      const options: picker.PhotoSelectOptions = new picker.PhotoSelectOptions();
+      options.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 4;
+      const photoPicker: picker.PhotoViewPicker = new picker.PhotoViewPicker();
+      const result: picker.PhotoSelectResult = await photoPicker.select(options);
+      if (result.photoUris.length === 0) {
+        return;
+      }
+      const next: ChatAttachment[] = this.pendingAttachments.slice();
+      let failed: number = 0;
+      for (let i = 0; i < result.photoUris.length; i++) {
+        const info = await AttachmentStore.saveFromUri(result.photoUris[i]);
+        if (info === null) {
+          failed++;
+          continue;
+        }
+        next.push({
+          uri: AttachmentStore.uriFor(info.name),
+          mimeType: info.mimeType,
+          path: AttachmentStore.absolutePath(info.name)
+        });
+      }
+      this.pendingAttachments = next;
+      if (failed > 0) {
+        this.toast(failed.toString() + ' 张图片无法读取（格式或大小不支持）');
+      }
+      const session: StoredSession | null = this.findSession(this.currentId);
+      const modelId: string = session !== null
+        ? effectiveSettings(this.settings, session.meta).modelId
+        : this.settings.modelId;
+      if (!capsForModel(modelId).vision) {
+        this.toast('当前模型未标记视觉能力，图片可能被拒绝');
+      }
+    } catch (e) {
+      this.toast('选择图片失败');
+    }
+  }
+
+  private removeAttachment(index: number): void {
+    const next: ChatAttachment[] = [];
+    for (let i = 0; i < this.pendingAttachments.length; i++) {
+      if (i !== index) {
+        next.push(this.pendingAttachments[i]);
+      }
+    }
+    this.pendingAttachments = next;
+  }
+
   private sendMessage(): void {
     const text: string = this.draft.trim();
-    if (text.length === 0 || this.streaming) {
+    const attachments: ChatAttachment[] = this.pendingAttachments.slice();
+    if ((text.length === 0 && attachments.length === 0) || this.streaming) {
       return;
     }
     if (this.compacting) {
       this.toast('正在压缩上下文，请稍候');
       return;
     }
-    if (text.startsWith('/')) {
+    if (text.length > 0 && text.startsWith('/')) {
       this.handleCommand(text);
       return;
     }
@@ -591,16 +651,22 @@ struct Index {
     }
 
     if (session.messages.length === 0) {
-      session.meta.title = titleFrom(text);
+      session.meta.title = text.length > 0 ? titleFrom(text) : '图片对话';
     }
     session.meta.updatedAt = Date.now();
     session.meta.modelId = effectiveSettings(this.settings, session.meta).modelId;
 
     this.draft = '';
-    this.runAgent(session, text, true);
+    this.pendingAttachments = [];
+    this.runAgent(session, text, true, attachments);
   }
 
-  private runAgent(session: StoredSession, userText: string, fresh: boolean): void {
+  private runAgent(
+    session: StoredSession,
+    userText: string,
+    fresh: boolean,
+    attachments: ChatAttachment[] = []
+  ): void {
     const effective: AppSettings = effectiveSettings(this.settings, session.meta);
     const skills: string = SkillStore.block(effective.enabledSkills);
     if (skills.length > 0) {
@@ -649,7 +715,11 @@ struct Index {
         this.askToolPermission(name, argumentsText)
       : null);
     if (fresh) {
-      this.agent.start(userText);
+      const parts: MessagePart[] = [];
+      for (let i = 0; i < attachments.length; i++) {
+        parts.push(imagePart(attachments[i].uri, attachments[i].mimeType));
+      }
+      this.agent.start(userText, parts);
     } else {
       this.agent.regenerate();
     }
@@ -731,6 +801,11 @@ struct Index {
     session.messages = session.messages.slice(0, index + 1);
     const message: ChatMessage = session.messages[index];
     const parts: MessagePart[] = [textPart(text)];
+    for (let i = 0; i < message.parts.length; i++) {
+      if (message.parts[i].kind !== PART_TEXT) {
+        parts.push(message.parts[i]);
+      }
+    }
     message.parts = parts;
     message.createdAt = Date.now();
     if (index === 0) {
@@ -1573,8 +1648,11 @@ struct Index {
       hasKey: this.settings.apiKey.trim().length > 0,
       enterToSend: this.settings.enterToSend,
       draft: $draft,
+      attachments: this.pendingAttachments,
       onSend: () => this.sendMessage(),
       onStop: () => this.stopStream(),
+      onPickImage: () => this.pickImages(),
+      onRemoveAttachment: (index: number) => this.removeAttachment(index),
       onSettings: () => {
         this.showSettings = true;
       },

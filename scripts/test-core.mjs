@@ -58,13 +58,30 @@ copyCore('ModelCaps');
 // needs them marked `type` (interfaces have no runtime binding).
 function markTypeOnly(name, from, names) {
   const file = join(tmp, `${name}.mts`);
-  const source = readFileSync(file, 'utf8');
+  let source = readFileSync(file, 'utf8');
   const plain = `import { ${names.join(', ')} } from './${from}.mts';`;
   const typed = `import type { ${names.join(', ')} } from './${from}.mts';`;
-  writeFileSync(file, source.split(plain).join(typed));
+  if (source.indexOf(plain) >= 0) {
+    writeFileSync(file, source.split(plain).join(typed));
+    return;
+  }
+  // Multi-line imports: mark individual specifiers with inline `type`.
+  const pattern = new RegExp(
+    `import\\s*\\{([^}]*)\\}\\s*from\\s*'\\./${from}\\.mts';`);
+  source = source.replace(pattern, (full, body) => {
+    let updated = body;
+    for (const typeName of names) {
+      updated = updated.replace(
+        new RegExp(`(^|[\\s,{])(${typeName})(?=\\s*[,}])`),
+        `$1type $2`);
+    }
+    return `import {${updated}} from './${from}.mts';`;
+  });
+  writeFileSync(file, source);
 }
 
 markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'ToolProperty']);
+markTypeOnly('ToolProtocol', 'Types', ['ChatMessage']);
 markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'MessagePart', 'StoredSession']);
 markTypeOnly('SessionParams', 'Types', ['AppSettings', 'SessionMeta', 'ThinkingLevel']);
 
@@ -619,6 +636,31 @@ test('tool calls without a name are not sent', () => {
   assert.equal(api.length, 2);
   assert.equal(api[0].tool_calls.length, 1);
   assert.equal(api[0].tool_calls[0].id, 'call_ok');
+});
+
+test('user image parts become multimodal content', () => {
+  const user = types.newChatMessage('u1', 'user', '看看这张图');
+  user.parts.push(types.imagePart('attachment:a.png', 'image/png'));
+  const api = proto.toApiMessages([user], (uri, mime) =>
+    uri === 'attachment:a.png' ? 'data:image/png;base64,AAA' : '');
+  assert.equal(api.length, 1);
+  assert.equal(Array.isArray(api[0].content), true);
+  assert.equal(api[0].content[0].type, 'text');
+  assert.equal(api[0].content[0].text, '看看这张图');
+  assert.equal(api[0].content[1].type, 'image_url');
+  assert.equal(api[0].content[1].image_url.url, 'data:image/png;base64,AAA');
+
+  const onlyImage = types.newChatMessage('u2', 'user', '');
+  onlyImage.parts.push(types.imagePart('attachment:b.jpg', 'image/jpeg'));
+  const api2 = proto.toApiMessages([onlyImage], () => 'data:image/jpeg;base64,BBB');
+  assert.equal(api2.length, 1);
+  assert.equal(api2[0].content.length, 1);
+  assert.equal(api2[0].content[0].type, 'image_url');
+
+  const unresolved = types.newChatMessage('u3', 'user', 'hi');
+  unresolved.parts.push(types.imagePart('attachment:c.png', 'image/png'));
+  const api3 = proto.toApiMessages([unresolved], () => '');
+  assert.deepEqual(api3, [{ role: 'user', content: 'hi' }]);
 });
 
 test('workspace path jail rejects escapes', () => {

@@ -1,4 +1,4 @@
-import { ChatMessage, messageKey, modelName, scaleFont } from '../core/Types';
+import { ChatAttachment, ChatMessage, messageKey, modelName, scaleFont } from '../core/Types';
 import { capsForModel, contextPercent, formatWindow } from '../core/ModelCaps';
 import { formatTokens } from '../service/Format';
 import { MessageBubble } from './MessageBubble';
@@ -23,7 +23,12 @@ export struct ChatView {
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
   @Link draft: string;
+  @Prop attachments: ChatAttachment[] = [];
   onSend: () => void = () => {
+  };
+  onPickImage: () => void = () => {
+  };
+  onRemoveAttachment: (index: number) => void = (index: number) => {
   };
   onStop: () => void = () => {
   };
@@ -84,7 +89,8 @@ export struct ChatView {
   }
 
   private canSend(): boolean {
-    return this.draft.trim().length > 0 && !this.streaming;
+    return (this.draft.trim().length > 0 || this.attachments.length > 0) &&
+      !this.streaming;
   }
 
   /**
@@ -240,7 +246,36 @@ export struct ChatView {
   @Builder
   composer() {
     Column({ space: 6 }) {
+      if (this.attachments.length > 0) {
+        Row({ space: 8 }) {
+          ForEach(this.attachments, (item: ChatAttachment, index: number) => {
+            Stack({ alignContent: Alignment.TopEnd }) {
+              Image('file://' + item.path)
+                .width(56)
+                .height(56)
+                .borderRadius(9)
+                .objectFit(ImageFit.Cover)
+              Text('✕')
+                .fontSize(10)
+                .fontColor(Color.White)
+                .backgroundColor('#99000000')
+                .borderRadius(8)
+                .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+                .onClick(() => this.onRemoveAttachment(index))
+            }
+          }, (item: ChatAttachment) => item.uri)
+        }
+        .width('100%')
+        .padding({ left: 10, right: 10 })
+      }
+
       Row({ space: 8 }) {
+        if (!this.streaming) {
+          Text('🖼')
+            .fontSize(18)
+            .padding({ left: 4, right: 2, top: 6, bottom: 6 })
+            .onClick(() => this.onPickImage())
+        }
         TextArea({ text: this.draft, placeholder: '问点什么…' })
           .layoutWeight(1)
           .constraintSize({ minHeight: 42, maxHeight: 150 })

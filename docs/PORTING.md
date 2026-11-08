@@ -50,6 +50,7 @@
 | OpenMinis 常亮 | `service/ScreenWake.ets` | 仅生成期间保持屏幕常亮；自动聚焦未做 |
 | OpenMinis 剪贴板 | `LocalToolRuntime.clipboardRead/Write()` | `pasteboard` 纯文本读写；默认关闭、24k/100k 字符上限；仅本机模式 |
 | OpenMinis `read_image`（原生视觉分支） | `core/ToolProtocol.ets` + `LocalToolRuntime.imageDataUrl()` | tool 消息后追加合成 user `image_url` 消息；无 Vision Group 文本回退 |
+| OpenMinis 图片附件 / 预览 | `service/AttachmentStore.ets` + `MessageBubble` | 相册多选复制到私有目录；消息 part 存 `attachment:` 路径；多模态 `image_url`；气泡缩略图与全屏查看 |
 | OpenMinis `/memory` `/thinking` | `Index.handleCommand()` | 记忆为全局开关；思考映射到 `reasoning_effort`，无模型元数据 |
 | Android `ToolJsonRepair.kt` | `core/ToolArgs.ets` | 覆盖围栏/截断/尾逗号；未做类型强转与字段名模糊匹配 |
 | OpenMinis 工具循环保护 | `core/ToolLoop.ets` + `AgentRuntime` | 连续相同调用 3 次追加警告 |

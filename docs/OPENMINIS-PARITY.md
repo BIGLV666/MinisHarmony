@@ -102,7 +102,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 记忆检索 | `memory_get` 模糊搜索 | 关键词打分，返回带日期的片段 | P1 |
 | - [x] | 记忆开关 | 每会话可关闭 | `AppSettings.memoryEnabled`，默认关闭 | P1 |
 | - [x] | 记忆查看 / 编辑 UI | 记忆页 | 设置内嵌文件选择 + 编辑器，可保存 GLOBAL.md 与任意 YYYY-MM-DD.md | P2 |
-| - [ ] | Skills | `SKILL.md` + frontmatter，按会话启用 | 导入本地目录，注入 top-N 描述 | P2 |
+| - [x] | Skills | `SKILL.md` + frontmatter，按会话启用 | 设置页导入单个 `.md`、开关启用；系统提示只放名称/简介，模型用 `read_skill` 取正文；全局开关而非按会话 | P2 |
 | - [ ] | Skills 斜杠命令 | 技能注册为 `/命令` | 与斜杠命令合并 | P2 |
 | - [x] | Soul / 人格 | `SOUL.md` 身份层 | 内置 5 种人格（通用/严谨工程师/简洁/耐心讲解/创意写作），作为系统提示前缀；无外部 `SOUL.md` 导入 | P2 |
 | - [ ] | 提示词预设库 | ——（OpenMinis 也没有） | 不做 | - |
@@ -248,3 +248,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | Markdown 表格 | 识别表头 + 对齐分隔行，渲染为等宽列表格，缺列补空；LaTeX 与代码高亮仍未做；48 项测试通过 |
 | 2026-11-08 | 主题色 / 字号 | 六种强调色 + 四档阅读字号；`AppStorage` 广播，消息正文/代码/表格/输入框即时生效；颜色与缩放函数可测 |
 | 2026-11-08 | Soul / 人格 | `core/Soul.ets` 内置五种人格；设置页选择；请求时拼在人设→系统提示→记忆之前；未知 id 回退通用 |
+| 2026-11-08 | Skills | 导入 SKILL.md（frontmatter name/description）、开关、删除；目录存应用私有 `skills/`；系统提示注入简介，`read_skill` 按 id 读正文；49 项测试通过 |

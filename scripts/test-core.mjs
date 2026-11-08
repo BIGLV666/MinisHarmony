@@ -51,6 +51,7 @@ copyCore('FileListing');
 copyCore('SessionParams', ['Types']);
 copyCore('Appearance');
 copyCore('Soul');
+copyCore('SkillDoc');
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -122,6 +123,7 @@ const listing = await import(pathToFileURL(join(tmp, 'FileListing.mts')).href);
 const sessionParams = await import(pathToFileURL(join(tmp, 'SessionParams.mts')).href);
 const appearance = await import(pathToFileURL(join(tmp, 'Appearance.mts')).href);
 const soul = await import(pathToFileURL(join(tmp, 'Soul.mts')).href);
+const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -265,6 +267,33 @@ test('Markdown bare URLs keep punctuation and reject unsafe schemes', () => {
   assert.equal(md.isOpenableUrl('file:///etc/passwd'), false);
 });
 
+test('SKILL.md frontmatter and catalogue', () => {
+  const doc = skilldoc.parseSkillDoc(
+    '---\nname: "Deploy Helper"\ndescription: Build and deploy the HAP\n---\n\n# Steps\n\n1. build',
+    skilldoc.skillIdFromFile('Deploy Helper.md')
+  );
+  assert.equal(doc.id, 'deploy-helper');
+  assert.equal(doc.name, 'Deploy Helper');
+  assert.equal(doc.description, 'Build and deploy the HAP');
+  assert.equal(doc.body, '# Steps\n\n1. build');
+
+  const plain = skilldoc.parseSkillDoc('Just do this', 'plain');
+  assert.equal(plain.name, 'plain');
+  assert.equal(plain.description, 'Just do this');
+  assert.equal(plain.body, 'Just do this');
+
+  assert.equal(skilldoc.skillIdFromFile('目录/My Skill.md'), 'my-skill');
+  assert.equal(skilldoc.skillIdFromFile('!!!.md'), 'skill');
+
+  const catalogue = skilldoc.skillCatalogue([doc]);
+  assert.equal(catalogue.indexOf('Deploy Helper') >= 0, true);
+  assert.equal(catalogue.indexOf('read_skill') >= 0, true);
+  assert.equal(skilldoc.skillCatalogue([]), '');
+  assert.equal(skilldoc.findSkill([doc], 'deploy-helper'), doc);
+  assert.equal(skilldoc.findSkill([doc], 'Deploy Helper'), doc);
+  assert.equal(skilldoc.findSkill([doc], 'nope'), null);
+});
+
 test('session params merge over global settings', () => {
   const settings = types.defaultSettings();
   settings.modelId = 'global-model';
@@ -344,6 +373,11 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(soul.soulPrompt('engineer').length > 0, true);
   assert.equal(soul.soulPrompt('unknown'), '');
   assert.equal(soul.SOUL_PRESETS.length >= 5, true);
+  assert.deepEqual(settings.enabledSkills, []);
+  assert.deepEqual(
+    types.cloneSettings({ ...settings, enabledSkills: ['a', 'a', ''] }).enabledSkills,
+    ['a']
+  );
   assert.deepEqual(
     types.normalizeToolNames(['read_file', 'read_file', '', 'now']),
     ['read_file', 'now']

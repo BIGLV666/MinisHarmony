@@ -503,6 +503,15 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 重复提醒。所有调用先检查 `isNotificationEnabled()`，失败一律静默——通知被用户关闭
 或设备不支持时，对话本身不受影响。
 
+## 技能（Skills）
+
+`service/SkillStore.ets` 把导入的 `SKILL.md` 存到 `filesDir/skills/<id>.md`，`id`
+由文件名清洗得到（重名自动加 `-2`），启动时读入内存缓存。`core/SkillDoc.ets` 解析
+可选的 frontmatter（`name`、`description`），缺少 description 时截取正文前 120 字。
+发送时 `Index.runAgent()` 只把已启用技能的短目录拼进系统提示；模型需要细节时调用
+`read_skill`，工具返回该文件正文。这样技能库再大也只占几行上下文。未启用任何技能时，
+`read_skill` 不会出现在工具列表里。导入走系统文档选择器，上限 512 KB。
+
 ## 人格（Soul）
 
 `core/Soul.ets` 提供五种内置人格的固定提示词；`AppSettings.soulId` 记录选择，
@@ -560,6 +569,6 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 
 ## 可测试性
 
-`core/` 二十个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 二十一个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

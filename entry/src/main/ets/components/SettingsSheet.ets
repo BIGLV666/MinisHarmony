@@ -10,12 +10,15 @@ import {
   cloneSettings,
   defaultSettings
 } from '../core/Types';
+import { common } from '@kit.AbilityKit';
 import {
   ACCENT_PRESETS,
   AccentPreset,
   FONT_SCALE_OPTIONS,
   fontScaleLabel
 } from '../core/Appearance';
+import { SkillDoc } from '../core/SkillDoc';
+import { SkillStore } from '../service/SkillStore';
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
 import { formatEventLine } from '../core/EventLog';
 import { MemoryFile } from '../core/Memory';
@@ -74,6 +77,8 @@ export struct SettingsSheet {
   @State modelId: string = OPENCODE_DEFAULT_MODEL;
   @State systemPrompt: string = '';
   @State soulId: string = 'general';
+  @State skills: SkillDoc[] = [];
+  @State enabledSkills: string[] = [];
   @State temperature: number = 1.0;
   @State maxTokensText: string = '8192';
   @State showKey: boolean = false;
@@ -113,6 +118,8 @@ export struct SettingsSheet {
     this.modelId = copy.modelId;
     this.systemPrompt = copy.systemPrompt;
     this.soulId = copy.soulId;
+    this.enabledSkills = copy.enabledSkills.slice();
+    this.skills = SkillStore.list();
     this.temperature = copy.temperature;
     this.maxTokensText = copy.maxTokens.toString();
     this.toolsEnabled = copy.toolsEnabled;
@@ -137,6 +144,46 @@ export struct SettingsSheet {
 
   private toolEnabled(name: string): boolean {
     return this.disabledTools.indexOf(name) < 0;
+  }
+
+  private skillEnabled(id: string): boolean {
+    return this.enabledSkills.indexOf(id) >= 0;
+  }
+
+  private setSkillEnabled(id: string, enabled: boolean): void {
+    const next: string[] = [];
+    for (let i = 0; i < this.enabledSkills.length; i++) {
+      if (this.enabledSkills[i] !== id) {
+        next.push(this.enabledSkills[i]);
+      }
+    }
+    if (enabled) {
+      next.push(id);
+    }
+    this.enabledSkills = next;
+  }
+
+  private async importSkill(): Promise<void> {
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const message: string = await SkillStore.pickAndImport(context);
+    this.skills = SkillStore.list();
+    this.onToast(message);
+  }
+
+  private removeSkill(id: string): void {
+    if (!SkillStore.remove(id)) {
+      this.onToast('删除失败');
+      return;
+    }
+    const next: string[] = [];
+    for (let i = 0; i < this.enabledSkills.length; i++) {
+      if (this.enabledSkills[i] !== id) {
+        next.push(this.enabledSkills[i]);
+      }
+    }
+    this.enabledSkills = next;
+    this.skills = SkillStore.list();
+    this.onToast('已删除技能');
   }
 
   private setToolEnabled(name: string, enabled: boolean): void {
@@ -198,7 +245,8 @@ export struct SettingsSheet {
       onboardingDone: this.settings.onboardingDone,
       appLockEnabled: this.appLockEnabled,
       accentColor: this.accentColor,
-      fontScale: this.fontScale
+      fontScale: this.fontScale,
+      enabledSkills: this.enabledSkills.slice()
     };
     return next;
   }
@@ -1046,6 +1094,74 @@ export struct SettingsSheet {
                   .borderRadius(9)
                 }, (tool: ToolChoice) => tool.name + ':' +
                   (this.toolEnabled(tool.name) ? '1' : '0'))
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Column({ space: 6 }) {
+                Row({ space: 8 }) {
+                  Column({ space: 3 }) {
+                    Text('技能（Skills）')
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_primary'))
+                    Text('导入 SKILL.md；启用的技能只把名称与简介放进系统提示，模型需要时用 read_skill 读取正文。')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(14)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  Text('导入')
+                    .fontSize(11)
+                    .fontColor($r('app.color.accent'))
+                    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(8)
+                    .onClick(() => {
+                      this.importSkill();
+                    })
+                }
+                .width('100%')
+
+                if (this.skills.length === 0) {
+                  Text('还没有导入技能。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .width('100%')
+                }
+
+                ForEach(this.skills, (skill: SkillDoc) => {
+                  Row({ space: 8 }) {
+                    Column({ space: 2 }) {
+                      Text(skill.name)
+                        .fontSize(11)
+                        .fontColor($r('app.color.text_primary'))
+                      Text(skill.description)
+                        .fontSize(9)
+                        .fontColor($r('app.color.text_tertiary'))
+                        .maxLines(2)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+                    Toggle({ type: ToggleType.Switch, isOn: this.skillEnabled(skill.id) })
+                      .selectedColor($r('app.color.accent'))
+                      .onChange((on: boolean) => {
+                        this.setSkillEnabled(skill.id, on);
+                      })
+                    Text('删除')
+                      .fontSize(10)
+                      .fontColor($r('app.color.danger'))
+                      .onClick(() => this.removeSkill(skill.id))
+                  }
+                  .width('100%')
+                  .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(9)
+                }, (skill: SkillDoc) => skill.id + ':' +
+                  (this.skillEnabled(skill.id) ? '1' : '0'))
               }
               .width('100%')
               .padding({ left: 12, right: 12, top: 8, bottom: 8 })

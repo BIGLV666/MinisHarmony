@@ -46,6 +46,7 @@ import {
   saveSessionMarkdown
 } from '../service/ExportService';
 import { MemoryStore } from '../service/MemoryStore';
+import { SkillStore } from '../service/SkillStore';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { SubagentRunner } from '../service/SubagentRunner';
 import { titleFrom } from '../service/Format';
@@ -143,6 +144,7 @@ struct Index {
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     this.workspaceRoot = context.filesDir + '/workspace';
     MemoryStore.init(context.filesDir + '/memory');
+    SkillStore.init(context.filesDir + '/skills');
     try {
       await LocalStore.init(context);
     } catch (e) {
@@ -574,6 +576,12 @@ struct Index {
 
   private runAgent(session: StoredSession, userText: string, fresh: boolean): void {
     const effective: AppSettings = effectiveSettings(this.settings, session.meta);
+    const skills: string = SkillStore.block(effective.enabledSkills);
+    if (skills.length > 0) {
+      effective.systemPrompt = effective.systemPrompt.trim().length > 0
+        ? effective.systemPrompt + '\n\n' + skills
+        : skills;
+    }
     const runtime: ToolRuntime = this.makeToolRuntime(effective);
     this.streaming = true;
     if (effective.backgroundEnabled) {

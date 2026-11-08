@@ -79,6 +79,9 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('days', 'number', '回看最近多少天，默认 7，最大 90。'),
     field('limit', 'number', '最多返回多少条，默认 20，最大 100。')
   ];
+  const readSkillFields: FieldEntry[] = [
+    field('id', 'string', '技能 id 或名称，见系统提示中的技能列表。')
+  ];
   const subagentFields: FieldEntry[] = [
     field('prompt', 'string', '交给子代理的完整任务说明。子代理看不到当前对话，必须写清目标、输入和期望输出。'),
     field('label', 'string', '可选短标签，用于日志与子会话标题。')
@@ -135,6 +138,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'memory_get',
       description: '按关键词检索本机记忆，返回带日期的片段。没有命中时返回最近记录。',
       parameters: parametersOf(memoryGetFields, [])
+    },
+    {
+      name: 'read_skill',
+      description: '读取已启用技能的完整说明。系统提示里只列出名称与简介，需要具体步骤时调用本工具。',
+      parameters: parametersOf(readSkillFields, ['id'])
     },
     {
       name: 'subagent_task',

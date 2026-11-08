@@ -100,7 +100,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     appLockEnabled: source.appLockEnabled === true,
     accentColor: normalizeAccentColor(source.accentColor),
     fontScale: clampFontScale(source.fontScale),
-    soulId: normalizeSoulId(source.soulId)
+    soulId: normalizeSoulId(source.soulId),
+    enabledSkills: normalizeToolNames(source.enabledSkills)
   };
 }
 

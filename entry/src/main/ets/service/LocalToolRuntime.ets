@@ -15,6 +15,8 @@ import {
 } from '../core/Workspace';
 import { EditOutcome, applyExactEdit } from '../core/EditPatch';
 import { MemoryStore } from './MemoryStore';
+import { SkillStore } from './SkillStore';
+import { SkillDoc } from '../core/SkillDoc';
 
 const MAX_READ_BYTES: number = 1024 * 1024;
 const MAX_IMAGE_BYTES: number = 5 * 1024 * 1024;
@@ -80,6 +82,10 @@ interface MemoryGetArgs {
 interface SubagentArgs {
   prompt?: string;
   label?: string;
+}
+
+interface ReadSkillArgs {
+  id?: string;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -188,6 +194,9 @@ export class LocalToolRuntime implements ToolRuntime {
       if (name === 'read_image' && !this.imagesEnabled) {
         continue;
       }
+      if (name === 'read_skill' && SkillStore.list().length === 0) {
+        continue;
+      }
       if (name === 'subagent_task' && this.subagent === null) {
         continue;
       }
@@ -228,6 +237,9 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'memory_get') {
         return this.memoryGet(argumentsJson);
+      }
+      if (name === 'read_skill') {
+        return this.readSkill(argumentsJson);
       }
       if (name === 'search_text') {
         return this.searchText(argumentsJson);
@@ -609,6 +621,25 @@ export class LocalToolRuntime implements ToolRuntime {
     const status: string = MemoryStore.write(content);
     const ok: boolean = status.startsWith('已写入记忆');
     return { ok: ok, content: status };
+  }
+
+  private readSkill(argumentsJson: string): ToolResult {
+    const args: ReadSkillArgs = JSON.parse(argumentsJson) as ReadSkillArgs;
+    const id: string = args.id !== undefined ? args.id : '';
+    const doc: SkillDoc | null = SkillStore.get(id);
+    if (doc === null) {
+      const names: string[] = [];
+      const docs: SkillDoc[] = SkillStore.list();
+      for (let i = 0; i < docs.length; i++) {
+        names.push(docs[i].id);
+      }
+      return {
+        ok: false,
+        content: '没有找到技能：' + (id.length > 0 ? id : '（空）') +
+          '。可用 id：' + (names.length > 0 ? names.join(', ') : '无')
+      };
+    }
+    return { ok: true, content: doc.name + '\n\n' + doc.body };
   }
 
   private memoryGet(argumentsJson: string): ToolResult {

@@ -97,6 +97,8 @@ export interface AppSettings {
   fontScale: number;
   /** Built-in persona prepended to the system prompt. */
   soulId: string;
+  /** Skill ids (imported SKILL.md files) injected into the system prompt. */
+  enabledSkills: string[];
 }
 
 export const DEFAULT_ACCENT_COLOR: string = '#2F6BFF';
@@ -416,7 +418,8 @@ export function defaultSettings(): AppSettings {
     appLockEnabled: false,
     accentColor: DEFAULT_ACCENT_COLOR,
     fontScale: 1,
-    soulId: 'general'
+    soulId: 'general',
+    enabledSkills: []
   };
 }
 
@@ -468,7 +471,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     fontScale: clampFontScale(source.fontScale),
     soulId: source.soulId !== undefined && source.soulId.length > 0
       ? source.soulId
-      : 'general'
+      : 'general',
+    enabledSkills: normalizeToolNames(source.enabledSkills)
   };
 }
 

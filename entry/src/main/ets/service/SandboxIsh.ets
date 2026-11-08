@@ -66,9 +66,22 @@ export class SandboxIsh {
   private static readonly MARKER: string = '[sandbox exit=';
   private static readonly READY: string = '[sandbox ready]';
   /**
-   * The output file is read and decoded as a whole on every change. A command
-   * that streams gigabytes (yes, cat on a binary) would make that quadratic,
-   * so past this size the daemon is stopped and only the head is returned.
+   * Completion detection scans only this much of the output tail; the marker
+   * is always the last thing the shell prints. Reading the whole file per
+   * 120 ms poll would make a large log quadratic.
+   */
+  private static readonly TAIL_BYTES: number = 256 * 1024;
+  /** What a timed-out command hands back; its last lines hold the error. */
+  private static readonly TIMEOUT_TAIL_BYTES: number = 512 * 1024;
+  /**
+   * The output file is appended to for the daemon's whole life. Rotating at
+   * this size costs one kernel restart in a long session instead of hitting
+   * the hard stop below and failing a command.
+   */
+  private static readonly MAX_SESSION_OUTPUT_BYTES: number = 24 * 1024 * 1024;
+  /**
+   * Hard stop: past this size the daemon is stopped and only the head is
+   * returned. cat on a binary must not take the whole app down.
    */
   private static readonly MAX_OUTPUT_BYTES: number = 64 * 1024 * 1024;
   private static readonly HEAD_BYTES: number = 64 * 1024;
@@ -208,7 +221,6 @@ export class SandboxIsh {
     }
 
     const deadline: number = Date.now() + Math.max(1000, timeoutMs);
-    let text: string = '';
     let lastSize: number = -1;
     while (Date.now() < deadline) {
       const size: number = SandboxIsh.fileSize(SandboxIsh.outputPath);
@@ -224,15 +236,30 @@ export class SandboxIsh {
       }
       if (size !== lastSize) {
         lastSize = size;
-        text = SandboxIsh.read(SandboxIsh.outputPath);
-        const marker: Marker | null = SandboxIsh.findMarker(text, start, id);
-        if (marker !== null) {
-          let output: string = text.substring(start, marker.index);
-          if (output.endsWith('\n')) {
-            output = output.substring(0, output.length - 1);
+        // The marker is the last line the shell prints, so scanning the tail
+        // decides completion without loading a multi-megabyte log on every
+        // poll. Only when the marker is there is the full text read once.
+        const whole: boolean = size <= SandboxIsh.TAIL_BYTES;
+        const sample: string = whole
+          ? SandboxIsh.read(SandboxIsh.outputPath)
+          : SandboxIsh.readTail(SandboxIsh.outputPath, size, SandboxIsh.TAIL_BYTES);
+        if (SandboxIsh.findMarker(sample, whole ? start : 0, id) !== null) {
+          const text: string = whole ? sample : SandboxIsh.read(SandboxIsh.outputPath);
+          const marker: Marker | null = SandboxIsh.findMarker(text, start, id);
+          if (marker !== null) {
+            let output: string = text.substring(start, marker.index);
+            if (output.endsWith('\n')) {
+              output = output.substring(0, output.length - 1);
+            }
+            SandboxIsh.consumed = marker.end;
+            // The daemon appends to one file for its whole life. Rotate it
+            // before it reaches the 64 MB hard stop, so a long session pays
+            // one kernel restart instead of failing a command later.
+            if (size > SandboxIsh.MAX_SESSION_OUTPUT_BYTES) {
+              SandboxIsh.stopDaemon();
+            }
+            return { output: output, exitCode: marker.code, timedOut: false, error: '' };
           }
-          SandboxIsh.consumed = marker.end;
-          return { output: output, exitCode: marker.code, timedOut: false, error: '' };
         }
       }
       // Large outputs grow in expensive steps; poll them less often.
@@ -240,9 +267,17 @@ export class SandboxIsh {
     }
 
     // A stuck command cannot be interrupted inside the guest from here. Stop
-    // the whole daemon instead; the next call boots a fresh one.
-    text = SandboxIsh.read(SandboxIsh.outputPath);
-    let partial: string = text.length > start ? text.substring(start) : '';
+    // the whole daemon instead; the next call boots a fresh one. Keep what it
+    // printed: the last lines before the hang are what the model needs.
+    const timeoutSize: number = SandboxIsh.fileSize(SandboxIsh.outputPath);
+    let partial: string = '';
+    if (timeoutSize > SandboxIsh.TIMEOUT_TAIL_BYTES) {
+      partial = '（输出过长，仅保留末尾部分）\n' +
+        SandboxIsh.readTail(SandboxIsh.outputPath, timeoutSize, SandboxIsh.TIMEOUT_TAIL_BYTES);
+    } else {
+      const text: string = SandboxIsh.read(SandboxIsh.outputPath);
+      partial = text.length > start ? text.substring(start) : '';
+    }
     SandboxIsh.stopDaemon();
     return {
       output: partial,
@@ -470,6 +505,30 @@ export class SandboxIsh {
       return fileIo.statSync(path).size;
     } catch (e) {
       return 0;
+    }
+  }
+
+  /** Last `maxBytes` of the output, decoded; a marker split at the boundary is fine. */
+  private static readTail(path: string, size: number, maxBytes: number): string {
+    const length: number = Math.min(size, maxBytes);
+    if (length <= 0) {
+      return '';
+    }
+    try {
+      const file = fileIo.openSync(path, fileIo.OpenMode.READ_ONLY);
+      try {
+        const buffer: ArrayBuffer = new ArrayBuffer(length);
+        const read: number = fileIo.readSync(file.fd, buffer, {
+          offset: size - length,
+          length: length
+        });
+        const bytes: Uint8Array = new Uint8Array(buffer, 0, read);
+        return util.TextDecoder.create('utf-8').decodeToString(bytes);
+      } finally {
+        fileIo.closeSync(file);
+      }
+    } catch (e) {
+      return '';
     }
   }
 

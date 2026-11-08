@@ -98,6 +98,8 @@ export class SandboxIsh {
   /** Commands share one shell, so they also share one queue. */
   private static queue: Promise<void> = Promise.resolve();
   private static busy: number = 0;
+  /** Bumped by cancel(): an in-flight execute compares it and returns early. */
+  private static cancelToken: number = 0;
 
   /**
    * Run one command. Calls are serialized: the guest has a single shell and a
@@ -119,6 +121,22 @@ export class SandboxIsh {
     } finally {
       SandboxIsh.busy--;
       release();
+    }
+  }
+
+  /**
+   * Abort the command currently running, when the user stops the turn.
+   *
+   * The guest cannot be interrupted from the host, so the daemon is stopped
+   * and the in-flight run returns immediately. Commands still queued are
+   * unaffected: they were never fed to this shell and boot a fresh one.
+   * The running command is the one the user stopped — the queue is serial,
+   * so no background job can be using the shell at the same time.
+   */
+  static cancel(): void {
+    SandboxIsh.cancelToken++;
+    if (SandboxIsh.busy > 0) {
+      SandboxIsh.stopDaemon();
     }
   }
 
@@ -190,6 +208,7 @@ export class SandboxIsh {
 
   private static async execute(context: common.UIAbilityContext, command: string,
     timeoutMs: number, options: SandboxOptions): Promise<SandboxRunResult> {
+    const token: number = SandboxIsh.cancelToken;
     if (SandboxIsh.options.workspace.length === 0) {
       SandboxIsh.options = options;
     }
@@ -223,6 +242,9 @@ export class SandboxIsh {
     const deadline: number = Date.now() + Math.max(1000, timeoutMs);
     let lastSize: number = -1;
     while (Date.now() < deadline) {
+      if (SandboxIsh.cancelToken !== token) {
+        return { output: '', exitCode: -1, timedOut: false, error: '命令已取消' };
+      }
       const size: number = SandboxIsh.fileSize(SandboxIsh.outputPath);
       if (size > SandboxIsh.MAX_OUTPUT_BYTES) {
         const head: string = SandboxIsh.readHead(SandboxIsh.outputPath);

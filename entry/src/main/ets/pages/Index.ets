@@ -70,6 +70,7 @@ import { decryptBackupText, DecryptOutcome } from '../service/BackupCrypto';
 import { SettingsImageGen } from '../service/ImageGen';
 import { DeviceTools } from '../service/DeviceTools';
 import { ShellTool } from '../service/ShellTool';
+import { SandboxIsh } from '../service/SandboxIsh';
 import { OAuthService } from '../service/OAuth';
 import { ScreenshotOutcome, saveShareCard } from '../service/Screenshot';
 import { shareCardFileName } from '../core/ShareCard';
@@ -1922,6 +1923,10 @@ struct Index {
     // Unblock a tool waiting for confirmation, otherwise the loop would keep
     // a pending promise after the generation was stopped.
     this.settleToolPermission(false);
+    // A shell command cannot be interrupted inside the guest; stopping the
+    // daemon is what lets the queue move on instead of waiting out its
+    // timeout. Queued commands are unaffected and boot a fresh shell.
+    SandboxIsh.cancel();
     // Children the turn is synchronously waiting on would otherwise keep
     // running with nobody to receive their result; background jobs survive.
     SubagentRunner.cancelBlocking(this.currentId);

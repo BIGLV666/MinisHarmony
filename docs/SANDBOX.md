@@ -96,8 +96,9 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   `fetch_url` 获取，设置页文案不承诺沙箱内可联网。
 - **生命周期**：每个应用进程一个常驻沙箱内核（`SandboxIsh` 单例），`/bin/sh`
   作为 PID 1 从 stdin 管道读命令，`cd`、环境变量在多次调用之间保留。
-  应用侧命令队列串行执行；超时无法在 guest 内中断，直接停掉整个 daemon，
-  下一条命令重新启动内核。
+  应用侧命令队列串行执行；超时或用户点「停止」都无法在 guest 内中断，
+  直接停掉整个 daemon（`SandboxIsh.cancel()`），在跑的调用立刻返回
+  「命令已取消」，排队中的调用不受影响、下一条命令重新启动内核。
 - **安全**：工具仍受 `toolsEnabled`、`allowWriteTools`、逐工具开关约束；
   guest 内不能访问应用私有目录以外的宿主路径（fakefs 只挂载显式目录）。
 - **许可**：iSH 为 GPLv2，随应用分发时需要保留版权与源码获取方式；在

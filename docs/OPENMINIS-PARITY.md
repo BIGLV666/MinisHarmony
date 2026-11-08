@@ -74,14 +74,14 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 搜索文本 | 通过 shell `grep` | `search_text` | — |
 | - [x] | HTTP 抓取 | 浏览器引擎 `fetch` | `fetch_url` | — |
 | - [x] | 当前时间 | 通过 shell `date` | `now` | — |
-| - [~] | Shell 命令 | `shell_execute {command, timeout}`，默认 900 秒、上限 3600 秒 | 本机 `shell_execute`：iSH 常驻 shell（`cd`、环境变量跨调用保留），工作区与记忆目录 realfs 挂载，应用侧串行队列、增量读取、20000 字符上限，超时停 daemon 并在下一条命令重启内核；主代理与子代理共用；远程模式由远端执行。**待平板实机二连命令冒烟** | P0 |
+| - [~] | Shell 命令 | `shell_execute {command, timeout}`，默认 900 秒、上限 3600 秒 | 本机 `shell_execute`：iSH 常驻 shell（`cd`、环境变量跨调用保留），工作区与记忆目录 realfs 挂载，应用侧串行队列；完成检测只扫输出末尾 256 KB，命中后整读一次；会话输出过 24 MB 在命令间轮转 daemon；超时/用户停止停 daemon 并立即返回已打印内容（末尾 512 KB）；输出经 `core/Terminal.ets` 去 ANSI/OSC、折叠 `\r`、头尾截断到 20000 字符；受「允许写入工作区文件」、逐工具开关与逐次确认约束；主代理与子代理共用；远程模式由远端执行。**待平板实机二连命令冒烟** | P0 |
 | - [x] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | `read_image` 读取工作区图片，工具消息后追加合成 user 图片消息；本机模式、默认关闭 | P1 |
 | - [x] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集：隐藏 Web 视图常驻，`browser_use` 支持 open / click / type / text / html / eval / back / forward / reload / wait / title / url；页面加载最多等 20 秒，返回内容截断；远程沙箱模式不暴露 | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |
 | - [x] | 子代理 | `subagent_task` | 本机模式完整实现（后台投递、status/steer/cancel/resume、排队、超时、崩溃恢复），见 2. 子代理；远程沙箱模式仍不暴露子代理 | P1 |
 | - [x] | 图像生成 | `minis-model-use` 调用 `/images/generations` | 工具 `generate_image {prompt, size?, model?}`：POST OpenAI 兼容 `/images/generations`（`response_format=b64_json`），支持 1024x1024 / 1024x1792 / 1792x1024，模型省略时用当前对话模型；返回 b64 或 http(s) 图片地址（自动下载），按魔数识别 png/jpg/webp/gif 后存入附件目录，上限 10 MB；工具卡片直接显示缩略图并可全屏查看，下一轮请求把图片作为视觉输入带回模型；设置页「允许生成图片」默认关闭，Anthropic / Gemini 原生预设明确拒绝，远程沙箱与子代理按本机设置继承/不转发 | P3 |
-| - [x] | 工具开关 UI | 逐工具启用/禁用 | 设置页「逐工具开关」；`AppSettings.disabledTools`，本机/远程/子代理共用；执行时同样拒绝 | P2 |
-| - [x] | 工具权限确认 | 危险操作弹出确认 | 设置项「写入前逐次确认」；`write_file` / `file_edit` 执行前弹窗，允许/拒绝，停止生成会按拒绝结算 | P2 |
+| - [x] | 工具开关 UI | 逐工具启用/禁用 | 设置页「逐工具开关」9 项（含 `shell_execute`）；`AppSettings.disabledTools`，本机/远程/子代理共用；执行时同样拒绝 | P2 |
+| - [x] | 工具权限确认 | 危险操作弹出确认 | 设置项「写入前逐次确认」；`write_file` / `file_edit` / `shell_execute` 执行前弹窗，允许/拒绝，停止生成会按拒绝结算 | P2 |
 
 ## 4. Provider 与模型
 
@@ -302,3 +302,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 设置页沙箱状态与重置 | 工具与沙箱页新增「沙箱状态」：显示已就绪 / 需要重新解压（带旧版本号）/ 尚未解压，rootfs 实际占用（递归统计），以及内核是否常驻；「重置」两次点击确认，停 daemon 后删除 `filesDir/ish-rootfs`，下次使用重新解压；首次使用时提示在解压约 15 MB。`zlib.decompressFile` 无进度回调，暂不显示百分比。HAP 构建通过，实机视觉待验 |
 | 2026-11-08 | 沙箱预装 Python 3 | minirootfs 没有 Python，guest 无网络也无法 `apk add`。新增 `scripts/ish-rootfs-python.py`：固定 Alpine 3.21 aarch64 的 python3 3.12.16 与 17 个依赖（musl/openssl/sqlite/readline/ncurses 等，18 个包、13.5 MB，全部带 SHA-256），构建时解包进 rootfs 目录并由 `create_fakefs.py` 重建 `meta.db`（521 → 1380 个文件，zip 3.8 MB → 15 MB）；`--no-python` 可跳过。应用侧加 `filesDir/ish-rootfs/.minis-version`，升级安装时重新解压。构建脚本复现验证：从旧 zip 重新生成 1380 文件、树与 meta.db 完全一致；HAP 21.7 MB，111 项单测通过。`python3 -c` 实机冒烟待平板 |
 | 2026-11-08 | 常驻沙箱与 `shell_execute` | 一次性模式每条命令都要冷启动内核（实机约 20 秒）。改为常驻 daemon：`/bin/sh` 作 PID 1 从 stdin 管道读脚本流，应用用「临时文件 + rename」原子提交 `id=<n>\n<命令>`，shell 自己打印 `[sandbox exit=%d id=<n>]`；`SandboxIsh` 变为单例客户端（串行队列、增量游标、90 秒启动窗口、超时停 daemon 并重启）。`shell_execute` 进 ToolCatalog，`ShellTool` 默认 900 秒 / 上限 3600 秒 / 输出 20000 字符，主代理与子代理共用同一 handler；workspace 与 memory 经 realfs 挂到 `/var/minis/*`。111 项单测与 HAP 构建通过；平板未连接，实机二连命令冒烟待做 |
+| 2026-11-08 | 沙箱客户端加固 | 可选挂载目录缺失不再被当成致命启动失败（原生侧改 `[sandbox warn]`，应用侧先建 workspace/memory）；命令超过 harness 的 16 KB 缓冲时前置报错而不是等到超时；完成检测先只扫末尾 256 KB，命中后才整读，避免大输出下每 120 ms 全量读的二次方开销；会话输出过 24 MB 在命令间停一次 daemon 轮转文件；超时命令返回已打印内容（超过 512 KB 保留末尾）；用户点停止时 `SandboxIsh.cancel()` 停掉在跑命令并立即返回「命令已取消」，排队命令不受影响。116 项单测、HAP 通过 |
+| 2026-11-08 | shell 权限门禁 | `shell_execute` 可写任意挂载目录，之前却不受「允许写入工作区文件」约束、没有逐工具开关、也不走逐次确认。现在在 `definitions()`/`execute()` 里按写工具处理（关闭时不暴露、直接调用被拒），`confirmWriteTools` 对 shell 同样弹窗，设置页逐工具列表加入「Linux 沙箱」并更新说明文案。111 项单测、HAP 通过 |
+| 2026-11-08 | 终端输出清洗 | 新增 `core/Terminal.ets`（对齐 OpenMinis TerminalSanitizer）：按真实终端语义折叠 `\r` 覆写（含 `ESC[K` 擦除）、去 ANSI/OSC 序列与控制字符、合并空行；截断改为保留头尾并标注省略字符数，构建日志尾部的报错不再被砍掉；清洗前先预截 400k 字符限制中间分配。`ShellTool` 使用它。5 项新测试，116 项通过 |
+| 2026-11-08 | 沙箱协议抽取 | `core/SandboxProtocol.ets` 承接与 `sandbox_ish.cpp` 共用的帧格式：结束标记解析（id 匹配、未闭合、负退出码）、`id=<n>\n<命令>` 负载、16 KB 上限（按 UTF-8 字节计，中文命令不再低估）、请求文件；`SandboxIsh` 改为调用。3 项新测试，119 项通过 |

@@ -11,6 +11,7 @@ import {
 } from '../core/Types';
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
 import { formatEventLine } from '../core/EventLog';
+import { MemoryFile } from '../core/Memory';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
@@ -49,6 +50,10 @@ export struct SettingsSheet {
   @State backgroundEnabled: boolean = true;
   @State showLogs: boolean = false;
   @State logLines: string[] = [];
+  @State showMemory: boolean = false;
+  @State memoryFiles: MemoryFile[] = [];
+  @State memoryIndex: number = 0;
+  @State memoryText: string = '';
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -120,6 +125,46 @@ export struct SettingsSheet {
     this.logLines = [];
     this.showLogs = false;
     this.onToast(removed > 0 ? '已删除 ' + removed.toString() + ' 个日志文件' : '没有可删除的日志文件');
+  }
+
+  private loadMemory(): void {
+    if (this.showMemory) {
+      this.showMemory = false;
+      return;
+    }
+    this.memoryFiles = MemoryStore.editable();
+    this.memoryIndex = 0;
+    this.memoryText = this.memoryFiles.length > 0 ? this.memoryFiles[0].text : '';
+    this.showMemory = true;
+  }
+
+  private selectMemory(index: number): void {
+    if (index < 0 || index >= this.memoryFiles.length) {
+      return;
+    }
+    this.memoryIndex = index;
+    this.memoryText = this.memoryFiles[index].text;
+  }
+
+  private saveMemory(): void {
+    if (this.memoryFiles.length === 0) {
+      return;
+    }
+    const name: string = this.memoryFiles[this.memoryIndex].name;
+    const result: string = MemoryStore.saveText(name, this.memoryText);
+    this.onToast(result);
+    if (!result.startsWith('已保存')) {
+      return;
+    }
+    const reloaded: MemoryFile[] = MemoryStore.editable();
+    this.memoryFiles = reloaded;
+    for (let i = 0; i < reloaded.length; i++) {
+      if (reloaded[i].name === name) {
+        this.memoryIndex = i;
+        this.memoryText = reloaded[i].text;
+        break;
+      }
+    }
   }
 
   private loadLogs(): void {
@@ -752,6 +797,74 @@ export struct SettingsSheet {
                 .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                 .backgroundColor($r('app.color.surface_alt'))
                 .borderRadius(11)
+
+                Row() {
+                  Text(this.showMemory ? '收起记忆编辑' : '查看 / 编辑记忆')
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                  Blank()
+                  Text(this.showMemory ? '收起' : '打开')
+                    .fontSize(11)
+                    .fontColor($r('app.color.accent'))
+                    .onClick(() => this.loadMemory())
+                }
+                .width('100%')
+                .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(11)
+
+                if (this.showMemory) {
+                  Column({ space: 8 }) {
+                    Scroll() {
+                      Row({ space: 6 }) {
+                        ForEach(this.memoryFiles, (file: MemoryFile, index: number) => {
+                          Text(file.name)
+                            .fontSize(10)
+                            .fontColor(this.memoryIndex === index
+                              ? $r('app.color.on_accent')
+                              : $r('app.color.text_secondary'))
+                            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                            .backgroundColor(this.memoryIndex === index
+                              ? $r('app.color.accent')
+                              : $r('app.color.surface'))
+                            .borderRadius(7)
+                            .onClick(() => this.selectMemory(index))
+                        }, (file: MemoryFile) => file.name)
+                      }
+                    }
+                    .scrollable(ScrollDirection.Horizontal)
+                    .scrollBar(BarState.Off)
+                    .width('100%')
+
+                    TextArea({
+                      text: this.memoryText,
+                      placeholder: '这个文件是空的，可以直接输入内容'
+                    })
+                      .width('100%')
+                      .height(180)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_primary'))
+                      .placeholderColor($r('app.color.text_tertiary'))
+                      .backgroundColor($r('app.color.surface'))
+                      .borderRadius(9)
+                      .onChange((value: string) => {
+                        this.memoryText = value;
+                      })
+
+                    Button('保存记忆文件')
+                      .width('100%')
+                      .height(34)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_secondary'))
+                      .backgroundColor($r('app.color.surface'))
+                      .borderRadius(9)
+                      .onClick(() => this.saveMemory())
+                  }
+                  .width('100%')
+                  .padding(10)
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(11)
+                }
               }
 
               if (this.sandboxMode === 'local') {

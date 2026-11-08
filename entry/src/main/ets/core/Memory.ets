@@ -25,6 +25,17 @@ function pad2(value: number): string {
 }
 
 /** `YYYY-MM-DD`, using local time so "today" matches the user's clock. */
+/**
+ * Only the long-lived profile and one-file-per-day notes may be edited from
+ * the UI. This rejects path separators and any other file name unchanged.
+ */
+export function isEditableMemoryFile(name: string): boolean {
+  if (name === 'GLOBAL.md') {
+    return true;
+  }
+  return new RegExp('^\\d{4}-\\d{2}-\\d{2}\\.md$').test(name);
+}
+
 export function dayKey(date: Date): string {
   return date.getFullYear().toString() + '-' + pad2(date.getMonth() + 1) +
     '-' + pad2(date.getDate());

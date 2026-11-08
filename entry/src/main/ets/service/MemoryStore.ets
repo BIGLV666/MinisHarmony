@@ -4,6 +4,7 @@ import {
   MemoryFile,
   buildMemoryContext,
   dayKey,
+  isEditableMemoryFile,
   memoryEntry,
   oneLine,
   searchMemoryFiles
@@ -95,6 +96,52 @@ export class MemoryStore {
       out.push({ name: GLOBAL_FILE, text: global });
     }
     return out;
+  }
+
+  /**
+   * Every daily file plus GLOBAL.md, even when empty. Used only by the editor:
+   * `files()` deliberately hides empty files from prompts and search.
+   */
+  static editable(): MemoryFile[] {
+    const out: MemoryFile[] = [];
+    const names: string[] = MemoryStore.dailyNames(1000);
+    for (let i = 0; i < names.length; i++) {
+      out.push({
+        name: names[i],
+        text: MemoryStore.readIfExists(names[i])
+      });
+    }
+    out.push({
+      name: GLOBAL_FILE,
+      text: MemoryStore.readIfExists(GLOBAL_FILE)
+    });
+    return out;
+  }
+
+  /** Overwrite one editable memory file; rejects any other name. */
+  static saveText(name: string, text: string): string {
+    if (!MemoryStore.isReady()) {
+      return '记忆目录未初始化。';
+    }
+    if (!isEditableMemoryFile(name)) {
+      return '只能编辑 GLOBAL.md 或 YYYY-MM-DD.md。';
+    }
+    try {
+      const file = fs.openSync(
+        MemoryStore.root + '/' + name,
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+      );
+      try {
+        fs.writeSync(file.fd, text);
+      } finally {
+        fs.closeSync(file);
+      }
+      MemoryStore.cacheAt = 0;
+      return '已保存 ' + name;
+    } catch (e) {
+      const error: Error = e as Error;
+      return '保存失败：' + error.message;
+    }
   }
 
   /** System-prompt block; cached briefly because it is read every model turn. */

@@ -583,6 +583,11 @@ test('memory entries are one line and timestamped', () => {
   assert.equal(entry, '- 09:05 用户偏好 深色模式');
   assert.equal(entry.includes('\n'), false);
   assert.equal(memory.oneLine('x'.repeat(600)).length, memory.MEMORY_ENTRY_CHARS + 1);
+  assert.equal(memory.isEditableMemoryFile('GLOBAL.md'), true);
+  assert.equal(memory.isEditableMemoryFile('2026-11-08.md'), true);
+  assert.equal(memory.isEditableMemoryFile('../GLOBAL.md'), false);
+  assert.equal(memory.isEditableMemoryFile('notes.md'), false);
+  assert.equal(memory.isEditableMemoryFile('2026-11-08.md.bak'), false);
 });
 
 test('memory search ranks lines by matched terms', () => {

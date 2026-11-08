@@ -340,6 +340,9 @@ filesDir/memory/
 - `memory_get` 对所有记忆文件做关键词检索，按命中词数排序，返回带日期的片段；
 - 上下文有 3 秒缓存，避免同一轮多次工具调用重复读盘；
 - 设置页可「清空每日记忆」，保留 `GLOBAL.md`；
+- 设置页也可「查看 / 编辑记忆」：`MemoryStore.editable()` 返回每日文件 + 始终存在的
+  `GLOBAL.md`，`saveText()` 只接受 `GLOBAL.md` 或 `YYYY-MM-DD.md`（由
+  `core/Memory.isEditableMemoryFile()` 校验），写入后立即让上下文缓存失效；
 - 远程工具模式不暴露记忆工具，避免把设备记忆发给远程服务。
 
 ## 侧栏分组

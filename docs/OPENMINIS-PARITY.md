@@ -101,7 +101,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 长期记忆 | `GLOBAL.md` + 每日 `YYYY-MM-DD.md` | `filesDir/memory/`，每轮注入最近 3 天 + GLOBAL | P1 |
 | - [x] | 记忆检索 | `memory_get` 模糊搜索 | 关键词打分，返回带日期的片段 | P1 |
 | - [x] | 记忆开关 | 每会话可关闭 | `AppSettings.memoryEnabled`，默认关闭 | P1 |
-| - [ ] | 记忆查看 / 编辑 UI | 记忆页 | 设置内嵌只读列表 + 清空 | P2 |
+| - [x] | 记忆查看 / 编辑 UI | 记忆页 | 设置内嵌文件选择 + 编辑器，可保存 GLOBAL.md 与任意 YYYY-MM-DD.md | P2 |
 | - [ ] | Skills | `SKILL.md` + frontmatter，按会话启用 | 导入本地目录，注入 top-N 描述 | P2 |
 | - [ ] | Skills 斜杠命令 | 技能注册为 `/命令` | 与斜杠命令合并 | P2 |
 | - [ ] | Soul / 人格 | `SOUL.md` 身份层 | 系统提示词扩展 + 预设 | P2 |
@@ -231,3 +231,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 侧栏日期分组 | 置顶 / 今天 / 昨天 / 最近 7 天 / 更早；纯函数 `groupSessionMetas`，40 项测试通过 |
 | 2026-11-08 | 工具循环检测 / JSON 修复 | 连续 3 次相同调用追加警告；围栏、截断闭合、尾逗号三类修复；42 项测试通过 |
 | 2026-11-08 | 日志查看器 | `AppLogger.recent(200)` + `formatEventLine()`，设置页内嵌展示；损坏行原样保留 |
+| 2026-11-08 | 记忆查看 / 编辑 | 文件选择 + TextArea 编辑 + 保存；仅允许 GLOBAL.md 与 `YYYY-MM-DD.md`，缓存即时失效 |

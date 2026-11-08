@@ -202,7 +202,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 
 | | 功能 | 说明 |
 |---|---|---|
-| - [~] | 板载 Linux 沙箱 | 鸿蒙禁止 app exec 任何 ELF，但原生子进程可用；改为在子进程内嵌 iSH ARM64 内核 + Asbestos 解释执行 guest，rootfs 用 fakefs。2026-11-08 平板实机冒烟通过：kernel boot → fakefs 挂载 → `/bin/sh -c` 执行 → 输出回传（`hello-from-ish` / `uname -a` 显示 iSH 4.20.69 aarch64 / `uid=0` / Alpine 3.21.3）。结束标记与工具接入（M3）待做；见 [`SANDBOX.md`](SANDBOX.md) |
+| - [~] | 板载 Linux 沙箱 | 鸿蒙禁止 app exec 任何 ELF，但原生子进程可用；改为在子进程内嵌 iSH ARM64 内核 + Asbestos 解释执行 guest，rootfs 用 fakefs。2026-11-08 平板实机冒烟通过：kernel boot → fakefs 挂载 → `/bin/sh -c` 执行 → 输出回传（`hello-from-ish` / `uname -a` 显示 iSH 4.20.69 aarch64 / `uid=0` / Alpine 3.21.3），并以 `[sandbox exit=0]` 上报退出码。工具接入（M3）待做；见 [`SANDBOX.md`](SANDBOX.md) |
 | - [-] | Android AccessibilityService | 鸿蒙无对等自动化 API |
 | - [-] | Shizuku | Android 专用 |
 | - [-] | iCloud 同步 / Live Activity / Dynamic Island | iOS 专用，鸿蒙用服务卡片 / 通知替代 |
@@ -296,3 +296,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | UI 反馈第一轮：布局与思考 | P0 右侧溢出改为「头像 + layoutWeight 列 + 端对齐」，百分比 `maxWidth` 获得确定父宽，`ListItem` 显式 100%，代码块长 token `WordBreak.BREAK_ALL`；顶栏新增思考等级菜单（写入 `SessionMeta.thinkingOverride`，`/thinking` 同源，Anthropic/Gemini/不支持 reasoning 的模型隐藏）；思考链流式自动展开、结束收起为「思考了 N 秒 · 摘要」，手动开合按消息 id 记忆，260vp 内滚动并加左侧细线 |
 | 2026-11-08 | UI 反馈第一轮：压缩、日志与去装饰 | 自动压缩 + 撤销条 + 独立摘要节点 + 失败保留；日志查看器支持筛选/搜索/复制/高度切换与崩溃堆栈；移除 📌/🖼/🔒/⚠️/⏰/⚙ 和营销副标题、常驻提示；助手操作行可换行。111 项纯函数测试通过、HAP 构建成功；平板实机回归待解锁 |
 | 2026-11-08 | 板载沙箱 M2 实机冒烟 | rootfs 在 `filesDir` 首次解压报 `BusinessError 900002`，因为 `zlib.decompressFile` 要求目标目录已存在；解压前 `mkdirSync(staging, true)` 后重新构建、签名、安装。`aa start -a EntryAbility -b app.minis.client --ps sandboxIsh true` 触发冒烟，hilog 捕获到完整回传：`hello-from-ish`、`Linux localhost 4.20.69-ish SUPER AWESOME ... aarch64 Linux`、`uid=0(root) gid=0(root)`、`3.21.3`，证明原生子进程、iSH 内核、fakefs、`/bin/sh -c` 路径全部可用。遗留：结束标记未在 45 秒轮询窗口内出现，guest 超时改为 60 秒、应用轮询改为 150 秒，待下一次实机确认退出码 |
+| 2026-11-08 | 板载沙箱结束标记 | 实机复跑确认：把等待放宽到 150 秒后仍无 `[sandbox exit=`，且原生子进程已消失（无崩溃记录），说明 guest PID 1 退出时 iSH 会连带结束整个原生进程，harness 主线程来不及写标记。改为在 ArkTS 层把命令包成 `<command>; __minis_status=$?; printf "\n[sandbox exit=%d]\n" "$__minis_status"`，由 shell 自己上报退出码；重装后冒烟输出以 `[sandbox exit=0]` 结束，约 20 秒返回。M2 完成 |

@@ -103,9 +103,12 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       gid=0(root)`、`3.21.3`，即内核启动、fakefs 挂载、`/bin/sh -c`
       执行与文件回传全部成功。首次失败的 900002 已修：`zlib.decompressFile`
       要求目标目录事先存在，解压前先 `mkdirSync(staging, true)`。
-      遗留：本次 `[sandbox exit=` 结束标记未在应用 45 秒窗口内出现，
-      应用误报「未结束」；已把 guest 超时放宽到 60 秒、应用侧等待到 150 秒，
-      下一次实机确认结束标记与退出码。）
+      结束标记：第一次冒烟只拿到输出、没有 `[sandbox exit=`，应用误报
+      「未结束」。原因是 guest 的 PID 1 退出时 iSH 会把整个原生进程一起收掉，
+      harness 主线程来不及补写标记。改为让 shell 自己在命令末尾
+      `printf "[sandbox exit=%d]" "$?"`，不依赖进程收尾；第二次实机冒烟
+      输出以 `[sandbox exit=0]` 结束，应用在约 20 秒内返回。guest 超时
+      60 秒、应用侧轮询 150 秒作为兜底。）
 - [ ] M3 工具接入：本机模式新增 `shell_execute`，超时/输出上限/取消；
       工作区与记忆目录挂载。
 - [ ] M4 稳定性：连续命令、并发、长输出、Python/Node 冒烟；

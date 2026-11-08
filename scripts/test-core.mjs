@@ -63,6 +63,7 @@ copyCore('SharePayload');
 copyCore('DeepLink');
 copyCore('Types', ['ModelOverride', 'McpProtocol']);
 copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
+copyCore('BackupCrypto', ['Backup', 'SessionExport']);
 copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 copyCore('GeminiProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 
@@ -176,6 +177,7 @@ const highlight = await import(pathToFileURL(join(tmp, 'CodeHighlight.mts')).hre
 const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
 const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
+const backupCrypto = await import(pathToFileURL(join(tmp, 'BackupCrypto.mts')).href);
 const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts')).href);
 const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href);
 const latex = await import(pathToFileURL(join(tmp, 'Latex.mts')).href);
@@ -1382,6 +1384,40 @@ test('whole-library backup strips secrets and restores non-secret settings', () 
 
   assert.equal(backup.parseBackupSettings('{"app":"MinisHarmony"}'), null);
   assert.equal(backup.parseBackupSettings('not json'), null);
+});
+
+test('encrypted backup envelope validates shape and rejects tampering', () => {
+  const envelope = backupCrypto.buildEncryptedEnvelope(
+    '2026-11-08T00:00:00.000Z', '2026-11-08 08:00',
+    'AAAAAAAAAAAAAAAAAAAAAA==', 'AAAAAAAAAAAAAAAA',
+    'AAAAAAAAAAAAAAAAAAAAAAA=');
+  const text = JSON.stringify(envelope);
+  assert.equal(backupCrypto.isEncryptedBackup(text), true);
+  const parsed = backupCrypto.parseEncryptedBackup(text);
+  assert.equal(parsed.kdf, 'PBKDF2-HMAC-SHA256');
+  assert.equal(parsed.cipher, 'AES-256-GCM');
+  assert.equal(parsed.iterations, 120000);
+  assert.equal(parsed.salt, 'AAAAAAAAAAAAAAAAAAAAAA==');
+
+  assert.equal(backupCrypto.encryptedBackupFileName(new Date(2026, 10, 8)),
+    'minis-backup-2026-11-08-enc.json');
+  assert.equal(backupCrypto.encryptedBackupFileName(new Date(2026, 0, 2)),
+    'minis-backup-2026-01-02-enc.json');
+  assert.equal(backupCrypto.isEncryptedBackup('{"app":"MinisHarmony"}'), false);
+  assert.equal(backupCrypto.isEncryptedBackup('not json'), false);
+
+  assert.equal(backupCrypto.parseEncryptedBackup(JSON.stringify(
+    { ...envelope, kind: 'backup' })), null);
+  assert.equal(backupCrypto.parseEncryptedBackup(JSON.stringify(
+    { ...envelope, kdf: 'none' })), null);
+  assert.equal(backupCrypto.parseEncryptedBackup(JSON.stringify(
+    { ...envelope, iterations: 100 })), null);
+  assert.equal(backupCrypto.parseEncryptedBackup(JSON.stringify(
+    { ...envelope, iterations: 2000000 })), null);
+  assert.equal(backupCrypto.parseEncryptedBackup(JSON.stringify(
+    { ...envelope, payload: 'not base64!' })), null);
+  assert.equal(backupCrypto.parseEncryptedBackup(JSON.stringify(
+    { ...envelope, payload: 'AAAA' })), null);
 });
 
 test('code highlighting segments cover the source without losing characters', () => {

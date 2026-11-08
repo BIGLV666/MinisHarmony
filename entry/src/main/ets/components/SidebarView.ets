@@ -25,6 +25,8 @@ export struct SidebarView {
   };
   onBackup: () => void = () => {
   };
+  onEncryptedBackup: () => void = () => {
+  };
   onSelect: (id: string) => void = (id: string) => {
   };
   onMore: (id: string) => void = (id: string) => {
@@ -329,6 +331,11 @@ export struct SidebarView {
           .fontColor(this.accent)
           .padding({ top: 4, bottom: 2 })
           .onClick(() => this.onBackup())
+        Text('加密备份（密码保护）')
+          .fontSize(11)
+          .fontColor(this.accent)
+          .padding({ top: 2, bottom: 2 })
+          .onClick(() => this.onEncryptedBackup())
         Text('导入会话 / 恢复备份')
           .fontSize(11)
           .fontColor(this.accent)

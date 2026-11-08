@@ -47,12 +47,17 @@ import { LocalToolRuntime } from '../service/LocalToolRuntime';
 import {
   BundleImportOutcome,
   ExportOutcome,
-  importSessionsJson,
+  PickedImport,
+  importSessionsText,
+  pickImportText,
   saveBackup,
+  saveEncryptedBackup,
   saveSessionBundle,
   saveSessionJson,
   saveSessionMarkdown
 } from '../service/ExportService';
+import { BACKUP_MIN_PASSWORD, isEncryptedBackup } from '../core/BackupCrypto';
+import { decryptBackupText, DecryptOutcome } from '../service/BackupCrypto';
 import { AttachmentStore } from '../service/AttachmentStore';
 import { MemoryStore } from '../service/MemoryStore';
 import { SkillDoc, SkillCommand, matchSkillCommand } from '../core/SkillDoc';
@@ -123,8 +128,15 @@ struct Index {
   @State confirmVisible: boolean = false;
   @State confirmName: string = '';
   @State confirmArgs: string = '';
+  /** 'encrypt' or 'decrypt' while the backup-password dialog is open. */
+  @State passwordVisible: boolean = false;
+  @State passwordMode: string = '';
+  @State passwordValue: string = '';
+  @State passwordConfirm: string = '';
+  @State passwordBusy: boolean = false;
 
   private store: StoredSession[] = [];
+  private pendingImportText: string = '';
   private agent: AgentRuntime | null = null;
   private browserTool: BrowserTool = new BrowserTool();
   private workspaceRoot: string = '';
@@ -500,8 +512,21 @@ struct Index {
       return;
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-    const outcome: BundleImportOutcome = await importSessionsJson(context,
+    const picked: PickedImport = await pickImportText(context);
+    if (!picked.ok) {
+      this.toast(picked.message);
+      return;
+    }
+    if (isEncryptedBackup(picked.text)) {
+      this.openPasswordDialog('decrypt', picked.text);
+      return;
+    }
+    const outcome: BundleImportOutcome = importSessionsText(picked.text,
       () => util.generateRandomUUID(true));
+    this.applyImportOutcome(outcome);
+  }
+
+  private applyImportOutcome(outcome: BundleImportOutcome): void {
     if (!outcome.ok || outcome.sessions.length === 0) {
       this.toast(outcome.message);
       return;
@@ -525,6 +550,83 @@ struct Index {
     this.mobileChat = true;
     this.persistSoon();
     this.toast(outcome.message);
+  }
+
+  private openPasswordDialog(mode: string, importText: string): void {
+    this.passwordMode = mode;
+    this.passwordValue = '';
+    this.passwordConfirm = '';
+    this.passwordBusy = false;
+    this.pendingImportText = importText;
+    this.passwordVisible = true;
+  }
+
+  private closePasswordDialog(): void {
+    if (this.passwordBusy) {
+      return;
+    }
+    this.passwordVisible = false;
+    this.passwordValue = '';
+    this.passwordConfirm = '';
+    this.pendingImportText = '';
+  }
+
+  /** Create an encrypted backup, or decrypt the pending import file. */
+  private async submitPassword(): Promise<void> {
+    if (this.passwordBusy) {
+      return;
+    }
+    if (this.passwordMode === 'encrypt') {
+      if (this.passwordValue.length < BACKUP_MIN_PASSWORD) {
+        this.toast('密码至少 ' + BACKUP_MIN_PASSWORD.toString() + ' 位');
+        return;
+      }
+      if (this.passwordValue !== this.passwordConfirm) {
+        this.toast('两次输入的密码不一致');
+        return;
+      }
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      this.passwordBusy = true;
+      const outcome: ExportOutcome = await saveEncryptedBackup(
+        context, this.settings, this.store, this.passwordValue);
+      this.passwordBusy = false;
+      if (outcome.ok) {
+        this.passwordVisible = false;
+        this.passwordValue = '';
+        this.passwordConfirm = '';
+      }
+      this.toast(outcome.message);
+      return;
+    }
+    if (this.passwordMode !== 'decrypt') {
+      return;
+    }
+    if (this.passwordValue.length === 0) {
+      this.toast('请输入备份密码');
+      return;
+    }
+    this.passwordBusy = true;
+    const decrypted: DecryptOutcome = await decryptBackupText(
+      this.pendingImportText, this.passwordValue);
+    this.passwordBusy = false;
+    if (!decrypted.ok) {
+      this.toast(decrypted.message);
+      return;
+    }
+    this.passwordVisible = false;
+    this.pendingImportText = '';
+    this.passwordValue = '';
+    this.applyImportOutcome(importSessionsText(decrypted.text,
+      () => util.generateRandomUUID(true)));
+  }
+
+  /** Ask for a password, then export the whole library encrypted. */
+  private exportEncryptedBackup(): void {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    this.openPasswordDialog('encrypt', '');
   }
 
   /** Export every session plus a secret-free settings snapshot. */
@@ -1664,6 +1766,98 @@ struct Index {
     .height('100%')
   }
 
+  /**
+   * Backup password prompt. Passwords stay in component state only and are
+   * never logged or persisted; closing the dialog clears them.
+   */
+  @Builder
+  passwordDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+      Column({ space: 12 }) {
+        Text(this.passwordMode === 'encrypt' ? '加密备份' : '解密备份')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+        Text(this.passwordMode === 'encrypt'
+          ? '设置一个备份密码（AES-256-GCM）。忘记密码后这份备份无法恢复，请妥善保存。'
+          : '这是加密备份，请输入导出时设置的密码。')
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .lineHeight(18)
+        TextInput({
+          text: this.passwordValue,
+          placeholder: this.passwordMode === 'encrypt' ? '密码（至少 6 位）' : '备份密码'
+        })
+          .type(InputType.Password)
+          .width('100%')
+          .height(42)
+          .fontSize(14)
+          .fontColor($r('app.color.text_primary'))
+          .placeholderColor($r('app.color.text_tertiary'))
+          .backgroundColor($r('app.color.surface_alt'))
+          .borderRadius(10)
+          .padding({ left: 12, right: 12 })
+          .onChange((value: string) => {
+            this.passwordValue = value;
+          })
+        if (this.passwordMode === 'encrypt') {
+          TextInput({ text: this.passwordConfirm, placeholder: '再次输入密码' })
+            .type(InputType.Password)
+            .width('100%')
+            .height(42)
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .placeholderColor($r('app.color.text_tertiary'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(10)
+            .padding({ left: 12, right: 12 })
+            .onChange((value: string) => {
+              this.passwordConfirm = value;
+            })
+        }
+        Row({ space: 10 }) {
+          Button('取消', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
+            .enabled(!this.passwordBusy)
+            .onClick(() => this.closePasswordDialog())
+          Button(this.passwordBusy ? '处理中…' :
+            (this.passwordMode === 'encrypt' ? '导出加密备份' : '解密并导入'),
+            { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.on_accent'))
+            .backgroundColor(this.accent)
+            .borderRadius(11)
+            .enabled(!this.passwordBusy)
+            .onClick(() => {
+              this.submitPassword();
+            })
+        }
+        .width('100%')
+        .margin({ top: 4 })
+      }
+      .width('86%')
+      .constraintSize({ maxWidth: 420 })
+      .padding(20)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
   @Builder
   editDialog() {
     Stack({ alignContent: Alignment.Center }) {
@@ -1799,6 +1993,7 @@ struct Index {
       onNew: () => this.createChat(),
       onImport: () => this.importSessionFromFile(),
       onBackup: () => this.exportBackup(),
+      onEncryptedBackup: () => this.exportEncryptedBackup(),
       onSelect: (id: string) => this.selectSession(id),
       onMore: (id: string) => this.requestActions(id),
       onSettings: () => {
@@ -1912,6 +2107,10 @@ struct Index {
 
       if (this.confirmVisible) {
         this.toolPermissionDialog()
+      }
+
+      if (this.passwordVisible) {
+        this.passwordDialog()
       }
 
       if (this.rewindId.length > 0) {

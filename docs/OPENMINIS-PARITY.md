@@ -157,7 +157,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 多会话导出 | 多选打包 | 侧栏多选 → 单个 JSON bundle；导入端同时接受 bundle 与单会话文件 | P3 |
 | - [ ] | 单轮截图分享 | 渲染一张图 | `componentSnapshot` | P3 |
 | - [ ] | 系统分享 | 文件/链接/文本 | `ShareKit` | P2 |
-| - [~] | 备份 / 恢复 | 本地归档、加密 | 整库备份可导出为单个 JSON（全部会话 + 设置快照，API Key / 沙箱 Token / MCP 与模型请求头全部剔除），导入时合并会话并恢复非密钥设置、保留当前密钥；加密包仍未做 | P2 |
+| - [x] | 备份 / 恢复 | 本地归档、加密 | 整库备份可导出为单个 JSON（全部会话 + 设置快照，API Key / 沙箱 Token / MCP 与模型请求头全部剔除），导入时合并会话并恢复非密钥设置、保留当前密钥；侧栏新增「加密备份（密码保护）」：PBKDF2-HMAC-SHA256（12 万次、16 字节盐）派生密钥，AES-256-GCM（12 字节 IV、16 字节认证标签）加密，密码仅用于派生、不落盘不写日志；导入端自动识别加密包并弹窗要密码，错密码与篡改统一报「密码错误或文件已损坏」，明文上限 16 MB | P2 |
 | - [ ] | 远程备份 | rclone（SMB/WebDAV/S3/SFTP） | WebDAV 起步 | P3 |
 | - [ ] | 多端同步 | iCloud（iOS） | 自建 WebDAV，端到端加密 | P3 |
 | - [ ] | 分享链接 / 回放卡 | ——（OpenMinis 也没有） | 不做 | - |
@@ -272,3 +272,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 子代理 steer / status / cancel / resume | `subagent_task` 改为单个工具 + `action`：delegate 默认后台执行并立即返回 job_id，结束时把「[后台任务结束 …]」作为用户消息送回父对话并自动续跑；`wait=true`/嵌套子代理同步阻塞。全局最多 3 个并行，其余排队，空位自动泵出；`max_minutes` 1–60。`status` 报告状态/当前工具/耗时/模型/结果；`steer` 由 `AgentRuntime.injectInput` 在下一请求前插入，若 turn 刚好结束则续跑而不是丢弃；`cancel` 保留部分结果；活动任务写入 preferences，重启后标记 `interrupted` 并可由 `resume` 按原始说明重跑。父对话停止时同步取消其阻塞子代理，后台任务继续投递；非当前会话的结果在打开时自动续跑。`core/SubagentJob.ets` 状态机/前缀匹配/报告/后台消息 78 项测试通过 |
 | 2026-11-08 | 内置浏览器对齐 | 按 OpenMinis 实际范围校正清单：参考实现只有单页 WebView 预览，没有多标签/历史/下载/Cookie 管理。补齐工具栏差异：加载中显示停止按钮（`controller.stop()`），标题下方显示去 `www.` 与端口的主机名；地址栏与 `browser_use` 共用 `core/WebUrl.ets` 的补协议与主机解析；79 项测试通过 |
 | 2026-11-08 | KaTeX 公式排版 | 从参考实现复制内置 `katex/` 资源（`katex.min.js`、`katex.min.css`、`mhchem.min.js`、字体、`katex-render.html`，约 888 KB）到 `rawfile`；`components/MathBlockView.ets` 用独立 ArkWeb 加载并 `javaScriptProxy` 回传测量宽高，`$$` 块按高度自适应，超宽横向滚动，深色与字号跟随设置，`throwOnError` 失败退回 Unicode 文本；`MdBlock.raw` 保留原始 LaTeX；`nestedScroll` 让公式内竖滑交给聊天列表；79 项测试通过、构建通过 |
+| 2026-11-08 | 加密备份 | `core/BackupCrypto.ets` 定义并严格校验加密信封（app/version/kind、cipher、kdf、迭代次数区间、base64、payload 长度）；`service/BackupCrypto.ets` 用 PBKDF2-HMAC-SHA256（12 万次、16 字节随机盐、32 字节密钥）+ AES-256-GCM（12 字节随机 IV），按官方约定 `update()` 取密文、`doFinal(null)` 取 16 字节 tag，payload 存「密文‖tag」，解密时 `update()` + `doFinal(null)` 验签；侧栏「加密备份（密码保护）」与导入自动识别，密码只存在组件状态、不落盘不写日志；错误统一提示，明文导入上限放宽到 16 MB；80 项测试通过、构建通过 |

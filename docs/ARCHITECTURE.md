@@ -483,6 +483,15 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 时会以「放行」结算——应用锁的目标是防止旁人随手打开，而不是在无凭据设备上把用户
 永久锁在外面。锁只发生在启动时，从系统文件选择器返回不会再次弹窗。
 
+## 生成状态通知
+
+`service/Notify.ets` 使用 `notificationManager` 发布一条固定 ID（1010）的通知。
+`Index.onPageHide()` 在仍有生成任务时发布「正在生成回复…」并标记 `isOngoing`；
+生成完成（`onUpdate(running=false)`）或用户停止时，同一 ID 被替换为「回复已完成」，
+`wantAgent` 让点按通知回到应用。`onPageShow()` 会取消该通知，因此前台用户不会看到
+重复提醒。所有调用先检查 `isNotificationEnabled()`，失败一律静默——通知被用户关闭
+或设备不支持时，对话本身不受影响。
+
 ## 首次引导
 
 `components/OnboardingView.ets` 只在 `settings.onboardingDone === false` 且 API Key

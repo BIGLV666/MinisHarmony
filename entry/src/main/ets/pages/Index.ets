@@ -50,6 +50,11 @@ import { SettingsSheet } from '../components/SettingsSheet';
 import { WorkspaceSheet } from '../components/WorkspaceSheet';
 import { OnboardingView } from '../components/OnboardingView';
 import { authenticate } from '../service/AppLock';
+import {
+  clearGenerationNotification,
+  publishDone,
+  publishGenerating
+} from '../service/Notify';
 import { SidebarView } from '../components/SidebarView';
 
 @Entry
@@ -90,9 +95,24 @@ struct Index {
   private workspaceRoot: string = '';
   private saveTimer: number = -1;
   private confirmResolve: ((allowed: boolean) => void) | null = null;
+  private pageVisible: boolean = true;
 
   aboutToAppear(): void {
     this.bootstrap();
+  }
+
+  onPageShow(): void {
+    this.pageVisible = true;
+    clearGenerationNotification();
+  }
+
+  /** Background generation continues; the notification centre reports it. */
+  onPageHide(): void {
+    this.pageVisible = false;
+    if (this.streaming) {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      publishGenerating(context, this.currentTitle());
+    }
   }
 
   aboutToDisappear(): void {
@@ -518,6 +538,10 @@ struct Index {
           this.agent = null;
           this.searchEntries = this.buildSearchIndex();
           BackgroundGuard.end().catch((error: Error) => {});
+          if (!this.pageVisible) {
+            const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+            publishDone(context, this.currentTitle());
+          }
         }
       },
       onError: (message: string) => {
@@ -787,6 +811,10 @@ struct Index {
     }
     this.streaming = false;
     BackgroundGuard.end().catch((error: Error) => {});
+    if (!this.pageVisible) {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      publishDone(context, this.currentTitle());
+    }
     this.persistSoon();
   }
 

@@ -127,7 +127,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | | 能力 | OpenMinis | 鸿蒙方案 | 优先级 |
 |---|---|---|---|---|
 | - [ ] | 剪贴板 | `android-clipboard` / `apple-clipboard` | `pasteboard` | P2 |
-| - [ ] | 通知 | `notification` | `notificationManager` | P2 |
+| - [x] | 通知 | `notification` | 后台生成时 `notificationManager` 发布「正在生成」，完成替换为「回复已完成」，点按回到应用 | P2 |
 | - [ ] | 日历 | `calendar` | `CalendarKit` | P3 |
 | - [ ] | 通讯录 | `contacts` | `ContactsKit` | P3 |
 | - [ ] | 照片 / 相机 | `photos` | `PhotoPicker` / `CameraKit` | P2 |
@@ -144,7 +144,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | | 功能 | OpenMinis 行为 | MinisHarmony 方案 | 优先级 |
 |---|---|---|---|---|
 | - [x] | 切后台继续生成 | 前台服务 / 后台模式 | 已实现，见 2. 后台继续生成 | P1 |
-| - [ ] | 生成状态通知 | 通知栏显示进度 | `notificationManager` + 进度模板 | P2 |
+| - [x] | 生成状态通知 | 通知栏显示进度 | `service/Notify.ets`：离开前台且仍在生成时发布常驻通知，完成/停止后替换为完成提醒；回前台自动清除 | P2 |
 | - [ ] | 定时任务 | AlarmManager / Shortcuts | `agent-powered reminder` 或后台代理提醒 | P3 |
 | - [ ] | 任务运行历史 | 列表 + 结果 | 依赖定时任务 | P3 |
 
@@ -242,3 +242,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 首次引导 | 无 Key 的首次启动显示三步引导，Key 写入 Asset Store，跳过即 `onboardingDone=true`；已有配置不触发 |
 | 2026-11-08 | 思考档位 UI | 设置页四档选择，`/thinking` 改为 off→low→medium→high 循环；`cycleThinkingLevel` 纯函数可测 |
 | 2026-11-08 | 应用锁 | 启动锁；`service/AppLock.ets` 调用系统认证，取消后显示锁定页可重试；设备无认证时 fail-open |
+| 2026-11-08 | 生成状态通知 | `service/Notify.ets`：后台生成常驻通知 + 完成提醒，`wantAgent` 点按回应用；前台不打扰，通知关闭时静默跳过 |

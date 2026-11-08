@@ -5,6 +5,8 @@
  * CommonMark implementation.
  */
 
+import { GroupResult, inlineMathSpan, latexToText } from './Latex';
+
 export enum MdBlockKind {
   Paragraph = 'paragraph',
   Heading = 'heading',
@@ -12,7 +14,8 @@ export enum MdBlockKind {
   ListItem = 'list',
   Quote = 'quote',
   Divider = 'divider',
-  Table = 'table'
+  Table = 'table',
+  Math = 'math'
 }
 
 export interface MdBlock {
@@ -36,6 +39,17 @@ export interface MdInline {
 
 function paragraphBlock(text: string): MdBlock {
   return { kind: MdBlockKind.Paragraph, text: text, level: 0, lang: '', ordered: false, index: 0 };
+}
+
+function mathBlock(source: string): MdBlock {
+  return {
+    kind: MdBlockKind.Math,
+    text: latexToText(source),
+    level: 0,
+    lang: '',
+    ordered: false,
+    index: 0
+  };
 }
 
 function headingLevel(line: string): number {
@@ -152,6 +166,38 @@ export function parseMarkdown(source: string): MdBlock[] {
 
     if (trimmed.length === 0) {
       flushParagraph();
+      continue;
+    }
+
+    // Display math: `$$...$$` on one line or fenced across several lines.
+    if (trimmed.startsWith('$$')) {
+      flushParagraph();
+      if (trimmed.length > 4 && trimmed.endsWith('$$')) {
+        blocks.push(mathBlock(trimmed.substring(2, trimmed.length - 2)));
+      } else {
+        let body: string = trimmed.substring(2);
+        let j: number = i + 1;
+        let closed: boolean = false;
+        while (j < lines.length) {
+          const closeLine: string = lines[j].trim();
+          const closeAt: number = closeLine.indexOf('$$');
+          if (closeAt >= 0) {
+            if (closeAt > 0) {
+              body += '\n' + closeLine.substring(0, closeAt);
+            }
+            closed = true;
+            break;
+          }
+          body += '\n' + lines[j];
+          j++;
+        }
+        if (closed) {
+          i = j;
+        } else {
+          i = lines.length;
+        }
+        blocks.push(mathBlock(body));
+      }
       continue;
     }
 
@@ -302,6 +348,22 @@ export function parseInline(input: string): MdInline[] {
 
   while (i < input.length) {
     const ch: string = input.charAt(i);
+
+    if (ch === '$') {
+      const span: GroupResult | null = inlineMathSpan(input, i);
+      if (span !== null) {
+        flushPlain();
+        output.push({
+          text: latexToText(span.text),
+          bold: false,
+          italic: false,
+          code: false,
+          link: ''
+        });
+        i = span.next;
+        continue;
+      }
+    }
 
     if (ch === '`') {
       const end: number = input.indexOf('`', i + 1);

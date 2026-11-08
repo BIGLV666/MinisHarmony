@@ -33,7 +33,8 @@ function copyCore(name, deps = []) {
 
 copyCore('SseParser');
 copyCore('OpenCodeRules');
-copyCore('Markdown');
+copyCore('Latex');
+copyCore('Markdown', ['Latex']);
 copyCore('Types');
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -107,6 +108,7 @@ markTypeOnly('GeminiProtocol', 'Types', ['ChatMessage']);
 markTypeOnly('GeminiProtocol', 'ToolProtocol', ['ImageResolver']);
 markTypeOnly('GeminiProtocol', 'ToolTypes', ['ToolDefinition']);
 markTypeOnly('GeminiProtocol', 'SseParser', ['DeltaResult', 'ToolCallDelta']);
+markTypeOnly('Markdown', 'Latex', ['GroupResult']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -174,6 +176,7 @@ const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts')).href);
 const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href);
+const latex = await import(pathToFileURL(join(tmp, 'Latex.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -1741,4 +1744,39 @@ test('Gemini stream decoder handles text, thought, function calls and usage', ()
     error: { code: 429, message: '配额不足' }
   }), gemini.newGeminiStreamState());
   assert.equal(delta.error, '配额不足');
+});
+
+test('LaTeX converts fractions, roots, scripts and common symbols', () => {
+  assert.equal(latex.latexToText('\\frac{a+b}{c}'), '(a+b)/c');
+  assert.equal(latex.latexToText('\\sqrt{x^2+y^2}'), '√(x²+y²)');
+  assert.equal(latex.latexToText('\\alpha \\le \\beta \\times 2'), 'α ≤ β × 2');
+  assert.equal(latex.latexToText('x_i^2'), 'xᵢ²');
+  assert.equal(latex.latexToText('\\text{速度} = \\frac{d}{t}'), '速度 = d/t');
+  assert.equal(latex.latexToText('\\unknown{x}'), 'x');
+  assert.equal(latex.latexToText('\\frac{1}{2}'), '1/2');
+});
+
+test('inline math heuristic ignores currency and unclosed dollars', () => {
+  const span = latex.inlineMathSpan('质能方程 $E=mc^2$ 成立', 5);
+  assert.equal(span.text, 'E=mc^2');
+  assert.equal(span.next, 13);
+  assert.equal(latex.inlineMathSpan('$5 and $6', 0), null);
+  assert.equal(latex.inlineMathSpan('$$x$$', 0), null);
+  assert.equal(latex.inlineMathSpan('$x', 0), null);
+  assert.equal(latex.inlineMathSpan('$ x $', 0), null);
+});
+
+test('Markdown recognizes display and inline math', () => {
+  const blocks = md.parseMarkdown('$$\\frac{1}{2}$$');
+  assert.equal(blocks[0].kind, 'math');
+  assert.equal(blocks[0].text, '1/2');
+
+  const inline = md.parseInline('质能方程 $E=mc^2$ 成立');
+  assert.equal(inline[0].text, '质能方程 ');
+  assert.equal(inline[1].text, 'E=mc²');
+  assert.equal(inline[2].text, ' 成立');
+
+  const multiline = md.parseMarkdown('$$\na+b\n$$');
+  assert.equal(multiline[0].kind, 'math');
+  assert.equal(multiline[0].text, 'a+b');
 });

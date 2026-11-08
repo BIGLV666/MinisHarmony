@@ -242,6 +242,21 @@ export struct MarkdownView {
   }
 
   @Builder
+  mathBlock(block: MdBlock) {
+    Text(block.text)
+      .fontSize(scaleFont(14, this.fontScale))
+      .fontFamily('monospace')
+      .fontColor($r('app.color.text_primary'))
+      .lineHeight(scaleFont(22, this.fontScale))
+      .width('100%')
+      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .backgroundColor($r('app.color.surface_alt'))
+      .borderRadius(10)
+      .textAlign(TextAlign.Center)
+      .copyOption(CopyOptions.LocalDevice)
+  }
+
+  @Builder
   renderBlock(block: MdBlock) {
     if (block.kind === MdBlockKind.Code) {
       this.codeBlock(block)
@@ -257,6 +272,8 @@ export struct MarkdownView {
       this.quoteBlock(block)
     } else if (block.kind === MdBlockKind.Table) {
       this.tableBlock(block)
+    } else if (block.kind === MdBlockKind.Math) {
+      this.mathBlock(block)
     } else if (block.kind === MdBlockKind.Divider) {
       Divider()
         .color($r('app.color.border'))

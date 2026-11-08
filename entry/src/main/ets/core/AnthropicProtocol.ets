@@ -426,44 +426,45 @@ export function parseAnthropicData(
     result.error = '无法解析流式响应';
     return result;
   }
-  const kind: string = payload.type !== undefined ? payload.type : '';
+  const kind: string = typeof payload.type === 'string' ? payload.type : '';
 
   if (kind === 'error') {
     const detail: AnthropicErrorPayload | undefined = payload.error;
-    const message: string = detail !== undefined && detail.message !== undefined
-      ? detail.message : '';
+    const message: string = detail !== undefined && detail !== null &&
+      typeof detail.message === 'string' ? detail.message : '';
     result.error = message.length > 0 ? message : '模型返回了错误事件';
     return result;
   }
 
   if (kind === 'message_start') {
     const usage: AnthropicUsagePayload | undefined =
-      payload.message !== undefined ? payload.message.usage : undefined;
-    if (usage !== undefined) {
+      payload.message !== undefined && payload.message !== null
+        ? payload.message.usage : undefined;
+    if (usage !== undefined && usage !== null) {
       state.inputTokens = numberOrZero(usage.input_tokens);
       state.sawUsage = true;
     }
   } else if (kind === 'content_block_start') {
     const block: AnthropicContentBlockPayload | undefined = payload.content_block;
-    if (block !== undefined && block.type === 'tool_use') {
+    if (block !== undefined && block !== null && block.type === 'tool_use') {
       const delta: ToolCallDelta = {
-        index: payload.index !== undefined ? payload.index : 0,
-        id: block.id !== undefined ? block.id : '',
-        name: block.name !== undefined ? block.name : '',
+        index: typeof payload.index === 'number' ? payload.index : 0,
+        id: typeof block.id === 'string' ? block.id : '',
+        name: typeof block.name === 'string' ? block.name : '',
         arguments: ''
       };
       result.toolCalls.push(delta);
     }
   } else if (kind === 'content_block_delta') {
     const delta: AnthropicDeltaPayload | undefined = payload.delta;
-    if (delta !== undefined) {
-      if (delta.type === 'text_delta' && delta.text !== undefined) {
+    if (delta !== undefined && delta !== null) {
+      if (delta.type === 'text_delta' && typeof delta.text === 'string') {
         result.content = delta.text;
-      } else if (delta.type === 'thinking_delta' && delta.thinking !== undefined) {
+      } else if (delta.type === 'thinking_delta' && typeof delta.thinking === 'string') {
         result.reasoning = delta.thinking;
-      } else if (delta.type === 'input_json_delta' && delta.partial_json !== undefined) {
+      } else if (delta.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
         const call: ToolCallDelta = {
-          index: payload.index !== undefined ? payload.index : 0,
+          index: typeof payload.index === 'number' ? payload.index : 0,
           id: '',
           name: '',
           arguments: delta.partial_json
@@ -473,11 +474,11 @@ export function parseAnthropicData(
     }
   } else if (kind === 'message_delta') {
     const delta: AnthropicDeltaPayload | undefined = payload.delta;
-    if (delta !== undefined && delta.stop_reason !== undefined) {
+    if (delta !== undefined && delta !== null && typeof delta.stop_reason === 'string') {
       result.finishReason = anthropicFinishReason(delta.stop_reason);
     }
     const usage: AnthropicUsagePayload | undefined = payload.usage;
-    if (usage !== undefined) {
+    if (usage !== undefined && usage !== null) {
       state.outputTokens = numberOrZero(usage.output_tokens);
       state.sawUsage = true;
     }

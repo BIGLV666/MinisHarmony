@@ -445,43 +445,51 @@ export function parseGeminiData(
     result.error = '无法解析流式响应';
     return result;
   }
-  if (envelope.error !== undefined) {
-    const message: string = envelope.error.message !== undefined
+  if (envelope.error !== undefined && envelope.error !== null) {
+    const message: string = typeof envelope.error.message === 'string'
       ? envelope.error.message : '';
     result.error = message.length > 0 ? message : '模型返回了错误';
     return result;
   }
-  if (envelope.promptFeedback !== undefined &&
-    envelope.promptFeedback.blockReason !== undefined &&
+  if (envelope.promptFeedback !== undefined && envelope.promptFeedback !== null &&
+    typeof envelope.promptFeedback.blockReason === 'string' &&
     envelope.promptFeedback.blockReason.length > 0) {
     result.error = '请求被安全策略拦截（' + envelope.promptFeedback.blockReason + '）';
     return result;
   }
 
   const usage: GeminiUsageMetadata | undefined = envelope.usageMetadata;
-  if (usage !== undefined) {
+  if (usage !== undefined && usage !== null) {
     state.promptTokens = tokenCount(usage.promptTokenCount);
     state.completionTokens = tokenCount(usage.candidatesTokenCount);
     state.sawUsage = true;
   }
 
   const candidates: GeminiCandidatePayload[] | undefined = envelope.candidates;
-  if (candidates !== undefined && candidates.length > 0) {
+  if (candidates !== undefined && candidates !== null && candidates.length > 0) {
     const candidate: GeminiCandidatePayload = candidates[0];
-    if (candidate.finishReason !== undefined && candidate.finishReason.length > 0) {
+    if (candidate === undefined || candidate === null) {
+      return result;
+    }
+    if (typeof candidate.finishReason === 'string' && candidate.finishReason.length > 0) {
       result.finishReason = geminiFinishReason(candidate.finishReason);
     }
-    if (candidate.content !== undefined && candidate.content.parts !== undefined) {
+    if (candidate.content !== undefined && candidate.content !== null &&
+      candidate.content.parts !== undefined && candidate.content.parts !== null) {
       for (let i = 0; i < candidate.content.parts.length; i++) {
         const part: GeminiPart = candidate.content.parts[i];
-        if (part.text !== undefined && part.text.length > 0) {
+        if (part === undefined || part === null) {
+          continue;
+        }
+        if (typeof part.text === 'string' && part.text.length > 0) {
           if (part.thought === true) {
             result.reasoning += part.text;
           } else {
             result.content += part.text;
           }
         }
-        if (part.functionCall !== undefined && part.functionCall.name.length > 0) {
+        if (part.functionCall !== undefined && part.functionCall !== null &&
+          typeof part.functionCall.name === 'string' && part.functionCall.name.length > 0) {
           const args: string = part.functionCall.args !== undefined
             ? JSON.stringify(part.functionCall.args) : '{}';
           const call: ToolCallDelta = {

@@ -367,19 +367,27 @@ function runStream(
 
   const consumeEvent = (event: SseEvent): void => {
     const delta: DeltaResult = decode(event.data);
-    if (delta.error.length > 0) {
-      streamError = delta.error;
+    // Providers may put JSON null in string fields. Types say otherwise, but
+    // this runs on data that came off the wire, so coerce before use.
+    const errorText: string = typeof delta.error === 'string' ? delta.error : '';
+    const content: string = typeof delta.content === 'string' ? delta.content : '';
+    const reasoning: string = typeof delta.reasoning === 'string' ? delta.reasoning : '';
+    const finish: string = typeof delta.finishReason === 'string' ? delta.finishReason : '';
+    const calls: ToolCallDelta[] = delta.toolCalls !== undefined && delta.toolCalls !== null
+      ? delta.toolCalls
+      : [];
+    if (errorText.length > 0) {
+      streamError = errorText;
       return;
     }
-    if (delta.content.length > 0 || delta.reasoning.length > 0 ||
-      delta.toolCalls.length > 0) {
-      callbacks.onDelta(delta.content, delta.reasoning, delta.toolCalls);
+    if (content.length > 0 || reasoning.length > 0 || calls.length > 0) {
+      callbacks.onDelta(content, reasoning, calls);
     }
-    if (delta.usage.present) {
+    if (delta.usage !== undefined && delta.usage !== null && delta.usage.present) {
       callbacks.onUsage(delta.usage);
     }
-    if (delta.finishReason.length > 0) {
-      finishReason = delta.finishReason;
+    if (finish.length > 0) {
+      finishReason = finish;
     }
     if (delta.done && streamError.length === 0) {
       // Some servers stop after [DONE]; finalisation still waits for the

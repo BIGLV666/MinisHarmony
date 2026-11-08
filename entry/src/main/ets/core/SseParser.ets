@@ -175,7 +175,10 @@ export function parseOpenAiData(data: string): DeltaResult {
     return result;
   }
   if (chunk.error !== undefined && chunk.error !== null) {
-    result.error = chunk.error.message !== undefined ? chunk.error.message : '服务端返回错误';
+    // JSON null survives a `!== undefined` test, so check the type itself.
+    result.error = typeof chunk.error.message === 'string' && chunk.error.message.length > 0
+      ? chunk.error.message
+      : '服务端返回错误';
     result.done = true;
     return result;
   }
@@ -183,13 +186,13 @@ export function parseOpenAiData(data: string): DeltaResult {
   // request sets `stream_options.include_usage`. Some providers send
   // `"usage": null` on intermediate chunks, which must not be dereferenced.
   if (chunk.usage !== undefined && chunk.usage !== null) {
-    const prompt: number = chunk.usage.prompt_tokens !== undefined
+    const prompt: number = typeof chunk.usage.prompt_tokens === 'number'
       ? chunk.usage.prompt_tokens
       : 0;
-    const completion: number = chunk.usage.completion_tokens !== undefined
+    const completion: number = typeof chunk.usage.completion_tokens === 'number'
       ? chunk.usage.completion_tokens
       : 0;
-    const total: number = chunk.usage.total_tokens !== undefined
+    const total: number = typeof chunk.usage.total_tokens === 'number'
       ? chunk.usage.total_tokens
       : prompt + completion;
     result.usage = {
@@ -206,19 +209,22 @@ export function parseOpenAiData(data: string): DeltaResult {
   if (choice === undefined || choice === null) {
     return result;
   }
-  if (choice.finish_reason !== undefined) {
+  if (typeof choice.finish_reason === 'string') {
     result.finishReason = choice.finish_reason;
   }
   if (choice.delta === undefined || choice.delta === null) {
     return result;
   }
   const delta: OpenAiDelta = choice.delta;
-  if (delta.content !== undefined) {
+  // `"content": null` and `"reasoning": null` are common on intermediate
+  // chunks. Assigning them would leave a null in a string-typed field and
+  // crash the `.length` checks in ChatApi.consumeEvent.
+  if (typeof delta.content === 'string') {
     result.content = delta.content;
   }
-  if (delta.reasoning_content !== undefined) {
+  if (typeof delta.reasoning_content === 'string') {
     result.reasoning = delta.reasoning_content;
-  } else if (delta.reasoning !== undefined) {
+  } else if (typeof delta.reasoning === 'string') {
     result.reasoning = delta.reasoning;
   }
   if (delta.tool_calls !== undefined && delta.tool_calls !== null) {
@@ -228,20 +234,20 @@ export function parseOpenAiData(data: string): DeltaResult {
         continue;
       }
       let index: number = 0;
-      if (item.index !== undefined) {
+      if (typeof item.index === 'number') {
         index = item.index;
       }
       let id: string = '';
       let name: string = '';
       let args: string = '';
-      if (item.id !== undefined) {
+      if (typeof item.id === 'string') {
         id = item.id;
       }
       if (item.function !== undefined && item.function !== null) {
-        if (item.function.name !== undefined) {
+        if (typeof item.function.name === 'string') {
           name = item.function.name;
         }
-        if (item.function.arguments !== undefined) {
+        if (typeof item.function.arguments === 'string') {
           args = item.function.arguments;
         }
       }
@@ -265,10 +271,10 @@ export function parseErrorMessage(raw: string): string {
   try {
     const envelope: ErrorEnvelope = JSON.parse(text) as ErrorEnvelope;
     if (envelope.error !== undefined && envelope.error !== null &&
-      envelope.error.message !== undefined) {
+      typeof envelope.error.message === 'string' && envelope.error.message.length > 0) {
       return envelope.error.message;
     }
-    if (envelope.message !== undefined) {
+    if (typeof envelope.message === 'string' && envelope.message.length > 0) {
       return envelope.message;
     }
   } catch (e) {

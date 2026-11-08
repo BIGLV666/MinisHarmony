@@ -301,6 +301,32 @@ test('OpenAI null usage/choices fields do not crash the parser', () => {
   assert.equal(delta.error, '');
 });
 
+test('OpenAI null string fields never reach the UI as null', () => {
+  // opencode.ai emits "content"/"reasoning": null on intermediate chunks;
+  // assigning them crashed ChatApi.consumeEvent on delta.reasoning.length.
+  let delta = sse.parseOpenAiData(
+    '{"choices":[{"delta":{"content":null,"reasoning":null},"finish_reason":null}]}');
+  assert.equal(delta.content, '');
+  assert.equal(delta.reasoning, '');
+  assert.equal(delta.finishReason, '');
+  assert.equal(typeof delta.content, 'string');
+  assert.equal(typeof delta.reasoning, 'string');
+  delta = sse.parseOpenAiData('{"choices":[{"delta":{"reasoning_content":null}}]}');
+  assert.equal(delta.reasoning, '');
+  delta = sse.parseOpenAiData(
+    '{"choices":[{"delta":{"tool_calls":[{"index":null,"id":null,' +
+    '"function":{"name":null,"arguments":null}}]}}]}');
+  assert.equal(delta.toolCalls.length, 1);
+  assert.equal(delta.toolCalls[0].index, 0);
+  assert.equal(delta.toolCalls[0].id, '');
+  assert.equal(delta.toolCalls[0].name, '');
+  assert.equal(delta.toolCalls[0].arguments, '');
+  delta = sse.parseOpenAiData('{"error":{"message":null}}');
+  assert.equal(typeof delta.error, 'string');
+  assert.equal(delta.error.length > 0, true);
+  assert.equal(sse.parseErrorMessage('{"error":{"message":null},"message":"plain"}'), 'plain');
+});
+
 test('Markdown block parsing', () => {
   const blocks = md.parseMarkdown([
     '# Title',

@@ -47,6 +47,7 @@ import { ChatView } from '../components/ChatView';
 import { ModelPicker } from '../components/ModelPicker';
 import { SettingsSheet } from '../components/SettingsSheet';
 import { WorkspaceSheet } from '../components/WorkspaceSheet';
+import { OnboardingView } from '../components/OnboardingView';
 import { SidebarView } from '../components/SidebarView';
 
 @Entry
@@ -66,6 +67,7 @@ struct Index {
   @State showSettings: boolean = false;
   @State showModels: boolean = false;
   @State showWorkspace: boolean = false;
+  @State showOnboarding: boolean = false;
   @State deleteId: string = '';
   @State actionId: string = '';
   @State rewindId: string = '';
@@ -124,7 +126,27 @@ struct Index {
       this.createChat(false);
       this.mobileChat = false;
     }
+    // Only first-time users without a key see the guide; existing installs
+    // already configured are left alone.
+    this.showOnboarding = !this.settings.onboardingDone &&
+      this.settings.apiKey.trim().length === 0;
     this.ready = true;
+  }
+
+  private finishOnboarding(apiKey: string, skipped: boolean): void {
+    const next: AppSettings = cloneSettings(this.settings);
+    next.onboardingDone = true;
+    if (!skipped && apiKey.length > 0) {
+      next.apiKey = apiKey;
+    }
+    this.settings = next;
+    this.showOnboarding = false;
+    LocalStore.saveSettings(next).catch((error: Error) => {
+      this.toast('设置保存失败');
+    });
+    if (!skipped && apiKey.length > 0) {
+      this.toast('已保存 API Key');
+    }
   }
 
   private findSession(id: string): StoredSession | null {
@@ -1290,6 +1312,14 @@ struct Index {
           onClose: () => {
             this.showWorkspace = false;
           }
+        })
+      }
+
+      if (this.showOnboarding) {
+        OnboardingView({
+          initialKey: this.settings.apiKey,
+          onFinish: (apiKey: string) => this.finishOnboarding(apiKey, false),
+          onSkip: () => this.finishOnboarding('', true)
         })
       }
 

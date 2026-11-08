@@ -163,7 +163,8 @@ export struct SettingsSheet {
       backgroundEnabled: this.backgroundEnabled,
       thinkingLevel: this.settings.thinkingLevel,
       enterToSend: this.enterToSend,
-      disabledTools: this.disabledTools.slice()
+      disabledTools: this.disabledTools.slice(),
+      onboardingDone: this.settings.onboardingDone
     };
     return next;
   }

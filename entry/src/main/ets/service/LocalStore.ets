@@ -92,7 +92,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     backgroundEnabled: source.backgroundEnabled !== false,
     thinkingLevel: normalizeThinkingLevel(source.thinkingLevel),
     enterToSend: source.enterToSend === true,
-    disabledTools: normalizeToolNames(source.disabledTools)
+    disabledTools: normalizeToolNames(source.disabledTools),
+    onboardingDone: source.onboardingDone === true
   };
 }
 

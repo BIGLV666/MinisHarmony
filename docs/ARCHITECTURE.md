@@ -474,6 +474,13 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 与工具共享同一套「绝对路径 / `..` 拒绝」规则，因此浏览器能看到的范围不会超过模型。
 排序、相对路径计算与大小格式化放在 `core/FileListing.ets`，可在 Node 下单测。
 
+## 首次引导
+
+`components/OnboardingView.ets` 只在 `settings.onboardingDone === false` 且 API Key
+为空时出现，因此已有配置的升级用户不会被引导打断。第 2 步只收集 Key，其他选项保持
+安全默认；「开始使用」把 Key 交给 `Index.finishOnboarding()`，经 `LocalStore` 保存
+（Key 仍优先进入 Asset Store）。「跳过」只置 `onboardingDone`，之后可在设置里补 Key。
+
 ## 平板布局
 
 - 根节点 `onAreaChange` 读取宽度，`>= 840vp` 进入双栏；

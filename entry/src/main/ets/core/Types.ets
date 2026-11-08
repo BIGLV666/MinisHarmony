@@ -73,6 +73,8 @@ export interface AppSettings {
   enterToSend: boolean;
   /** Tool names switched off individually; empty means every available tool. */
   disabledTools: string[];
+  /** First-run guide finished or skipped; never show it again when true. */
+  onboardingDone: boolean;
 }
 
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
@@ -349,7 +351,8 @@ export function defaultSettings(): AppSettings {
     backgroundEnabled: true,
     thinkingLevel: 'off',
     enterToSend: false,
-    disabledTools: []
+    disabledTools: [],
+    onboardingDone: false
   };
 }
 
@@ -394,7 +397,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     backgroundEnabled: source.backgroundEnabled !== false,
     thinkingLevel: normalizeThinkingLevel(source.thinkingLevel),
     enterToSend: source.enterToSend === true,
-    disabledTools: normalizeToolNames(source.disabledTools)
+    disabledTools: normalizeToolNames(source.disabledTools),
+    onboardingDone: source.onboardingDone === true
   };
 }
 

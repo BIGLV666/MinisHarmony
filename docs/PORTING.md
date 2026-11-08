@@ -42,6 +42,7 @@
 | 会话导出 / 导入 JSON | `core/SessionExport.ets` + `service/ExportService.ets` | 版本化信封 `{app,version,exportedAt,session}`；导入时校验、重建 parts、分配新 ID，未完成工具标记为 error；多选导出为 `sessions` bundle，同一导入器兼容两种形状 |
 | Android 前台服务 / iOS background task | `service/BackgroundGuard.ets` | `dataTransfer` 长时任务，仅生成期间持有；失败静默回退 |
 | OpenMinis 生成通知 | `service/Notify.ets` + `Index` 生命周期 | 后台生成常驻通知、完成替换、前台清除；点按经 `wantAgent` 回应用；未授权时静默 |
+| OpenMinis 接收分享 | `EntryAbility` + `core/SharePayload.ets` | `sendData` skill；文本/文本文件填入输入框；图片分享未接 |
 | 消息内链接 | `core/Markdown.ets#isOpenableUrl` + `MarkdownView` | 裸 URL 与 Markdown 链接可点；协议白名单；经系统浏览器打开 |
 | Markdown 表格 / 代码高亮 | `MdBlockKind.Table` + `MarkdownView` + `core/CodeHighlight.ets` | GFM 表头/分隔行；等宽列；常见语言关键字/字符串/注释/数字着色；无 LaTeX |
 | OpenMinis 每会话参数 | `core/SessionParams.ets` + 会话操作弹窗 | 模型/思考/追加提示词覆盖；空串继承全局；撤销即恢复全局 |

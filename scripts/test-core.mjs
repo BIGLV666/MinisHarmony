@@ -56,6 +56,7 @@ copyCore('ModelCaps');
 copyCore('ModelOverride');
 copyCore('McpProtocol');
 copyCore('CodeHighlight');
+copyCore('SharePayload');
 copyCore('Types', ['ModelOverride', 'McpProtocol']);
 copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
 
@@ -157,6 +158,7 @@ const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
 const highlight = await import(pathToFileURL(join(tmp, 'CodeHighlight.mts')).href);
+const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
@@ -1382,6 +1384,28 @@ test('code highlighting segments cover the source without losing characters', ()
   const plain = highlight.highlightCode('text here', 'unknown-lang');
   assert.deepEqual(plain, [{ text: 'text here', kind: 'plain' }]);
   assert.deepEqual(highlight.highlightCode('', 'js'), [{ text: '', kind: 'plain' }]);
+});
+
+test('shared want payloads pick text and stream URIs defensively', () => {
+  const text = share.sharedFromWant(
+    { 'ability.params.content': '  hello  ', 'ability.params.stream': ['file://a', 3, 'file://b'] },
+    '', 'text/plain');
+  assert.equal(text.text, 'hello');
+  assert.deepEqual(text.uris, ['file://a', 'file://b']);
+
+  const legacy = share.sharedFromWant(
+    { 'ohos.extra.param.key.content': 'older key' }, '', '');
+  assert.equal(legacy.text, 'older key');
+
+  const uriOnly = share.sharedFromWant(undefined, 'file://note.txt', 'text/plain');
+  assert.equal(uriOnly.text, 'file://note.txt');
+  const binaryUri = share.sharedFromWant(undefined, 'file://photo.jpg', 'image/jpeg');
+  assert.equal(binaryUri.text, '');
+
+  assert.equal(share.sharedFromWant(undefined, '', '').text, '');
+  assert.equal(share.isTextualShare('text/markdown'), true);
+  assert.equal(share.isTextualShare('application/json'), true);
+  assert.equal(share.isTextualShare('image/png'), false);
 });
 
 test('workspace listing sorts directories first and formats sizes', () => {

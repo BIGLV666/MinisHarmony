@@ -80,6 +80,7 @@ import { SidebarView } from '../components/SidebarView';
 struct Index {
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
+  @StorageProp('pendingShareText') @Watch('onSharedText') sharedText: string = '';
   @State settings: AppSettings = defaultSettings();
   @State sessions: SessionMeta[] = [];
   @State searchEntries: SessionSearchEntry[] = [];
@@ -126,6 +127,18 @@ struct Index {
 
   aboutToAppear(): void {
     this.bootstrap();
+    this.onSharedText();
+  }
+
+  /** Another app shared text: prefill the composer, never auto-send. */
+  private onSharedText(): void {
+    const text: string = this.sharedText;
+    if (text.length === 0) {
+      return;
+    }
+    this.draft = text;
+    AppStorage.setOrCreate<string>('pendingShareText', '');
+    this.toast('已填入分享内容');
   }
 
   onPageShow(): void {

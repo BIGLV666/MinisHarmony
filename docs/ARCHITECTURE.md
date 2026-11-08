@@ -500,6 +500,19 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 空消息。`read_image` 与用户附件共用同一条 `image_url` 通路，但开关互不影响。
 模型能力表未标记视觉时只提示，不阻止发送。
 
+## 接收应用分享
+
+`module.json5` 为 EntryAbility 增加一个 skill：action `ohos.want.action.sendData`、
+URI `file` + `text/plain`，让本应用出现在系统的分享目标里。`EntryAbility.onCreate`
+与 `onNewWant` 都把 Want 交给 `handleShareWant()`，因此冷启动和运行中分享都生效。
+
+`core/SharePayload.ets` 负责归一化：依次尝试 `ability.params.content`、
+`ohos.extra.param.key.content`、`content`、`text`、`sharedText` 几个历史键名；
+文件分享从 `ability.params.stream` 取 URI 列表，只读看起来是文本的文件
+（扩展名或 MIME 判断），上限 512 KB。结果写入 `AppStorage.pendingShareText`，
+`Index` 的 `@StorageProp` 监听后只把文本填进输入框并清空该键——分享不会替用户
+发送消息。纯图片分享目前忽略。
+
 ## 代码高亮
 
 `core/CodeHighlight.ets` 是一个字符扫描器：按语言选择行注释符（`//` 或 `#`）、

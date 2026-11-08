@@ -503,6 +503,12 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 重复提醒。所有调用先检查 `isNotificationEnabled()`，失败一律静默——通知被用户关闭
 或设备不支持时，对话本身不受影响。
 
+## 屏幕常亮
+
+`service/ScreenWake.ets` 用 `window.getLastWindow()` + `setWindowKeepScreenOn()`
+在生成开始时点亮保持，完成或停止时关闭；窗口已销毁或平台拒绝时静默忽略。它只跟随
+本次生成，不改变系统超时设置，因此不会影响应用外的时间行。
+
 ## 技能（Skills）
 
 `service/SkillStore.ets` 把导入的 `SKILL.md` 存到 `filesDir/skills/<id>.md`，`id`

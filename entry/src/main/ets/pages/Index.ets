@@ -47,6 +47,7 @@ import {
 } from '../service/ExportService';
 import { MemoryStore } from '../service/MemoryStore';
 import { SkillStore } from '../service/SkillStore';
+import { keepScreenOn } from '../service/ScreenWake';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { SubagentRunner } from '../service/SubagentRunner';
 import { titleFrom } from '../service/Format';
@@ -584,8 +585,9 @@ struct Index {
     }
     const runtime: ToolRuntime = this.makeToolRuntime(effective);
     this.streaming = true;
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    keepScreenOn(context, true).catch((error: Error) => {});
     if (effective.backgroundEnabled) {
-      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       BackgroundGuard.begin(context).catch((error: Error) => {});
     }
     this.agent = new AgentRuntime(effective, runtime, session, {
@@ -600,6 +602,8 @@ struct Index {
           this.agent = null;
           this.searchEntries = this.buildSearchIndex();
           BackgroundGuard.end().catch((error: Error) => {});
+          keepScreenOn(getContext(this) as common.UIAbilityContext, false)
+            .catch((error: Error) => {});
           if (!this.pageVisible) {
             const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
             publishDone(context, this.currentTitle());
@@ -873,6 +877,8 @@ struct Index {
     }
     this.streaming = false;
     BackgroundGuard.end().catch((error: Error) => {});
+    keepScreenOn(getContext(this) as common.UIAbilityContext, false)
+      .catch((error: Error) => {});
     if (!this.pageVisible) {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       publishDone(context, this.currentTitle());

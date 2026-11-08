@@ -176,7 +176,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [ ] | 应用图标切换 | 备用图标 | 鸿蒙不支持动态图标 | - |
 | - [ ] | 快捷指令 / 小组件 | iOS Widget / Shortcuts | 服务卡片 | P3 |
 | - [x] | 回车键行为 | Enter 发送或换行 | 设置项「Enter 键发送」；输入框切换 `EnterKeyType.Send` / `NEW_LINE`，`onSubmit` 仅在可发送时触发 | P2 |
-| - [ ] | 常亮 / 自动聚焦 | 小选项集合 | `window` API | P3 |
+| - [~] | 常亮 / 自动聚焦 | 小选项集合 | 生成期间 `setWindowKeepScreenOn(true)`，结束/停止恢复；输入框自动聚焦未做 | P3 |
 | - [x] | 日志查看器 UI | 应用内查看 | 设置页内嵌最近 200 条，格式化为时间/事件/耗时/详情，可收起 | P2 |
 
 ## 11. 安全 / 隐私 / 诊断
@@ -249,3 +249,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 主题色 / 字号 | 六种强调色 + 四档阅读字号；`AppStorage` 广播，消息正文/代码/表格/输入框即时生效；颜色与缩放函数可测 |
 | 2026-11-08 | Soul / 人格 | `core/Soul.ets` 内置五种人格；设置页选择；请求时拼在人设→系统提示→记忆之前；未知 id 回退通用 |
 | 2026-11-08 | Skills | 导入 SKILL.md（frontmatter name/description）、开关、删除；目录存应用私有 `skills/`；系统提示注入简介，`read_skill` 按 id 读正文；49 项测试通过 |
+| 2026-11-08 | 生成时保持常亮 | `service/ScreenWake.ets` 在开始生成时 `setWindowKeepScreenOn(true)`，完成或停止恢复；失败静默 |

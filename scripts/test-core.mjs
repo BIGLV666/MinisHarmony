@@ -40,6 +40,8 @@ copyCore('ToolCatalog', ['ToolTypes']);
 copyCore('ToolProtocol', ['Types']);
 copyCore('Workspace');
 copyCore('EventLog');
+copyCore('EditPatch');
+copyCore('Memory');
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -72,6 +74,9 @@ const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const log = await import(pathToFileURL(join(tmp, 'EventLog.mts')).href);
+const edit = await import(pathToFileURL(join(tmp, 'EditPatch.mts')).href);
+const catalog = await import(pathToFileURL(join(tmp, 'ToolCatalog.mts')).href);
+const memory = await import(pathToFileURL(join(tmp, 'Memory.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -329,6 +334,48 @@ test('SSE parser streams tool call fragments', () => {
   assert.deepEqual(plain.toolCalls, []);
 });
 
+test('usage chunks are parsed even when choices is empty', () => {
+  const delta = sse.parseOpenAiData(JSON.stringify({
+    choices: [],
+    usage: { prompt_tokens: 1200, completion_tokens: 34, total_tokens: 1234 }
+  }));
+  assert.equal(delta.usage.present, true);
+  assert.equal(delta.usage.promptTokens, 1200);
+  assert.equal(delta.usage.completionTokens, 34);
+  assert.equal(delta.usage.totalTokens, 1234);
+  assert.equal(delta.content, '');
+
+  const derived = sse.parseOpenAiData(JSON.stringify({
+    choices: [],
+    usage: { prompt_tokens: 7, completion_tokens: 3 }
+  }));
+  assert.equal(derived.usage.totalTokens, 10);
+
+  const plain = sse.parseOpenAiData('{"choices":[{"delta":{"content":"x"}}]}');
+  assert.equal(plain.usage.present, false);
+});
+
+test('searchable text covers messages and tool results', () => {
+  const session = {
+    meta: { id: 's1', title: 'Config hunting', updatedAt: 0, modelId: 'Kimi-K3', messageCount: 2 },
+    messages: []
+  };
+  const user = types.newChatMessage('u1', 'user', 'Read Config.JSON please');
+  const assistant = types.newChatMessage('a1', 'assistant', 'done');
+  const call = types.toolCallPart('call_1', 'read_file', '{"path":"config.json"}');
+  call.status = types.TOOL_DONE;
+  call.resultText = '{"port": 8787}';
+  assistant.parts.push(call);
+  session.messages.push(user, assistant);
+
+  const blob = types.searchableText(session);
+  assert.equal(blob.includes('config.json'), true);
+  assert.equal(blob.includes('8787'), true);
+  assert.equal(blob.includes('kimi-k3'), true);
+  assert.equal(blob, blob.toLowerCase());
+  assert.equal(blob.length <= types.SEARCH_BLOB_LIMIT, true);
+});
+
 test('agent turn budget is clamped to a safe range', () => {
   assert.equal(types.DEFAULT_MAX_AGENT_TURNS, 200);
   assert.equal(types.clampMaxTurns(200), 200);
@@ -378,4 +425,82 @@ test('event log serializes JSONL with a short session tag', () => {
 
   const date = new Date(2026, 10, 7);
   assert.equal(log.logFileName(date), 'events-2026-11-07.jsonl');
+});
+
+test('exact edit replaces only a unique anchor', () => {
+  const source = 'const a = 1;\nconst b = 2;\n';
+  const outcome = edit.applyExactEdit(source, 'const b = 2;', 'const b = 3;', false);
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.replacements, 1);
+  assert.equal(outcome.content, 'const a = 1;\nconst b = 3;\n');
+
+  const repeated = edit.applyExactEdit('x\nx\n', 'x', 'y', false);
+  assert.equal(repeated.ok, false);
+  assert.match(repeated.message, /2 次/);
+  assert.equal(repeated.content, 'x\nx\n');
+});
+
+test('replace_all rewrites every occurrence', () => {
+  const outcome = edit.applyExactEdit('a-b-a-b-a', 'a', 'z', true);
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.replacements, 3);
+  assert.equal(outcome.content, 'z-b-z-b-z');
+  assert.equal(edit.countOccurrences('aaaa', 'aa'), 2);
+});
+
+test('exact edit rejects empty, identical and missing anchors', () => {
+  const empty = edit.applyExactEdit('abc', '', 'x', false);
+  assert.equal(empty.ok, false);
+  const same = edit.applyExactEdit('abc', 'abc', 'abc', false);
+  assert.equal(same.ok, false);
+  const missing = edit.applyExactEdit('abc', 'zzz', 'x', false);
+  assert.equal(missing.ok, false);
+  assert.match(missing.message, /没有找到/);
+  assert.equal(missing.content, 'abc');
+});
+
+test('memory entries are one line and timestamped', () => {
+  const date = new Date(2026, 10, 8, 9, 5);
+  assert.equal(memory.dayKey(date), '2026-11-08');
+  assert.equal(memory.clockKey(date), '09:05');
+  const entry = memory.memoryEntry(date, '用户偏好\n深色模式');
+  assert.equal(entry, '- 09:05 用户偏好 深色模式');
+  assert.equal(entry.includes('\n'), false);
+  assert.equal(memory.oneLine('x'.repeat(600)).length, memory.MEMORY_ENTRY_CHARS + 1);
+});
+
+test('memory search ranks lines by matched terms', () => {
+  const files = [
+    { name: '2026-11-08.md', text: '- 09:05 用户偏好深色模式\n- 10:00 项目使用 ArkTS' },
+    { name: 'GLOBAL.md', text: '- 用户在上海，使用鸿蒙平板' }
+  ];
+  const hit = memory.searchMemoryFiles(files, '用户', 10);
+  assert.equal(hit.includes('深色模式'), true);
+  assert.equal(hit.includes('上海'), true);
+  const two = memory.searchMemoryFiles(files, '用户 鸿蒙', 10);
+  assert.equal(two.split('\n')[0].includes('上海'), true);
+  const none = memory.searchMemoryFiles(files, '不存在', 10);
+  assert.match(none, /没有找到/);
+  const recent = memory.searchMemoryFiles(files, '', 2);
+  assert.equal(recent.split('\n').length, 2);
+});
+
+test('memory context is headed and capped', () => {
+  const files = [{ name: '2026-11-08.md', text: '- hello' }];
+  const context = memory.buildMemoryContext(files, 1000);
+  assert.match(context, /^## 长期记忆/);
+  assert.match(context, /### 2026-11-08/);
+  const capped = memory.buildMemoryContext(
+    [{ name: 'big.md', text: 'x'.repeat(5000) }], 200
+  );
+  assert.equal(capped.length < 400, true);
+  assert.equal(memory.buildMemoryContext([], 100), '');
+});
+
+test('tool catalogue exposes file_edit with a safe schema', () => {
+  const tools = catalog.builtinToolDefinitions();
+  const owner = tools.find((tool) => tool.name === 'file_edit');
+  assert.notEqual(owner, undefined);
+  assert.deepEqual(owner.parameters.required, ['path', 'old_string', 'new_string']);
+  assert.equal(owner.parameters.properties.replace_all.type, 'boolean');
 });

@@ -8,6 +8,8 @@
 | [dsh-Go](https://github.com/ccch1mneyyy/dsh-Go) | Flutter / Dart | 平板横屏排版、会话切换、流式交互 |
 
 本项目是**行为参考后的 HarmonyOS 原生重写**，没有复制上述仓库的源码。
+除 Linux 沙箱外的逐项对齐状态与优先级见
+[docs/OPENMINIS-PARITY.md](OPENMINIS-PARITY.md)。
 
 ## 对照表
 
@@ -20,6 +22,11 @@
 | SSE 流式 provider | `core/SseParser.ets` | 增量、CRLF、多 data 行、错误体 |
 | OpenAI tool calling | `core/ToolProtocol.ets` + `service/AgentRuntime.ets` | 流式 tool_calls、结果回填、默认 200 轮（与 OpenMinis 对齐，可配置） |
 | Android 日志 / 埋点 | `core/EventLog.ets` + `service/AppLogger.ets` | 默认关闭、脱敏、按天轮转；不上报远端 |
+| Kotlin `file_edit` 工具 | `core/EditPatch.ets` + `LocalToolRuntime` | 唯一锚点、`replace_all`；纯逻辑可测 |
+| iOS / Android token 用量 | `SseParser.usage` + `ChatMessage.*Tokens` | `stream_options.include_usage`，落库并在气泡显示 |
+| 重新生成 / 编辑重发 | `AgentRuntime.regenerate()` | 截断到目标 user 消息后复用同一循环 |
+| OpenMinis 持久记忆 | `core/Memory.ets` + `service/MemoryStore.ets` | `GLOBAL.md` + 每日文件、关键词检索、系统提示注入 |
+| 会话全文搜索 | `core/Types.ets#searchableText` | 预计算小写文本块，侧栏 `indexOf` |
 | 本地文件 / shell 工具 | `service/LocalToolRuntime.ets`、`RemoteToolRuntime.ets` | 应用工作区或远程 HTTP 服务，共用 `ToolRuntime` |
 | OpenCode Go 模型发现 | `ChatApi.fetchModelIds()` | 规范基址 `/zen/go/v1/models`；旧基址自动换算 |
 | Android `preferences` / DB | `service/LocalStore.ets` | 单库 JSON；后续可换 RDB |
@@ -35,7 +42,12 @@
 4. 远程工具转发协议，让平板可以把真实文件系统留在 PC / NAS；
 5. 设置页增加工具开关、沙箱模式、远程地址与 Token；
 6. Agent 轮次上限改为可配置（默认 200，对齐 OpenMinis）并支持续跑；
-7. 增加可关闭的本地事件日志：耗时、轮次、工具状态、错误，脱敏且不记录正文。
+7. 增加可关闭的本地事件日志：耗时、轮次、工具状态、错误，脱敏且不记录正文；
+8. 补齐日常手感：`file_edit`、重新生成、编辑后重发、全文搜索、token 用量与
+   上下文大小、斜杠命令（`/new` `/clear` `/help`）；
+9. 工具调用改为同一轮并行执行，减少多工具任务的等待；
+10. 持久记忆：`memory_write` / `memory_get`、每日文件 + `GLOBAL.md`、
+    系统提示注入、设置开关与清空——默认关闭，仅本机模式。
 
 这样即使平板端暂时没有本地 shell，产品也已经具备“给模型工具”的完整链路，
 后续换后端不需要重写循环和 UI。
@@ -115,13 +127,14 @@ QemuToolRuntime    → guest 内命令与文件操作（预留）
 
 ### 后续建议顺序
 
-1. **QEMU 后端验证**：先在平板上跑通 TCI + Alpine，再把 `execute()` 接进来；
-2. **密钥安全**：API Key / 远程 Token 迁移到 `@kit.AssetStoreKit`；
-3. **数据层**：会话量上来后从 preferences 换 `relationalStore`，支持全文搜索；
-4. **附件**：图片选择 → base64 / 文件上传，按模型能力开关；
-5. **长时任务**：`backgroundTaskManager` + 通知，支持切后台继续生成；
-6. **浏览器 / MCP / Skills**：在 `ToolRuntime` 之上增加新的工具族；
-7. **多端同步**：WebDAV / 自建同步，保留端到端加密选项。
+1. **上下文压缩与子代理**：`/compact`、达到窗口上限自动裁剪、`subagent_task`；
+2. **QEMU 后端验证**：先在平板上跑通 TCI + Alpine，再把 `execute()` 接进来；
+3. **密钥安全**：API Key / 远程 Token 迁移到 `@kit.AssetStoreKit`；
+4. **数据层**：会话量上来后从 preferences 换 `relationalStore`，支持全文搜索；
+5. **附件**：图片选择 → base64 / 文件上传，按模型能力开关；
+6. **长时任务**：`backgroundTaskManager` + 通知，支持切后台继续生成；
+7. **浏览器 / MCP / Skills**：在 `ToolRuntime` 之上增加新的工具族；
+8. **多端同步**：WebDAV / 自建同步，保留端到端加密选项。
 
 ### 暂不建议做的
 

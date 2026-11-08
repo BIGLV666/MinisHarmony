@@ -3,16 +3,23 @@ import { util } from '@kit.ArkTS';
 import {
   AppSettings,
   ChatMessage,
+  MessagePart,
   SessionMeta,
+  SessionSearchEntry,
   StoredSession,
   cloneSettings,
-  defaultSettings
+  defaultSettings,
+  newChatMessage,
+  searchableText,
+  textOf,
+  textPart
 } from '../core/Types';
 import { ToolRuntime } from '../core/ToolTypes';
 import { AgentRuntime } from '../service/AgentRuntime';
 import { AppLogger } from '../service/AppLogger';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
+import { MemoryStore } from '../service/MemoryStore';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { titleFrom } from '../service/Format';
 import { ChatView } from '../components/ChatView';
@@ -25,6 +32,7 @@ import { SidebarView } from '../components/SidebarView';
 struct Index {
   @State settings: AppSettings = defaultSettings();
   @State sessions: SessionMeta[] = [];
+  @State searchEntries: SessionSearchEntry[] = [];
   @State messages: ChatMessage[] = [];
   @State currentId: string = '';
   @State draft: string = '';
@@ -35,7 +43,11 @@ struct Index {
   @State showSettings: boolean = false;
   @State showModels: boolean = false;
   @State deleteId: string = '';
+  @State actionId: string = '';
   @State ready: boolean = false;
+  @State editing: boolean = false;
+  @State editId: string = '';
+  @State editText: string = '';
 
   private store: StoredSession[] = [];
   private agent: AgentRuntime | null = null;
@@ -61,6 +73,7 @@ struct Index {
   private async bootstrap(): Promise<void> {
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     this.workspaceRoot = context.filesDir + '/workspace';
+    MemoryStore.init(context.filesDir + '/memory');
     try {
       await LocalStore.init(context);
     } catch (e) {
@@ -70,7 +83,7 @@ struct Index {
     AppLogger.init(context, this.settings.loggingEnabled);
     const loaded: StoredSession[] = await LocalStore.loadSessions();
     this.store = loaded;
-    this.sessions = this.buildMetaList();
+    this.refreshSessions();
     if (loaded.length > 0) {
       this.currentId = loaded[0].meta.id;
       this.messages = loaded[0].messages.slice();
@@ -97,6 +110,24 @@ struct Index {
     return metas;
   }
 
+  private buildSearchIndex(): SessionSearchEntry[] {
+    const entries: SessionSearchEntry[] = [];
+    for (let i = 0; i < this.store.length; i++) {
+      const entry: SessionSearchEntry = {
+        id: this.store[i].meta.id,
+        text: searchableText(this.store[i])
+      };
+      entries.push(entry);
+    }
+    return entries;
+  }
+
+  /** Metadata list plus the full-text index; use on non-hot paths only. */
+  private refreshSessions(): void {
+    this.refreshSessions();
+    this.searchEntries = this.buildSearchIndex();
+  }
+
   private currentTitle(): string {
     const session: StoredSession | null = this.findSession(this.currentId);
     return session === null ? '新对话' : session.meta.title;
@@ -120,7 +151,7 @@ struct Index {
     };
     const session: StoredSession = { meta: meta, messages: [] };
     this.store = [session].concat(this.store);
-    this.sessions = this.buildMetaList();
+    this.refreshSessions();
     this.currentId = meta.id;
     this.messages = [];
     this.draft = '';
@@ -149,6 +180,40 @@ struct Index {
     this.deleteId = id;
   }
 
+  private requestActions(id: string): void {
+    this.actionId = id;
+  }
+
+  /** Deep-copy a session into a new id, keeping its messages and tool results. */
+  private forkSession(id: string): void {
+    const source: StoredSession | null = this.findSession(id);
+    this.actionId = '';
+    if (source === null) {
+      return;
+    }
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    const meta: SessionMeta = {
+      id: util.generateRandomUUID(true),
+      title: source.meta.title + ' 副本',
+      updatedAt: Date.now(),
+      modelId: source.meta.modelId,
+      messageCount: source.messages.length
+    };
+    const copied: ChatMessage[] =
+      JSON.parse(JSON.stringify(source.messages)) as ChatMessage[];
+    const session: StoredSession = { meta: meta, messages: copied };
+    this.store = [session].concat(this.store);
+    this.refreshSessions();
+    this.currentId = meta.id;
+    this.messages = copied.slice();
+    this.mobileChat = true;
+    this.persistSoon();
+    this.toast('已复制为新会话');
+  }
+
   private performDelete(): void {
     const id: string = this.deleteId;
     this.deleteId = '';
@@ -157,7 +222,7 @@ struct Index {
       return;
     }
     this.store = this.store.filter((session: StoredSession): boolean => session.meta.id !== id);
-    this.sessions = this.buildMetaList();
+    this.refreshSessions();
     if (this.currentId === id) {
       const metas: SessionMeta[] = this.buildMetaList();
       if (metas.length > 0) {
@@ -174,6 +239,10 @@ struct Index {
   private sendMessage(): void {
     const text: string = this.draft.trim();
     if (text.length === 0 || this.streaming) {
+      return;
+    }
+    if (text.startsWith('/')) {
+      this.handleCommand(text);
       return;
     }
     if (this.settings.apiKey.trim().length === 0) {
@@ -208,25 +277,180 @@ struct Index {
     session.meta.updatedAt = Date.now();
     session.meta.modelId = this.settings.modelId;
 
+    this.draft = '';
+    this.runAgent(session, text, true);
+  }
+
+  private runAgent(session: StoredSession, userText: string, fresh: boolean): void {
     const runtime: ToolRuntime = this.makeToolRuntime();
     this.streaming = true;
-    this.draft = '';
     this.agent = new AgentRuntime(this.settings, runtime, session, {
       onUpdate: (messages: ChatMessage[], running: boolean) => {
         this.messages = messages;
         this.streaming = running;
+        // Re-sorting on every flush is cheap; rebuilding the full-text blob
+        // is not, so only refresh the index once the turn settles.
         this.sessions = this.buildMetaList();
         this.persistSoon();
         if (!running) {
           this.agent = null;
+          this.searchEntries = this.buildSearchIndex();
         }
       },
       onError: (message: string) => {
         this.toast(message);
       }
     });
-    this.agent.start(text);
-    this.sessions = this.buildMetaList();
+    if (fresh) {
+      this.agent.start(userText);
+    } else {
+      this.agent.regenerate();
+    }
+    this.messages = session.messages.slice();
+    this.refreshSessions();
+    this.persistSoon();
+  }
+
+  /** Re-run the last user turn after dropping the assistant answer. */
+  private regenerateLast(): void {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return;
+    }
+    while (session.messages.length > 0 &&
+      session.messages[session.messages.length - 1].role === 'assistant') {
+      session.messages.pop();
+    }
+    if (session.messages.length === 0 ||
+      session.messages[session.messages.length - 1].role !== 'user') {
+      this.toast('没有可重新生成的回复');
+      return;
+    }
+    this.runAgent(session, '', false);
+  }
+
+  /** Open the composer overlay with the message text for editing. */
+  private beginEdit(id: string): void {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return;
+    }
+    for (let i = 0; i < session.messages.length; i++) {
+      const message: ChatMessage = session.messages[i];
+      if (message.id === id && message.role === 'user') {
+        this.editId = id;
+        this.editText = textOf(message);
+        this.editing = true;
+        return;
+      }
+    }
+  }
+
+  /**
+   * Replace the edited user message and discard everything after it, then
+   * continue from that point — the same semantics as OpenMinis edit-and-resend.
+   */
+  private confirmEdit(): void {
+    const text: string = this.editText.trim();
+    if (text.length === 0) {
+      this.toast('消息不能为空');
+      return;
+    }
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      this.editing = false;
+      return;
+    }
+    let index: number = -1;
+    for (let i = 0; i < session.messages.length; i++) {
+      if (session.messages[i].id === this.editId &&
+        session.messages[i].role === 'user') {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0) {
+      this.editing = false;
+      return;
+    }
+    session.messages = session.messages.slice(0, index + 1);
+    const message: ChatMessage = session.messages[index];
+    const parts: MessagePart[] = [textPart(text)];
+    message.parts = parts;
+    message.createdAt = Date.now();
+    if (index === 0) {
+      session.meta.title = titleFrom(text);
+    }
+    this.editing = false;
+    this.editId = '';
+    this.editText = '';
+    this.runAgent(session, '', false);
+  }
+
+  /**
+   * Local slash commands. They never reach the model, which mirrors the way
+   * OpenMinis handles /clear and friends.
+   */
+  private handleCommand(raw: string): void {
+    const command: string = raw.trim().toLowerCase();
+    this.draft = '';
+    if (command === '/new') {
+      this.createChat();
+      return;
+    }
+    if (command === '/help') {
+      this.appendLocalNotice(
+        '可用命令：\n' +
+          '/new — 新建对话\n' +
+          '/clear — 清空当前对话\n' +
+          '/help — 显示本帮助\n\n' +
+          '/compact（上下文压缩）尚未实现；长对话可以先复制会话再清空。'
+      );
+      return;
+    }
+    if (command === '/clear') {
+      const session: StoredSession | null = this.findSession(this.currentId);
+      if (session === null) {
+        return;
+      }
+      session.messages = [];
+      session.meta.title = '新对话';
+      session.meta.messageCount = 0;
+      session.meta.updatedAt = Date.now();
+      this.messages = [];
+      this.refreshSessions();
+      this.persistSoon();
+      this.toast('当前对话已清空');
+      return;
+    }
+    if (command === '/compact') {
+      this.toast('上下文压缩尚未实现，可先用 /clear 开始新对话');
+      return;
+    }
+    this.toast('未知命令，输入 /help 查看');
+  }
+
+  private appendLocalNotice(text: string): void {
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return;
+    }
+    const notice: ChatMessage = newChatMessage(
+      util.generateRandomUUID(true), 'system', text
+    );
+    session.messages.push(notice);
+    session.meta.updatedAt = Date.now();
+    session.meta.messageCount = session.messages.length;
+    this.messages = session.messages.slice();
+    this.refreshSessions();
     this.persistSoon();
   }
 
@@ -238,7 +462,11 @@ struct Index {
         this.settings.allowWriteTools
       );
     }
-    return new LocalToolRuntime(this.workspaceRoot, this.settings.allowWriteTools);
+    return new LocalToolRuntime(
+      this.workspaceRoot,
+      this.settings.allowWriteTools,
+      this.settings.memoryEnabled
+    );
   }
 
   private stopStream(): void {
@@ -261,7 +489,7 @@ struct Index {
     if (session !== null) {
       session.meta.modelId = next.modelId;
     }
-    this.sessions = this.buildMetaList();
+    this.refreshSessions();
     this.toast('设置已保存');
   }
 
@@ -280,7 +508,7 @@ struct Index {
     if (session !== null) {
       session.meta.modelId = id;
     }
-    this.sessions = this.buildMetaList();
+    this.refreshSessions();
     this.toast('已切换到 ' + id);
   }
 
@@ -316,6 +544,67 @@ struct Index {
     .height('100%')
     .justifyContent(FlexAlign.Center)
     .backgroundColor($r('app.color.bg'))
+  }
+
+  @Builder
+  sessionActionsDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+        .onClick(() => {
+          this.actionId = '';
+        })
+      Column({ space: 10 }) {
+        Text('会话操作')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .width('100%')
+        Column({ space: 4 }) {
+          Text('复制为新会话')
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => this.forkSession(this.actionId))
+          Text('删除会话')
+            .fontSize(14)
+            .fontColor($r('app.color.danger'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => {
+              this.deleteId = this.actionId;
+              this.actionId = '';
+            })
+        }
+        .width('100%')
+
+        Button('取消', { type: ButtonType.Normal })
+          .width('100%')
+          .height(40)
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor(Color.Transparent)
+          .onClick(() => {
+            this.actionId = '';
+          })
+      }
+      .width('82%')
+      .constraintSize({ maxWidth: 360 })
+      .padding(18)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
   }
 
   @Builder
@@ -373,14 +662,81 @@ struct Index {
   }
 
   @Builder
+  editDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+        .onClick(() => {
+          this.editing = false;
+        })
+      Column({ space: 12 }) {
+        Text('编辑消息')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+        Text('修改后会删除这条消息之后的回复，并从这里重新开始。')
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .lineHeight(18)
+        TextArea({ text: this.editText, placeholder: '输入消息…' })
+          .width('100%')
+          .height(140)
+          .fontSize(14)
+          .fontColor($r('app.color.text_primary'))
+          .placeholderColor($r('app.color.text_tertiary'))
+          .backgroundColor($r('app.color.surface_alt'))
+          .borderRadius(10)
+          .padding(10)
+          .onChange((value: string) => {
+            this.editText = value;
+          })
+        Row({ space: 10 }) {
+          Button('取消', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
+            .onClick(() => {
+              this.editing = false;
+            })
+          Button('保存并重发', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.on_accent'))
+            .backgroundColor($r('app.color.accent'))
+            .borderRadius(11)
+            .onClick(() => this.confirmEdit())
+        }
+        .width('100%')
+        .margin({ top: 4 })
+      }
+      .width('86%')
+      .constraintSize({ maxWidth: 480 })
+      .padding(20)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
   sidebar() {
     SidebarView({
       sessions: this.sessions,
+      searchEntries: this.searchEntries,
       currentId: this.currentId,
       query: $query,
       onNew: () => this.createChat(),
       onSelect: (id: string) => this.selectSession(id),
-      onDelete: (id: string) => this.requestDelete(id),
+      onMore: (id: string) => this.requestActions(id),
       onSettings: () => {
         this.showSettings = true;
       }
@@ -408,7 +764,9 @@ struct Index {
       onBack: () => {
         this.mobileChat = false;
       },
-      onNew: () => this.createChat()
+      onNew: () => this.createChat(),
+      onRegenerate: () => this.regenerateLast(),
+      onEdit: (id: string) => this.beginEdit(id)
     })
   }
 
@@ -446,8 +804,16 @@ struct Index {
         .height('100%')
       }
 
+      if (this.actionId.length > 0) {
+        this.sessionActionsDialog()
+      }
+
       if (this.deleteId.length > 0) {
         this.deleteDialog()
+      }
+
+      if (this.editing) {
+        this.editDialog()
       }
 
       if (this.showSettings) {

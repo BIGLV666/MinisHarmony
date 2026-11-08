@@ -40,13 +40,15 @@ x-opencode-session`，或者缓存永远不命中。
 | **OpenCode Go 预设** | 一键填入当前基址，自动注入 `x-opencode-session` |
 | **OpenAI 兼容** | 任意兼容 `/chat/completions` 的服务，可自定义基址与模型 |
 | **流式输出** | SSE 增量解析，思考过程（`reasoning_content` / `reasoning`）折叠展示 |
-| **工具调用循环** | 解析流式 `tool_calls`，默认最多 200 轮模型/工具往返（可在设置中调整），工具卡片可展开 |
-| **本机工具** | 工作区内的 `list_dir` / `read_file` / `write_file` / `search_text`，以及 `fetch_url` / `now` |
+| **工具调用循环** | 解析流式 `tool_calls`，同一轮多个工具并行执行，默认最多 200 轮模型/工具往返（可调整），工具卡片可展开 |
+| **本机工具** | 工作区内的 `list_dir` / `read_file` / `write_file` / `file_edit` / `search_text`，以及 `fetch_url` / `now` |
+| **持久记忆** | 可选的 `memory_write` / `memory_get`，写入本机每日记忆文件并注入后续对话 |
 | **可插拔沙箱** | 本机工作区或远程 HTTP 工具服务，共用同一套工具定义与设置页 |
 | **本地会话** | 会话、消息、模型、设置持久化在本机，重启可恢复；旧版纯文本消息自动迁移为 parts |
 | **本地事件日志** | 可关闭（默认关闭）的结构化 JSONL：请求耗时、模型、轮次、工具状态、错误；脱敏、按天轮转、保留 14 天 |
 | **Markdown** | 标题、列表、引用、分割线、行内样式、代码块复制 |
-| **交互细节** | 停止生成、切换模型、搜索对话、长按删除、API Key 显示切换、拉取模型列表 |
+| **交互细节** | 停止生成、重新生成、编辑消息并重发、全文搜索（正文与工具结果）、切换模型、复制会话、长按菜单、斜杠命令 `/new` `/clear` `/help` |
+| **用量显示** | 每条回复的输入/输出 token；顶栏显示最近一次请求的上下文大小 |
 | **深色模式** | 跟随系统，使用 HarmonyOS 资源限定词 |
 
 ## 尚未实现（明确边界）
@@ -147,7 +149,9 @@ SDK Manager 里实际安装的版本，然后 Sync。
 | `list_dir` | 列目录 | 工作区内，最多 500 项 |
 | `read_file` | 读文本 | 按行 `offset` / `limit`，单文件上限 1 MB，拒绝二进制 |
 | `write_file` | 写文本 | 默认关闭，需显式允许；自动创建父目录 |
+| `file_edit` | 精确替换 | `old_string` 必须唯一，或 `replace_all=true`；与写入共用开关 |
 | `search_text` | 搜索文本 | 最多 2000 个文件 / 512 KB，跳过依赖与二进制 |
+| `memory_write` / `memory_get` | 持久记忆 | 需在设置中开启；写入 `filesDir/memory`，按天归档 |
 | `fetch_url` | 抓网页 | `http(s)`，30 秒读超时，结果截断 |
 | `now` | 当前时间 | 设备本地时间 |
 
@@ -268,9 +272,13 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - 工作区路径规则：绝对路径、`..`、反斜杠与截断；
 - Agent 轮次上限：默认 200、边界钳制、旧设置缺字段；
 - 事件日志：密钥脱敏、单行化、JSONL、会话短标签、按天文件名；
+- `file_edit`：唯一锚点、重复锚点拒绝、`replace_all`、空/相同/缺失锚点；
+- token 用量：`choices: []` 的 usage 块、缺失时补算 total；
+- 全文搜索：正文、工具参数与结果、长度上限；
+- 持久记忆：条目格式、关键词排序、上下文拼装与截断；
 - Markdown 块级与行内解析。
 
-当前结果：**23 项全部通过**。
+当前结果：**32 项全部通过**。
 
 另外做了静态与编译检查：
 

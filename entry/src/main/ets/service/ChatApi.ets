@@ -9,6 +9,7 @@ import {
   SseEvent,
   DeltaResult,
   ToolCallDelta,
+  TokenUsage,
   parseOpenAiData,
   parseErrorMessage,
   OpenAiErrorDetail
@@ -25,6 +26,7 @@ const USER_AGENT: string = 'MinisHarmony/1.0 (HarmonyOS tablet)';
 
 export interface ChatCallbacks {
   onDelta: (content: string, reasoning: string, toolCalls: ToolCallDelta[]) => void;
+  onUsage: (usage: TokenUsage) => void;
   onDone: (finishReason: string) => void;
   onError: (message: string) => void;
 }
@@ -40,10 +42,15 @@ interface ApiToolDefinition {
   function: ApiToolFunctionDefinition;
 }
 
+interface StreamOptions {
+  include_usage: boolean;
+}
+
 interface ChatRequestBody {
   model: string;
   messages: ApiMessage[];
   stream: boolean;
+  stream_options?: StreamOptions;
   temperature?: number;
   max_tokens?: number;
   tools?: ApiToolDefinition[];
@@ -121,9 +128,19 @@ function httpErrorText(code: number, body: string): string {
   return detail.length > 0 ? prefix + '：' + detail : prefix;
 }
 
-function buildMessages(settings: AppSettings, history: ChatMessage[]): ApiMessage[] {
+function buildMessages(
+  settings: AppSettings,
+  history: ChatMessage[],
+  memoryContext: string
+): ApiMessage[] {
   const messages: ApiMessage[] = toApiMessages(history);
-  const systemPrompt: string = settings.systemPrompt.trim();
+  let systemPrompt: string = settings.systemPrompt.trim();
+  const memory: string = memoryContext.trim();
+  if (memory.length > 0) {
+    systemPrompt = systemPrompt.length > 0
+      ? systemPrompt + '\n\n' + memory
+      : memory;
+  }
   if (systemPrompt.length > 0) {
     messages.unshift({ role: 'system', content: systemPrompt });
   }
@@ -157,6 +174,7 @@ export function startChatStream(
   sessionId: string,
   history: ChatMessage[],
   tools: ToolDefinition[],
+  memoryContext: string,
   callbacks: ChatCallbacks
 ): ChatStreamHandle {
   const handle: ChatStreamHandle = new ChatStreamHandle();
@@ -174,8 +192,9 @@ export function startChatStream(
 
   const body: ChatRequestBody = {
     model: settings.modelId,
-    messages: buildMessages(settings, history),
+    messages: buildMessages(settings, history, memoryContext),
     stream: true,
+    stream_options: { include_usage: true },
     temperature: settings.temperature,
     max_tokens: settings.maxTokens
   };
@@ -255,6 +274,9 @@ export function startChatStream(
     if (delta.content.length > 0 || delta.reasoning.length > 0 ||
       delta.toolCalls.length > 0) {
       callbacks.onDelta(delta.content, delta.reasoning, delta.toolCalls);
+    }
+    if (delta.usage.present) {
+      callbacks.onUsage(delta.usage);
     }
     if (delta.finishReason.length > 0) {
       finishReason = delta.finishReason;

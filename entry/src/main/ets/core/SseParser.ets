@@ -47,9 +47,24 @@ export interface OpenAiErrorDetail {
   code?: string;
 }
 
+export interface OpenAiUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
 export interface OpenAiStreamChunk {
   choices?: OpenAiChoice[];
+  usage?: OpenAiUsage;
   error?: OpenAiErrorDetail;
+}
+
+/** Token counts reported by the provider; `present` is false when absent. */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  present: boolean;
 }
 
 export interface DeltaResult {
@@ -59,6 +74,7 @@ export interface DeltaResult {
   finishReason: string;
   error: string;
   toolCalls: ToolCallDelta[];
+  usage: TokenUsage;
 }
 
 export interface ErrorEnvelope {
@@ -73,7 +89,13 @@ export function emptyDelta(): DeltaResult {
     done: false,
     finishReason: '',
     error: '',
-    toolCalls: []
+    toolCalls: [],
+    usage: {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      present: false
+    }
   };
 }
 
@@ -156,6 +178,25 @@ export function parseOpenAiData(data: string): DeltaResult {
     result.error = chunk.error.message !== undefined ? chunk.error.message : '服务端返回错误';
     result.done = true;
     return result;
+  }
+  // Usage arrives on a final chunk whose `choices` array is empty when the
+  // request sets `stream_options.include_usage`.
+  if (chunk.usage !== undefined) {
+    const prompt: number = chunk.usage.prompt_tokens !== undefined
+      ? chunk.usage.prompt_tokens
+      : 0;
+    const completion: number = chunk.usage.completion_tokens !== undefined
+      ? chunk.usage.completion_tokens
+      : 0;
+    const total: number = chunk.usage.total_tokens !== undefined
+      ? chunk.usage.total_tokens
+      : prompt + completion;
+    result.usage = {
+      promptTokens: prompt,
+      completionTokens: completion,
+      totalTokens: total,
+      present: true
+    };
   }
   if (chunk.choices === undefined || chunk.choices.length === 0) {
     return result;

@@ -2,7 +2,7 @@
 /**
  * Reference remote tool service for Minis Harmony.
  *
- * It implements the same six tools as LocalToolRuntime and the contract the
+ * It implements the same seven tools as LocalToolRuntime and the contract the
  * app's RemoteToolRuntime expects:
  *
  *   POST /tool
@@ -211,6 +211,42 @@ async function writeFile(root, args) {
   return { ok: true, content: `已写入 ${content.length} 字符到 ${relative}` };
 }
 
+async function editFile(root, args) {
+  const { relative, absolute } = await resolveInside(root, args.path, false);
+  const stat = await fs.stat(absolute);
+  if (stat.isDirectory()) {
+    return fail(`这是一个目录，不能编辑：${relative}`);
+  }
+  if (isBinaryName(absolute)) {
+    return fail(`这是二进制文件，file_edit 只处理文本：${relative}`);
+  }
+  if (stat.size > MAX_READ) {
+    return fail(`文件过大（${stat.size} B），上限为 ${MAX_READ} B。`);
+  }
+  const oldText = String(args.old_string ?? '');
+  const newText = String(args.new_string ?? '');
+  if (oldText.length === 0) {
+    return fail('old_string 不能为空。请提供要替换的确切文本。');
+  }
+  if (oldText === newText) {
+    return fail('old_string 与 new_string 相同，没有需要修改的内容。');
+  }
+  const source = await fs.readFile(absolute, 'utf8');
+  const count = source.split(oldText).length - 1;
+  if (count === 0) {
+    return fail('没有找到 old_string。请先用 read_file 确认原文（注意缩进、空格与换行）。');
+  }
+  if (count > 1 && args.replace_all !== true) {
+    return fail(`old_string 出现了 ${count} 次。请提供更多上下文使其唯一，或设置 replace_all=true。`);
+  }
+  const updated = args.replace_all === true
+    ? source.split(oldText).join(newText)
+    : source.substring(0, source.indexOf(oldText)) +
+      newText + source.substring(source.indexOf(oldText) + oldText.length);
+  await fs.writeFile(absolute, updated, 'utf8');
+  return { ok: true, content: `已替换 ${args.replace_all === true ? count : 1} 处。 文件：${relative}` };
+}
+
 async function searchText(root, args) {
   const query = String(args.query ?? '').trim();
   if (query.length === 0) {
@@ -315,6 +351,9 @@ async function execute(root, name, args) {
   }
   if (name === 'write_file') {
     return writeFile(root, args);
+  }
+  if (name === 'file_edit') {
+    return editFile(root, args);
   }
   if (name === 'search_text') {
     return searchText(root, args);

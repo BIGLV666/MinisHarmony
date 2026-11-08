@@ -35,6 +35,17 @@ export function titleFrom(text: string): string {
   return firstLine.substring(0, 26) + '…';
 }
 
+/** Compact token count for headers and message footers. */
+export function formatTokens(value: number): string {
+  if (value >= 1000000) {
+    return (value / 1000000).toFixed(1) + 'M';
+  }
+  if (value >= 1000) {
+    return (value / 1000).toFixed(1) + 'k';
+  }
+  return Math.round(value).toString();
+}
+
 export function estimateTokens(text: string): number {
   // Rough display-only estimate: CJK ~1 token/char, Latin ~1 token/4 chars.
   let cjk: number = 0;

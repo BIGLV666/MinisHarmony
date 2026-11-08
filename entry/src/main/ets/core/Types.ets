@@ -48,6 +48,8 @@ export interface AppSettings {
   maxAgentTurns: number;
   /** Write structured, redacted event logs to the app sandbox. */
   loggingEnabled: boolean;
+  /** Enable the persistent memory files and memory tools. */
+  memoryEnabled: boolean;
 }
 
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
@@ -89,6 +91,10 @@ export interface ChatMessage {
   createdAt: number;
   streaming: boolean;
   error: boolean;
+  /** Provider-reported usage for this assistant turn; zero when unknown. */
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
 }
 
 export interface SessionMeta {
@@ -102,6 +108,42 @@ export interface SessionMeta {
 export interface StoredSession {
   meta: SessionMeta;
   messages: ChatMessage[];
+}
+
+/** Pre-computed lowercase blob used by sidebar full-text search. */
+export interface SessionSearchEntry {
+  id: string;
+  text: string;
+}
+
+export const SEARCH_BLOB_LIMIT: number = 6000;
+
+/**
+ * Flatten a session into one searchable string. Tool arguments and results
+ * are included so "which conversation read config.json" is answerable, while
+ * reasoning is skipped to keep the blob small.
+ */
+export function searchableText(session: StoredSession): string {
+  let value: string = session.meta.title + '\n' + session.meta.modelId + '\n';
+  for (let i = 0; i < session.messages.length; i++) {
+    if (value.length >= SEARCH_BLOB_LIMIT) {
+      break;
+    }
+    const message: ChatMessage = session.messages[i];
+    for (let j = 0; j < message.parts.length; j++) {
+      const part: MessagePart = message.parts[j];
+      if (part.kind === PART_TEXT) {
+        value += part.text + '\n';
+      } else if (part.kind === PART_TOOL_CALL) {
+        value += part.toolName + ' ' + part.argumentsText + ' ' +
+          part.resultText + '\n';
+      }
+      if (value.length >= SEARCH_BLOB_LIMIT) {
+        break;
+      }
+    }
+  }
+  return value.substring(0, SEARCH_BLOB_LIMIT).toLowerCase();
 }
 
 export interface ModelInfo {
@@ -162,7 +204,8 @@ export function defaultSettings(): AppSettings {
     sandboxUrl: '',
     sandboxToken: '',
     maxAgentTurns: DEFAULT_MAX_AGENT_TURNS,
-    loggingEnabled: false
+    loggingEnabled: false,
+    memoryEnabled: false
   };
 }
 
@@ -181,7 +224,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     sandboxUrl: source.sandboxUrl,
     sandboxToken: source.sandboxToken,
     maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
-    loggingEnabled: source.loggingEnabled === true
+    loggingEnabled: source.loggingEnabled === true,
+    memoryEnabled: source.memoryEnabled === true
   };
 }
 
@@ -242,7 +286,10 @@ export function newChatMessage(id: string, role: string, content: string): ChatM
     parts: parts,
     createdAt: Date.now(),
     streaming: false,
-    error: false
+    error: false,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0
   };
 }
 
@@ -318,7 +365,7 @@ export function appendReasoning(message: ChatMessage, text: string): void {
  */
 export function messageKey(message: ChatMessage): string {
   let key: string = message.id + ':' + (message.streaming ? '1' : '0') +
-    ':' + (message.error ? '1' : '0');
+    ':' + (message.error ? '1' : '0') + ':' + message.totalTokens.toString();
   for (let i = 0; i < message.parts.length; i++) {
     const part: MessagePart = message.parts[i];
     key += ':' + part.kind + ':' + part.text.length + ':' + part.status +

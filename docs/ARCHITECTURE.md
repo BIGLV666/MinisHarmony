@@ -23,19 +23,22 @@ pages/Index.ets
         │     ChatApi          HTTP + SSE + OpenCode header
         │     LocalToolRuntime 应用工作区工具
         │     RemoteToolRuntime 远程 HTTP 工具服务
+        │     MemoryStore      每日记忆文件读写、注入上下文、检索
         │     LocalStore       preferences 读写与旧数据迁移
         │     AppLogger        事件日志落盘、轮转、清理
-        │     Format           时间 / 标题 / token 估算
+        │     Format           时间 / 标题 / token 格式化
         │
         └── core/              纯逻辑（Node 可测）
-              Types             parts 消息模型、设置、默认值
+              Types             parts 消息模型、设置、默认值、搜索索引
               ToolTypes         ToolRuntime / ToolDefinition / ToolResult
               ToolCatalog       内置工具定义
               ToolProtocol      内部 parts ↔ OpenAI tool_calls
+              EditPatch         file_edit 的唯一锚点 / replace_all
+              Memory            记忆条目、关键词检索、上下文拼装
               EventLog          日志事件、脱敏、JSONL 文件名
               Workspace         相对路径规范化、路径 jail、截断
               OpenCodeRules     域名 / 草稿键 / URL
-              SseParser         SSE 与 OpenAI chunk（含 tool_calls）
+              SseParser         SSE 与 OpenAI chunk（含 tool_calls / usage）
               Markdown          块级 + 行内解析
 ```
 
@@ -107,12 +110,15 @@ start(userText)
         │     ├─ onDone    → 有 tool_calls ?
         │     └─ onError   → 写入错误提示并结束
         ├─ 有 tool_calls:
-        │     ├─ 依次执行 ToolRuntime.execute(name, arguments)
-        │     ├─ 把结果写回对应 part（done / error）
-        │     ├─ push 新的 assistant placeholder
+        │     ├─ Promise.all 并发执行 ToolRuntime.execute(name, arguments)
+        │     ├─ 每个结果写回各自的 part（done / error）
+        │     ├─ 全部完成后 push 新的 assistant placeholder
         │     └─ runStep()（最多 maxAgentTurns 轮，默认 200）
         └─ 无 tool_calls: finish()
 ```
+
+`regenerate()` 与 `start()` 共用一个 `beginRun()`：调用方先把消息截断到目标
+user 消息，再启动循环，因此「重新生成」和「编辑后重发」不需要第二套状态机。
 
 `maxAgentTurns` 与 OpenMinis 的 `MAX_AGENT_TURNS = 200` 对齐，可在设置中改到
 1–1000。达到上限后本轮结束，但历史、工具结果和 part 状态全部保留；末尾写入
@@ -123,7 +129,8 @@ start(userText)
 
 - 流式 tool_call 按 `index` 累加到 `Map<number, ToolAccumulator>`；
   `id` / `name` / `arguments` 都可能分片到达；
-- 工具**串行**执行，保持结果顺序与模型请求顺序一致；
+- 同一轮的多个工具**并行**执行（`Promise.all`），结果仍写回各自的 part，
+  所以记录顺序与模型请求顺序一致；下一轮模型请求会等全部工具结束；
 - 每个结果截断到 20000 字符，避免把超长输出塞回上下文；
 - `onDelta` 只改内存，50ms 合并一次 `onUpdate`，避免每个 token 都重绘整个列表；
 - 停止时 `ChatStreamHandle.cancel()` 销毁请求，未完成的工具标记为 error，
@@ -151,6 +158,10 @@ interface ToolRuntime {
 - `read_file` 上限 1 MB、拒绝二进制；
 - `search_text` 上限 2000 个文件 / 512 KB，跳过 `node_modules`、`.git` 等；
 - `write_file` 默认关闭，设置里显式开启后才允许；
+- `file_edit` 与 `write_file` 共用写入开关；锚点必须唯一，或用 `replace_all`
+  显式允许多处替换，避免模型改错位置；
+- `memory_write` / `memory_get` 只在记忆开启时出现，写入 `filesDir/memory`
+  而不是工作区；
 - `fetch_url` 只接受 `http(s)`，30 秒读超时。
 
 ### RemoteToolRuntime
@@ -166,8 +177,9 @@ Authorization: Bearer <token>   (可选)
 ```
 
 远程端必须自己做根目录隔离、鉴权和超时。应用只负责转发，不能替远程端校验路径。
-写入与本地模式共用 `allowWriteTools` 开关：关闭时 `write_file` 既不暴露给模型，
-`execute()` 也会直接拒绝。
+写入与本地模式共用 `allowWriteTools` 开关：关闭时 `write_file` / `file_edit`
+既不暴露给模型，`execute()` 也会直接拒绝。记忆工具**只在本机模式**出现：
+记忆属于设备，不应让远程服务读取或写入。
 
 ### 未来的 QEMU 后端
 
@@ -194,7 +206,8 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
     "sandboxUrl": "",
     "sandboxToken": "",
     "maxAgentTurns": 200,
-    "loggingEnabled": false
+    "loggingEnabled": false,
+    "memoryEnabled": false
   },
   "sessions": [
     {
@@ -211,7 +224,10 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
           ],
           "createdAt": 0,
           "streaming": false,
-          "error": false
+          "error": false,
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0
         }
       ]
     }
@@ -252,6 +268,40 @@ AgentRuntime / Settings
 - 会话 ID 只出现前 8 位（`sessionTag()`）；
 - 日志 I/O 失败会把 logger 置为 broken 并静默降级，不打断对话。
 
+## 用量与上下文压力
+
+请求体固定带 `stream_options: { include_usage: true }`。兼容服务会在最后一个
+chunk 里返回 `usage`，且该 chunk 常常是 `choices: []` —— `SseParser` 在
+“空 choices 提前返回”之前先读 `usage`，否则用量会被丢掉。`AgentRuntime.onUsage`
+把 `promptTokens` / `completionTokens` / `totalTokens` 写进当前 assistant 消息并
+持久化，所以重启后每条回复的 `↑X ↓Y` 仍可见；顶栏取最近一条有 token 的消息显示
+上下文大小。上游不返回 usage 时三个字段保持 0，UI 不显示。
+
+## 持久记忆
+
+记忆是**本机**能力，默认关闭，开启后：
+
+```text
+filesDir/memory/
+  GLOBAL.md              # 长期、跨天
+  YYYY-MM-DD.md          # 当天追加
+```
+
+- `memory_write` 追加到当天的 `YYYY-MM-DD.md`（带时间前缀），不覆盖；
+- `MemoryStore.context()` 读取 `GLOBAL.md` + 最近 3 天，交给
+  `core/Memory.buildMemoryContext()` 截断到约 4000 字符，拼在系统提示词之后；
+- `memory_get` 对所有记忆文件做关键词检索，按命中词数排序，返回带日期的片段；
+- 上下文有 3 秒缓存，避免同一轮多次工具调用重复读盘；
+- 设置页可「清空每日记忆」，保留 `GLOBAL.md`；
+- 远程工具模式不暴露记忆工具，避免把设备记忆发给远程服务。
+
+## 全文搜索
+
+`SessionSearchEntry` 是预计算的小写文本块：标题 + 模型 + 所有 text part +
+工具名/参数/结果，单会话截断到 6000 字符。侧栏输入时只做 `indexOf`，不重复
+遍历 parts。索引在会话列表变化时重建，**流式输出期间不重建**，避免每个 token
+扫描全部历史。
+
 ## 平板布局
 
 - 根节点 `onAreaChange` 读取宽度，`>= 840vp` 进入双栏；
@@ -276,6 +326,6 @@ AgentRuntime / Settings
 
 ## 可测试性
 
-`core/` 九个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 十一个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

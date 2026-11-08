@@ -1,4 +1,5 @@
 import { ChatMessage, messageKey, modelName } from '../core/Types';
+import { formatTokens } from '../service/Format';
 import { MessageBubble } from './MessageBubble';
 
 const SUGGESTIONS: string[] = [
@@ -29,8 +30,34 @@ export struct ChatView {
   };
   onNew: () => void = () => {
   };
+  onRegenerate: () => void = () => {
+  };
+  onEdit: (id: string) => void = (id: string) => {
+  };
 
   private scroller: Scroller = new Scroller();
+
+  /** Only the final assistant answer can be regenerated. */
+  private lastAssistantId(): string {
+    if (this.streaming || this.messages.length === 0) {
+      return '';
+    }
+    const last: ChatMessage = this.messages[this.messages.length - 1];
+    return last.role === 'assistant' ? last.id : '';
+  }
+
+  /** The newest user message is the one edit-and-resend rewinds to. */
+  private lastUserId(): string {
+    if (this.streaming) {
+      return '';
+    }
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      if (this.messages[i].role === 'user') {
+        return this.messages[i].id;
+      }
+    }
+    return '';
+  }
 
   onMessagesChanged(): void {
     setTimeout(() => {
@@ -44,6 +71,25 @@ export struct ChatView {
 
   private canSend(): boolean {
     return this.draft.trim().length > 0 && !this.streaming;
+  }
+
+  /**
+   * Context pressure: the latest assistant turn reports how many tokens were
+   * sent plus generated, which is the best on-device approximation of the
+   * conversation's current size.
+   */
+  private subtitle(): string {
+    let value: string = this.messages.length.toString() + ' 条消息 · ' +
+      modelName(this.modelId);
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const message: ChatMessage = this.messages[i];
+      if (message.role === 'assistant' && message.totalTokens > 0) {
+        const used: number = message.promptTokens + message.completionTokens;
+        value += ' · 上下文 ' + formatTokens(used);
+        break;
+      }
+    }
+    return value;
   }
 
   @Builder
@@ -64,7 +110,7 @@ export struct ChatView {
           .fontColor($r('app.color.text_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.messages.length.toString() + ' 条消息 · ' + modelName(this.modelId))
+        Text(this.subtitle())
           .fontSize(11)
           .fontColor($r('app.color.text_tertiary'))
           .maxLines(1)
@@ -254,7 +300,13 @@ export struct ChatView {
           List({ scroller: this.scroller, space: 18 }) {
             ForEach(this.messages, (message: ChatMessage) => {
               ListItem() {
-                MessageBubble({ message: message })
+                MessageBubble({
+                  message: message,
+                  canRegenerate: message.id === this.lastAssistantId(),
+                  canEdit: message.id === this.lastUserId(),
+                  onRegenerate: () => this.onRegenerate(),
+                  onEdit: () => this.onEdit(message.id)
+                })
               }
             }, (message: ChatMessage) => messageKey(message))
           }

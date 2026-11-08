@@ -11,6 +11,7 @@ import {
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
+import { MemoryStore } from '../service/MemoryStore';
 
 @Component
 export struct SettingsSheet {
@@ -40,6 +41,7 @@ export struct SettingsSheet {
   @State sandboxToken: string = '';
   @State maxTurnsText: string = '200';
   @State loggingEnabled: boolean = false;
+  @State memoryEnabled: boolean = false;
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -57,6 +59,7 @@ export struct SettingsSheet {
     this.sandboxToken = copy.sandboxToken;
     this.maxTurnsText = copy.maxAgentTurns.toString();
     this.loggingEnabled = copy.loggingEnabled;
+    this.memoryEnabled = copy.memoryEnabled;
   }
 
   private selectPreset(value: ProviderPreset): void {
@@ -92,7 +95,8 @@ export struct SettingsSheet {
       sandboxUrl: this.sandboxUrl.trim(),
       sandboxToken: this.sandboxToken.trim(),
       maxAgentTurns: clampMaxTurns(Number(this.maxTurnsText)),
-      loggingEnabled: this.loggingEnabled
+      loggingEnabled: this.loggingEnabled,
+      memoryEnabled: this.memoryEnabled
     };
     return next;
   }
@@ -100,6 +104,11 @@ export struct SettingsSheet {
   private clearLogs(): void {
     const removed: number = AppLogger.clear();
     this.onToast(removed > 0 ? '已删除 ' + removed.toString() + ' 个日志文件' : '没有可删除的日志文件');
+  }
+
+  private clearMemory(): void {
+    const removed: number = MemoryStore.clearDaily();
+    this.onToast(removed > 0 ? '已清空 ' + removed.toString() + ' 个记忆文件' : '没有可清空的记忆');
   }
 
   private async probe(): Promise<void> {
@@ -555,6 +564,47 @@ export struct SettingsSheet {
               .padding({ left: 12, right: 12, top: 8, bottom: 8 })
               .backgroundColor($r('app.color.surface_alt'))
               .borderRadius(11)
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text('持久记忆')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(this.sandboxMode === 'local'
+                    ? '开启后模型可写入本机记忆，并在每轮请求前作为背景注入'
+                    : '持久记忆只在本机模式下可用，远程沙箱不转发记忆工具')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.memoryEnabled })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.memoryEnabled = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              if (this.memoryEnabled && this.sandboxMode === 'local') {
+                Row() {
+                  Text('清空每日记忆（保留 GLOBAL.md）')
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                  Blank()
+                  Text('清空')
+                    .fontSize(11)
+                    .fontColor($r('app.color.danger'))
+                    .onClick(() => this.clearMemory())
+                }
+                .width('100%')
+                .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(11)
+              }
 
               if (this.sandboxMode === 'local') {
                 Text('本机工作区位于应用沙箱的 workspace/ 目录。路径必须是相对路径，不能包含 .. 或符号链接。')

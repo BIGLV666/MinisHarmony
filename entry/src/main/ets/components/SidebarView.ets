@@ -1,19 +1,29 @@
-import { SessionMeta, modelName } from '../core/Types';
+import { SessionMeta, SessionSearchEntry, modelName } from '../core/Types';
 import { formatRelative } from '../service/Format';
 
 @Component
 export struct SidebarView {
   @Prop sessions: SessionMeta[] = [];
+  @Prop searchEntries: SessionSearchEntry[] = [];
   @Prop currentId: string = '';
   @Link query: string;
   onNew: () => void = () => {
   };
   onSelect: (id: string) => void = (id: string) => {
   };
-  onDelete: (id: string) => void = (id: string) => {
+  onMore: (id: string) => void = (id: string) => {
   };
   onSettings: () => void = () => {
   };
+
+  private blobFor(id: string): string {
+    for (let i = 0; i < this.searchEntries.length; i++) {
+      if (this.searchEntries[i].id === id) {
+        return this.searchEntries[i].text;
+      }
+    }
+    return '';
+  }
 
   private filtered(): SessionMeta[] {
     const keyword: string = this.query.trim().toLowerCase();
@@ -24,7 +34,8 @@ export struct SidebarView {
     for (let i = 0; i < this.sessions.length; i++) {
       const item: SessionMeta = this.sessions[i];
       if (item.title.toLowerCase().indexOf(keyword) >= 0 ||
-        item.modelId.toLowerCase().indexOf(keyword) >= 0) {
+        item.modelId.toLowerCase().indexOf(keyword) >= 0 ||
+        this.blobFor(item.id).indexOf(keyword) >= 0) {
         result.push(item);
       }
     }
@@ -94,7 +105,7 @@ export struct SidebarView {
     .onClick(() => this.onSelect(item.id))
     .gesture(
       LongPressGesture({ repeat: false, duration: 520 })
-        .onAction(() => this.onDelete(item.id))
+        .onAction(() => this.onMore(item.id))
     )
   }
 
@@ -158,7 +169,7 @@ export struct SidebarView {
       }
 
       Column({ space: 3 }) {
-        Text('长按对话可删除')
+        Text('长按对话可复制或删除')
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
         Text('数据仅保存在本机')

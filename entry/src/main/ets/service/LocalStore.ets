@@ -79,7 +79,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     sandboxUrl: source.sandboxUrl !== undefined ? source.sandboxUrl : '',
     sandboxToken: source.sandboxToken !== undefined ? source.sandboxToken : '',
     maxAgentTurns: clampMaxTurns(source.maxAgentTurns),
-    loggingEnabled: source.loggingEnabled === true
+    loggingEnabled: source.loggingEnabled === true,
+    memoryEnabled: source.memoryEnabled === true
   };
 }
 
@@ -152,7 +153,10 @@ function normalizeMessage(source: ChatMessage): ChatMessage | null {
     parts: parts,
     createdAt: source.createdAt !== undefined ? source.createdAt : 0,
     streaming: false,
-    error: source.error !== undefined ? source.error : false
+    error: source.error !== undefined ? source.error : false,
+    promptTokens: source.promptTokens !== undefined ? source.promptTokens : 0,
+    completionTokens: source.completionTokens !== undefined ? source.completionTokens : 0,
+    totalTokens: source.totalTokens !== undefined ? source.totalTokens : 0
   };
 }
 

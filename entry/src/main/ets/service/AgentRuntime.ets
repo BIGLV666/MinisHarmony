@@ -15,7 +15,7 @@ import {
   textOf,
   toolCallPart
 } from '../core/Types';
-import { ToolCallDelta } from '../core/SseParser';
+import { TokenUsage, ToolCallDelta } from '../core/SseParser';
 import { ToolResult, ToolRuntime } from '../core/ToolTypes';
 import { truncateText } from '../core/Workspace';
 import {
@@ -37,6 +37,7 @@ import {
 } from '../core/EventLog';
 import { clampMaxTurns } from '../core/Types';
 import { AppLogger } from './AppLogger';
+import { MemoryStore } from './MemoryStore';
 import { ChatStreamHandle, startChatStream } from './ChatApi';
 
 const MAX_TOOL_RESULT: number = 20000;
@@ -101,15 +102,32 @@ export class AgentRuntime {
     if (this.running) {
       return;
     }
-    this.running = true;
-    this.agentStartedAt = Date.now();
     this.session.messages.push(
       newChatMessage(util.generateRandomUUID(true), 'user', userText)
     );
+    this.beginRun('new');
+  }
+
+  /**
+   * Re-run the current turn without appending a user message. The caller has
+   * already trimmed the transcript back to the user turn, which is how
+   * "regenerate" and "edit and resend" share the same loop.
+   */
+  regenerate(): void {
+    if (this.running) {
+      return;
+    }
+    this.beginRun('resume');
+  }
+
+  private beginRun(kind: string): void {
+    this.running = true;
+    this.agentStartedAt = Date.now();
     this.beginAssistant();
     this.log(
       EVENT_AGENT_START, LOG_INFO, 0, '', true, 0,
-      'maxTurns=' + this.maxTurns.toString() +
+      'kind=' + kind +
+        ' maxTurns=' + this.maxTurns.toString() +
         ' tools=' + (this.settings.toolsEnabled ? 'on' : 'off')
     );
     this.emit();
@@ -194,6 +212,9 @@ export class AgentRuntime {
     );
     this.accumulators.clear();
     const definitions = this.settings.toolsEnabled ? this.tools.definitions() : [];
+    const memoryContext: string = this.settings.memoryEnabled
+      ? MemoryStore.context()
+      : '';
     this.requestStartedAt = Date.now();
     this.log(
       EVENT_MODEL_START, LOG_INFO, this.step, '', true, 0,
@@ -206,9 +227,19 @@ export class AgentRuntime {
       this.session.meta.id,
       history,
       definitions,
+      memoryContext,
       {
         onDelta: (content: string, reasoning: string, toolCalls: ToolCallDelta[]) => {
           this.onDelta(assistant, content, reasoning, toolCalls);
+        },
+        onUsage: (usage: TokenUsage) => {
+          if (!this.running || this.cancelled) {
+            return;
+          }
+          assistant.promptTokens = usage.promptTokens;
+          assistant.completionTokens = usage.completionTokens;
+          assistant.totalTokens = usage.totalTokens;
+          this.emit();
         },
         onDone: (finishReason: string) => {
           this.onDone(assistant, finishReason);
@@ -281,7 +312,7 @@ export class AgentRuntime {
       assistant.parts.push(calls[i]);
     }
     this.emit();
-    this.executeTool(assistant, calls, 0);
+    this.executeTool(calls);
   }
 
   private onModelError(assistant: ChatMessage, message: string): void {
@@ -305,58 +336,79 @@ export class AgentRuntime {
     this.finish();
   }
 
-  private executeTool(
-    assistant: ChatMessage,
-    calls: MessagePart[],
-    index: number
-  ): void {
+  /**
+   * Run every tool call of this round concurrently. OpenMinis issues parallel
+   * tool calls too; results stay attached to their own part so order in the
+   * transcript is unchanged, and the next model turn waits for all of them.
+   */
+  private executeTool(calls: MessagePart[]): void {
     if (!this.running || this.cancelled) {
       this.finish();
       return;
     }
-    if (index >= calls.length) {
+    if (calls.length === 0) {
       this.beginAssistant();
       this.emit();
       this.runStep();
       return;
     }
 
-    const call: MessagePart = calls[index];
-    call.status = TOOL_RUNNING;
+    const jobs: Promise<void>[] = [];
+    for (let i = 0; i < calls.length; i++) {
+      const call: MessagePart = calls[i];
+      call.status = TOOL_RUNNING;
+      const toolStartedAt: number = Date.now();
+      this.log(EVENT_TOOL_START, LOG_INFO, this.step, call.toolName, true, 0, '');
+      const args: string = call.argumentsText.length > 0 ? call.argumentsText : '{}';
+      const job: Promise<void> = this.tools.execute(call.toolName, args).then(
+        (result: ToolResult) => {
+          if (!this.running || this.cancelled) {
+            return;
+          }
+          call.resultText = truncateText(result.content, MAX_TOOL_RESULT);
+          call.status = result.ok ? TOOL_DONE : TOOL_ERROR;
+          call.isError = !result.ok;
+          this.toolCount++;
+          this.log(
+            EVENT_TOOL_DONE, result.ok ? LOG_INFO : LOG_WARN, this.step,
+            call.toolName, result.ok, Date.now() - toolStartedAt,
+            'resultChars=' + call.resultText.length.toString()
+          );
+          this.emit();
+        }
+      ).catch((error: Error) => {
+        if (!this.running || this.cancelled) {
+          return;
+        }
+        call.resultText = '工具执行异常：' + error.message;
+        call.status = TOOL_ERROR;
+        call.isError = true;
+        this.toolCount++;
+        this.log(
+          EVENT_TOOL_DONE, LOG_ERROR, this.step, call.toolName, false,
+          Date.now() - toolStartedAt, error.message
+        );
+        this.emit();
+      });
+      jobs.push(job);
+    }
     this.emit();
 
-    const toolStartedAt: number = Date.now();
-    this.log(EVENT_TOOL_START, LOG_INFO, this.step, call.toolName, true, 0, '');
-    const args: string = call.argumentsText.length > 0 ? call.argumentsText : '{}';
-    this.tools.execute(call.toolName, args).then((result: ToolResult) => {
+    Promise.all(jobs).then(() => {
       if (!this.running || this.cancelled) {
+        this.finish();
         return;
       }
-      call.resultText = truncateText(result.content, MAX_TOOL_RESULT);
-      call.status = result.ok ? TOOL_DONE : TOOL_ERROR;
-      call.isError = !result.ok;
-      this.toolCount++;
-      this.log(
-        EVENT_TOOL_DONE, result.ok ? LOG_INFO : LOG_WARN, this.step,
-        call.toolName, result.ok, Date.now() - toolStartedAt,
-        'resultChars=' + call.resultText.length.toString()
-      );
+      this.beginAssistant();
       this.emit();
-      this.executeTool(assistant, calls, index + 1);
+      this.runStep();
     }).catch((error: Error) => {
       if (!this.running || this.cancelled) {
+        this.finish();
         return;
       }
-      call.resultText = '工具执行异常：' + error.message;
-      call.status = TOOL_ERROR;
-      call.isError = true;
-      this.toolCount++;
-      this.log(
-        EVENT_TOOL_DONE, LOG_ERROR, this.step, call.toolName, false,
-        Date.now() - toolStartedAt, error.message
-      );
-      this.emit();
-      this.executeTool(assistant, calls, index + 1);
+      this.callbacks.onError('工具调度失败：' + error.message);
+      this.finish();
     });
   }
 

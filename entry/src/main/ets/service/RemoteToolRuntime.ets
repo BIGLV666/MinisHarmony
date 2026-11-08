@@ -42,18 +42,30 @@ export class RemoteToolRuntime implements ToolRuntime {
     if (this.allowWrite) {
       return all;
     }
-    // Keep the remote workspace read-only unless the user opted in.
-    const readonly: ToolDefinition[] = [];
+    // Keep the remote workspace read-only unless the user opted in. Memory
+    // stays on the tablet: the helper process has no access to it.
+    const available: ToolDefinition[] = [];
     for (let i = 0; i < all.length; i++) {
-      if (all[i].name !== 'write_file') {
-        readonly.push(all[i]);
+      const name: string = all[i].name;
+      if (name === 'memory_write' || name === 'memory_get') {
+        continue;
       }
+      if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {
+        continue;
+      }
+      available.push(all[i]);
     }
-    return readonly;
+    return available;
   }
 
   async execute(name: string, argumentsJson: string): Promise<ToolResult> {
-    if (name === 'write_file' && !this.allowWrite) {
+    if (name === 'memory_write' || name === 'memory_get') {
+      return {
+        ok: false,
+        content: '持久记忆只在本机工作区模式下可用，远程沙箱不会转发记忆工具。'
+      };
+    }
+    if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {
       return {
         ok: false,
         content: '写入工具未开启。请在设置 → 工具与沙箱中允许写入。'

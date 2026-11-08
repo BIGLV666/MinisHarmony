@@ -52,6 +52,12 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('path', 'string', '相对工作区根目录的文件路径。'),
     field('content', 'string', '要写入的完整文本。')
   ];
+  const editFileFields: FieldEntry[] = [
+    field('path', 'string', '相对工作区根目录的文件路径。'),
+    field('old_string', 'string', '要被替换的确切文本，需包含足够上下文以保证唯一。'),
+    field('new_string', 'string', '替换后的文本。'),
+    field('replace_all', 'boolean', '为 true 时替换所有匹配；默认 false，要求 old_string 唯一。')
+  ];
   const searchFields: FieldEntry[] = [
     field('query', 'string', '要搜索的文本，大小写不敏感。'),
     field('path', 'string', '限定搜索的相对目录，省略表示整个工作区。'),
@@ -61,6 +67,14 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('url', 'string', '完整的 http:// 或 https:// 地址。'),
     field('method', 'string', 'GET 或 POST，默认 GET。'),
     field('body', 'string', 'POST 请求体，可选。')
+  ];
+  const memoryWriteFields: FieldEntry[] = [
+    field('content', 'string', '要长期记住的内容，一句话写清事实、偏好或决定。')
+  ];
+  const memoryGetFields: FieldEntry[] = [
+    field('query', 'string', '关键词，空格分隔；省略时返回最近的记忆。'),
+    field('days', 'number', '回看最近多少天，默认 7，最大 90。'),
+    field('limit', 'number', '最多返回多少条，默认 20，最大 100。')
   ];
   const noFields: FieldEntry[] = [];
 
@@ -81,6 +95,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       parameters: parametersOf(writeFileFields, ['path', 'content'])
     },
     {
+      name: 'file_edit',
+      description: '对工作区内的文本文件做精确字符串替换。old_string 必须唯一（否则请提供更多上下文或设置 replace_all）；需要用户在设置中显式允许写入。',
+      parameters: parametersOf(editFileFields, ['path', 'old_string', 'new_string'])
+    },
+    {
       name: 'search_text',
       description: '在工作区文本文件中搜索字符串，返回 文件:行号:内容。默认跳过二进制、依赖和构建目录。',
       parameters: parametersOf(searchFields, ['query'])
@@ -94,6 +113,16 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'now',
       description: '返回设备当前日期和时间。用于需要时间戳的任务。',
       parameters: parametersOf(noFields, [])
+    },
+    {
+      name: 'memory_write',
+      description: '把一条值得长期记住的信息写入本机记忆（用户偏好、项目决定、事实）。需要在设置中开启持久记忆。',
+      parameters: parametersOf(memoryWriteFields, ['content'])
+    },
+    {
+      name: 'memory_get',
+      description: '按关键词检索本机记忆，返回带日期的片段。没有命中时返回最近记录。',
+      parameters: parametersOf(memoryGetFields, [])
     }
   ];
   return definitions;

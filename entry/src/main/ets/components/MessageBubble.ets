@@ -9,7 +9,7 @@ import {
   textOf,
   toolCallsOf
 } from '../core/Types';
-import { formatRelative } from '../service/Format';
+import { formatRelative, formatTokens } from '../service/Format';
 import { MarkdownView } from './MarkdownView';
 
 @Component
@@ -20,10 +20,19 @@ export struct MessageBubble {
     parts: [],
     createdAt: 0,
     streaming: false,
-    error: false
+    error: false,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0
   };
   @State reasoningOpen: boolean = false;
   @State openToolId: string = '';
+  @Prop canRegenerate: boolean = false;
+  @Prop canEdit: boolean = false;
+  onRegenerate: () => void = () => {
+  };
+  onEdit: () => void = () => {
+  };
 
   private isUser(): boolean {
     return this.message.role === 'user';
@@ -219,7 +228,14 @@ export struct MessageBubble {
         .fontColor($r('app.color.on_accent'))
         .copyOption(CopyOptions.LocalDevice)
         .width('100%')
-      Row() {
+      Row({ space: 12 }) {
+        if (this.canEdit) {
+          Text('编辑')
+            .fontSize(10)
+            .fontColor($r('app.color.on_accent'))
+            .opacity(0.82)
+            .onClick(() => this.onEdit())
+        }
         Blank()
         Text(formatRelative(this.message.createdAt))
           .fontSize(10)
@@ -265,11 +281,23 @@ export struct MessageBubble {
         Text(formatRelative(this.message.createdAt))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
+        if (this.message.totalTokens > 0) {
+          Text('↑' + formatTokens(this.message.promptTokens) +
+            ' ↓' + formatTokens(this.message.completionTokens))
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+        }
         if (this.content().length > 0 && !this.message.streaming) {
           Text('复制')
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
             .onClick(() => this.copy())
+        }
+        if (this.canRegenerate) {
+          Text('重新生成')
+            .fontSize(11)
+            .fontColor($r('app.color.accent'))
+            .onClick(() => this.onRegenerate())
         }
       }
     }

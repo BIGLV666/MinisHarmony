@@ -7,6 +7,8 @@ import {
   resolveWorkspacePath,
   truncateText
 } from '../core/Workspace';
+import { EditOutcome, applyExactEdit } from '../core/EditPatch';
+import { MemoryStore } from './MemoryStore';
 
 const MAX_READ_BYTES: number = 1024 * 1024;
 const MAX_RESULT_CHARS: number = 24000;
@@ -35,6 +37,13 @@ interface WriteFileArgs {
   content?: string;
 }
 
+interface EditFileArgs {
+  path?: string;
+  old_string?: string;
+  new_string?: string;
+  replace_all?: boolean;
+}
+
 interface SearchTextArgs {
   query?: string;
   path?: string;
@@ -45,6 +54,16 @@ interface FetchUrlArgs {
   url?: string;
   method?: string;
   body?: string;
+}
+
+interface MemoryWriteArgs {
+  content?: string;
+}
+
+interface MemoryGetArgs {
+  query?: string;
+  days?: number;
+  limit?: number;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -79,10 +98,12 @@ function isBinaryName(name: string): boolean {
 export class LocalToolRuntime implements ToolRuntime {
   private root: string;
   private allowWrite: boolean;
+  private memoryEnabled: boolean;
 
-  constructor(workspaceRoot: string, allowWrite: boolean) {
+  constructor(workspaceRoot: string, allowWrite: boolean, memoryEnabled: boolean) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
+    this.memoryEnabled = memoryEnabled;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -94,17 +115,21 @@ export class LocalToolRuntime implements ToolRuntime {
 
   definitions(): ToolDefinition[] {
     const all: ToolDefinition[] = builtinToolDefinitions();
-    if (this.allowWrite) {
-      return all;
-    }
-    // Do not advertise a tool that will only return "write disabled".
-    const readonly: ToolDefinition[] = [];
+    // Never advertise a tool that would only answer "disabled".
+    const available: ToolDefinition[] = [];
     for (let i = 0; i < all.length; i++) {
-      if (all[i].name !== 'write_file') {
-        readonly.push(all[i]);
+      const name: string = all[i].name;
+      const writeTool: boolean = name === 'write_file' || name === 'file_edit';
+      const memoryTool: boolean = name === 'memory_write' || name === 'memory_get';
+      if (writeTool && !this.allowWrite) {
+        continue;
       }
+      if (memoryTool && !this.memoryEnabled) {
+        continue;
+      }
+      available.push(all[i]);
     }
-    return readonly;
+    return available;
   }
 
   async execute(name: string, argumentsJson: string): Promise<ToolResult> {
@@ -124,6 +149,15 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'write_file') {
         return this.writeFile(argumentsJson);
+      }
+      if (name === 'file_edit') {
+        return this.editFile(argumentsJson);
+      }
+      if (name === 'memory_write') {
+        return this.memoryWrite(argumentsJson);
+      }
+      if (name === 'memory_get') {
+        return this.memoryGet(argumentsJson);
       }
       if (name === 'search_text') {
         return this.searchText(argumentsJson);
@@ -268,6 +302,53 @@ export class LocalToolRuntime implements ToolRuntime {
     }
   }
 
+  private editFile(argumentsJson: string): ToolResult {
+    if (!this.allowWrite) {
+      return {
+        ok: false,
+        content: '编辑工具未开启。请在设置 → 工具与沙箱中允许写入工作区文件。'
+      };
+    }
+    const args: EditFileArgs = JSON.parse(argumentsJson) as EditFileArgs;
+    const raw: string = args.path !== undefined ? args.path : '';
+    const oldText: string = args.old_string !== undefined ? args.old_string : '';
+    const newText: string = args.new_string !== undefined ? args.new_string : '';
+    const replaceAll: boolean = args.replace_all === true;
+    const absolute: string = this.resolvePath(raw, false);
+    const stat = fs.statSync(absolute);
+    if (stat.isDirectory()) {
+      return { ok: false, content: '这是一个目录，不能编辑：' + raw };
+    }
+    if (isBinaryName(absolute)) {
+      return { ok: false, content: '这是二进制文件，file_edit 只处理文本：' + raw };
+    }
+    if (stat.size > MAX_READ_BYTES) {
+      return {
+        ok: false,
+        content: '文件过大（' + stat.size.toString() + ' B），上限为 ' +
+          MAX_READ_BYTES.toString() + ' B。'
+      };
+    }
+    const source: string = fs.readTextSync(absolute);
+    const outcome: EditOutcome = applyExactEdit(source, oldText, newText, replaceAll);
+    if (!outcome.ok) {
+      return { ok: false, content: outcome.message };
+    }
+    const file = fs.openSync(
+      absolute,
+      fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+    );
+    try {
+      fs.writeSync(file.fd, outcome.content);
+    } finally {
+      fs.closeSync(file);
+    }
+    return {
+      ok: true,
+      content: outcome.message + ' 文件：' + raw
+    };
+  }
+
   private searchText(argumentsJson: string): ToolResult {
     const args: SearchTextArgs = JSON.parse(argumentsJson) as SearchTextArgs;
     const query: string = args.query !== undefined ? args.query.trim() : '';
@@ -344,6 +425,37 @@ export class LocalToolRuntime implements ToolRuntime {
       content += '\n…（已扫描 ' + MAX_SEARCH_FILES.toString() + ' 个文件后停止）';
     }
     return { ok: true, content: truncateText(content, MAX_RESULT_CHARS) };
+  }
+
+  private memoryWrite(argumentsJson: string): ToolResult {
+    if (!this.memoryEnabled) {
+      return {
+        ok: false,
+        content: '持久记忆未开启。请在设置 → 工具与沙箱中打开。'
+      };
+    }
+    const args: MemoryWriteArgs = JSON.parse(argumentsJson) as MemoryWriteArgs;
+    const content: string = args.content !== undefined ? args.content : '';
+    const status: string = MemoryStore.write(content);
+    const ok: boolean = status.startsWith('已写入记忆');
+    return { ok: ok, content: status };
+  }
+
+  private memoryGet(argumentsJson: string): ToolResult {
+    if (!this.memoryEnabled) {
+      return {
+        ok: false,
+        content: '持久记忆未开启。请在设置 → 工具与沙箱中打开。'
+      };
+    }
+    const args: MemoryGetArgs = JSON.parse(argumentsJson) as MemoryGetArgs;
+    const query: string = args.query !== undefined ? args.query : '';
+    const days: number = clamp(Math.floor(numberArg(args.days, 7)), 1, 90);
+    const limit: number = clamp(Math.floor(numberArg(args.limit, 20)), 1, 100);
+    return {
+      ok: true,
+      content: MemoryStore.search(query, days, limit)
+    };
   }
 
   private async fetchUrl(argumentsJson: string): Promise<ToolResult> {

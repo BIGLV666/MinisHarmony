@@ -547,7 +547,8 @@ export class AgentRuntime {
     toolStartedAt: number
   ): Promise<void> {
     const needsConfirm: boolean = this.confirmTool !== null &&
-      (call.toolName === 'write_file' || call.toolName === 'file_edit');
+      (call.toolName === 'write_file' || call.toolName === 'file_edit' ||
+        call.toolName === 'shell_execute');
     if (needsConfirm) {
       const handler: ToolConfirmHandler | null = this.confirmTool;
       let allowed: boolean = false;

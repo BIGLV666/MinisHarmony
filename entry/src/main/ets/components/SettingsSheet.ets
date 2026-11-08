@@ -108,6 +108,7 @@ const TOOL_CHOICES: ToolChoice[] = [
   { name: 'search_text', label: '搜索文本' },
   { name: 'write_file', label: '写文件' },
   { name: 'file_edit', label: '精确编辑' },
+  { name: 'shell_execute', label: 'Linux 沙箱' },
   { name: 'fetch_url', label: '抓取网页' },
   { name: 'now', label: '当前时间' },
   { name: 'subagent_task', label: '子代理' }
@@ -2492,7 +2493,7 @@ export struct SettingsSheet {
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
                   Text(this.sandboxMode === 'local'
-                    ? '关闭时只读；开启后模型可创建和覆盖文件'
+                    ? '关闭时只读；开启后模型可创建和覆盖文件，并可在 Linux 沙箱里执行命令'
                     : '关闭时远程端只读；开启后允许远程写入')
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
@@ -2516,7 +2517,7 @@ export struct SettingsSheet {
                     Text('写入前逐次确认')
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text('每次 write_file / file_edit 执行前弹窗，可选择允许或拒绝；拒绝会作为错误结果返回给模型。')
+                    Text('每次 write_file / file_edit / shell_execute 执行前弹窗，可选择允许或拒绝；拒绝会作为错误结果返回给模型。')
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)

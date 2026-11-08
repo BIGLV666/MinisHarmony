@@ -221,7 +221,10 @@ export class LocalToolRuntime implements ToolRuntime {
       if (isToolDisabled(this.disabledTools, name)) {
         continue;
       }
-      const writeTool: boolean = name === 'write_file' || name === 'file_edit';
+      // The sandbox shell can write any mounted directory, so it needs the
+      // same explicit opt-in as the file writers.
+      const writeTool: boolean = name === 'write_file' || name === 'file_edit' ||
+        name === 'shell_execute';
       const memoryTool: boolean = name === 'memory_write' || name === 'memory_get';
       if (writeTool && !this.allowWrite) {
         continue;
@@ -310,6 +313,12 @@ export class LocalToolRuntime implements ToolRuntime {
       if (name === 'shell_execute') {
         if (this.shell === null) {
           return { ok: false, content: '本地 Linux 沙箱尚未就绪。' };
+        }
+        if (!this.allowWrite) {
+          return {
+            ok: false,
+            content: '沙箱命令需要先在设置中开启「允许写入工作区文件」。'
+          };
         }
         return await this.shell.execute(argumentsJson);
       }

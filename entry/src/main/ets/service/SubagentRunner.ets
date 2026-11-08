@@ -18,10 +18,22 @@ import {
   isTerminalState,
   matchJobs,
   newJobRecord,
+  parseProgressLevel,
+  progressInterval,
+  progressMessage,
+  progressSignature,
   pruneJobs,
   stateLabel,
   statusReport
 } from '../core/SubagentJob';
+import {
+  BUILTIN_AGENT_NAME,
+  SubAgentDefinition,
+  agentNameList,
+  childBrief,
+  childSessionTitle,
+  resolveAgent
+} from '../core/SubAgentRoster';
 import { AgentRuntime } from './AgentRuntime';
 import { LocalToolRuntime } from './LocalToolRuntime';
 import { SettingsImageGen } from './ImageGen';
@@ -62,6 +74,10 @@ interface LiveJob {
   deliver: ((parentSessionId: string, text: string) => void) | null;
   /** Shared shell handler; null in remote mode or after a restored job. */
   shell: ShellHandler | null;
+  /** Mid-run reporter; -1 when `progress_report` is none. */
+  progressTimer: number;
+  progressLevel: string;
+  progressLastSignature: string;
 }
 
 function finalAnswer(messages: ChatMessage[]): string {
@@ -176,7 +192,10 @@ export class SubagentRunner implements SubagentHandler {
         depth: 0,
         onChild: null,
         deliver: null,
-        shell: null
+        shell: null,
+        progressTimer: -1,
+        progressLevel: 'none',
+        progressLastSignature: ''
       };
       SubagentRunner.jobs.set(record.id, job);
     }
@@ -237,18 +256,29 @@ export class SubagentRunner implements SubagentHandler {
     if (this.depth >= MAX_SUBAGENT_DEPTH) {
       return { ok: false, content: '子代理嵌套层级已达上限，请把任务拆给主对话。' };
     }
+    const agent: SubAgentDefinition | null =
+      resolveAgent(this.settings.subAgents, request.agent);
+    if (agent === null) {
+      return {
+        ok: false,
+        content: '未知子代理「' + request.agent.trim() + '」。可选：' +
+          agentNameList(this.settings.subAgents)
+      };
+    }
 
     const childSettings: AppSettings = cloneSettings(this.settings);
     childSettings.memoryEnabled = false;
     const basePrompt: string = childSettings.systemPrompt.trim();
     childSettings.systemPrompt = (basePrompt.length > 0 ? basePrompt + '\n\n' : '') +
-      '你是一个独立的子代理。专注完成用户交代的任务，' +
-      '完成后用简洁的最终结论回答；不要询问用户，也不要等待确认。';
+      childBrief(agent);
 
     const label: string = request.label.trim();
+    const displayLabel: string = agent.name === BUILTIN_AGENT_NAME
+      ? label
+      : (label.length > 0 ? agent.name + ' · ' + label : agent.name);
     const id: string = shortId();
     const childSessionId: string = util.generateRandomUUID(true);
-    const title: string = label.length > 0 ? '子代理 · ' + label : '子代理';
+    const title: string = childSessionTitle(label, agent.name);
     const meta: SessionMeta = {
       id: childSessionId,
       title: title,
@@ -260,10 +290,13 @@ export class SubagentRunner implements SubagentHandler {
     };
     const session: StoredSession = { meta: meta, messages: [] };
     const record: SubagentJobRecord = newJobRecord(
-      id, this.parentSessionId, childSessionId, label, prompt,
+      id, this.parentSessionId, childSessionId, displayLabel, prompt,
       childSettings.modelId, Date.now());
+    record.agent = agent.name;
     const wait: boolean = request.wait || this.depth > 0;
     const minutes: number = clampMinutes(request.maxMinutes);
+    // Blocking callers get the result inline, so reports would only be noise.
+    const progressLevel: string = wait ? 'none' : parseProgressLevel(request.progressReport);
     const shell: ShellHandler | null = this.shell !== null
       ? this.shell
       : SubagentRunner.defaultShell;
@@ -285,7 +318,10 @@ export class SubagentRunner implements SubagentHandler {
       depth: this.depth + 1,
       onChild: this.onChild,
       deliver: this.deliver,
-      shell: shell
+      shell: shell,
+      progressTimer: -1,
+      progressLevel: progressLevel,
+      progressLastSignature: ''
     };
     SubagentRunner.jobs.set(id, job);
     SubagentRunner.saveActive();
@@ -310,6 +346,81 @@ export class SubagentRunner implements SubagentHandler {
         '\nstatus=' + state +
         '\n结果稍后以「' + BACKGROUND_PREFIX + ' …」消息送达；无需轮询，也不要重复委派同一任务。'
     };
+  }
+
+  /** The child's latest non-empty assistant text, for progress reports. */
+  private static lastAssistantText(job: LiveJob): string {
+    const session: StoredSession | null = job.session;
+    if (session === null) {
+      return '';
+    }
+    for (let i = session.messages.length - 1; i >= 0; i--) {
+      if (session.messages[i].role !== 'assistant') {
+        continue;
+      }
+      const text: string = textOf(session.messages[i]).trim();
+      if (text.length > 0) {
+        return text;
+      }
+    }
+    return '';
+  }
+
+  /** Completed assistant turns, the same count OpenMinis reports. */
+  private static assistantTurns(job: LiveJob): number {
+    const session: StoredSession | null = job.session;
+    if (session === null) {
+      return 0;
+    }
+    let turns: number = 0;
+    for (let i = 0; i < session.messages.length; i++) {
+      if (session.messages[i].role === 'assistant') {
+        turns++;
+      }
+    }
+    return turns;
+  }
+
+  /**
+   * `progress_report`: post a `[后台任务进度 …]` user message into the parent
+   * conversation while the child runs. "frequent" only reports when the tool,
+   * turn count or latest text changed; "moderate" reports every minute.
+   */
+  private static startProgress(job: LiveJob): void {
+    const interval: number = progressInterval(job.progressLevel);
+    const deliver: ((parentSessionId: string, text: string) => void) | null =
+      job.deliver;
+    if (interval <= 0 || deliver === null || job.record.state !== 'running') {
+      return;
+    }
+    job.progressTimer = setInterval(() => {
+      if (job.record.state !== 'running' || job.runtime === null) {
+        return;
+      }
+      const tool: string = job.runtime.currentToolName();
+      const turns: number = SubagentRunner.assistantTurns(job);
+      const lastMessage: string = SubagentRunner.lastAssistantText(job);
+      const signature: string = progressSignature(tool, turns, lastMessage);
+      if (job.progressLevel === 'frequent' &&
+        signature === job.progressLastSignature) {
+        return;
+      }
+      job.progressLastSignature = signature;
+      const text: string = progressMessage(job.record, tool,
+        Date.now() - job.record.startedAt, turns, lastMessage);
+      try {
+        deliver(job.record.parentSessionId, text);
+      } catch (e) {
+        // A closed UI must not break the job.
+      }
+    }, interval);
+  }
+
+  private static clearProgress(job: LiveJob): void {
+    if (job.progressTimer !== -1) {
+      clearInterval(job.progressTimer);
+      job.progressTimer = -1;
+    }
   }
 
   private static startJob(job: LiveJob): void {
@@ -386,6 +497,7 @@ export class SubagentRunner implements SubagentHandler {
     }, job.minutes * 60 * 1000);
 
     runtime.start(record.prompt);
+    SubagentRunner.startProgress(job);
   }
 
   private static clearTimer(job: LiveJob): void {
@@ -400,6 +512,7 @@ export class SubagentRunner implements SubagentHandler {
       return;
     }
     SubagentRunner.clearTimer(job);
+    SubagentRunner.clearProgress(job);
     const record: SubagentJobRecord = job.record;
     const body: string = text.trim();
     endJob(record, state, body, Date.now());
@@ -666,14 +779,23 @@ export class SubagentRunner implements SubagentHandler {
     if (target.prompt.trim().length === 0) {
       return null;
     }
+    const agentName: string = target.agent !== undefined ? target.agent : '';
+    let label: string = target.label;
+    const prefix: string = agentName + ' · ';
+    if (agentName.length > 0 && agentName !== BUILTIN_AGENT_NAME &&
+      label.startsWith(prefix)) {
+      label = label.substring(prefix.length);
+    }
     const request: SubagentRequest = {
       action: 'delegate',
       prompt: target.prompt,
-      label: target.label,
+      label: label,
       jobId: '',
       message: '',
       wait: false,
-      maxMinutes: SUBAGENT_DEFAULT_MINUTES
+      maxMinutes: SUBAGENT_DEFAULT_MINUTES,
+      progressReport: 'none',
+      agent: agentName
     };
     const result: ToolResult = await this.delegate(request);
     if (!result.ok) {

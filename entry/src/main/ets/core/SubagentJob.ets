@@ -20,6 +20,8 @@ export interface SubagentJobRecord {
   parentSessionId: string;
   childSessionId: string;
   label: string;
+  /** Roster name the job was delegated to; `helper` when unspecified. */
+  agent: string;
   prompt: string;
   modelId: string;
   state: SubagentState;
@@ -46,6 +48,7 @@ export function newJobRecord(
     parentSessionId: parentSessionId,
     childSessionId: childSessionId,
     label: label,
+    agent: '',
     prompt: prompt,
     modelId: modelId,
     state: 'queued',
@@ -241,6 +244,71 @@ export function backgroundMessage(job: SubagentJobRecord): string {
   }
   const body: string = job.resultText.trim();
   return line + '\n\n' + (body.length > 0 ? body : '（子代理没有返回文本）');
+}
+
+/** User-role messages with this prefix are mid-run progress reports. */
+export const PROGRESS_PREFIX: string = '[后台任务进度';
+/** OpenMinis: "frequent" reports every 15 s, "moderate" once a minute. */
+export const PROGRESS_FREQUENT_MS: number = 15000;
+export const PROGRESS_MODERATE_MS: number = 60000;
+/** Only the tail of the child's latest text is worth a parent turn. */
+export const PROGRESS_MESSAGE_MAX_CHARS: number = 800;
+
+/** Normalize `progress_report`; unknown values mean "none". */
+export function parseProgressLevel(raw: string): string {
+  const value: string = raw.trim().toLowerCase();
+  if (value === 'frequent' || value === 'moderate') {
+    return value;
+  }
+  return 'none';
+}
+
+/** Milliseconds between reports, or 0 when the level reports nothing. */
+export function progressInterval(level: string): number {
+  if (level === 'frequent') {
+    return PROGRESS_FREQUENT_MS;
+  }
+  if (level === 'moderate') {
+    return PROGRESS_MODERATE_MS;
+  }
+  return 0;
+}
+
+/**
+ * What counts as "something changed" for the frequent level: the current
+ * tool, the number of completed turns, and the beginning of the latest text.
+ */
+export function progressSignature(
+  currentTool: string,
+  turns: number,
+  lastMessage: string
+): string {
+  return currentTool + '|' + turns.toString() + '|' +
+    lastMessage.substring(0, 200);
+}
+
+/** Mid-run message posted into the parent conversation. */
+export function progressMessage(
+  job: SubagentJobRecord,
+  currentTool: string,
+  elapsedMs: number,
+  turns: number,
+  lastMessage: string
+): string {
+  const title: string = job.label.length > 0 ? job.label : '子代理';
+  let text = PROGRESS_PREFIX + ' · ' + title + ' · job_id=' + job.id + ']\n' +
+    '状态：' + stateLabel(job.state) + ' · 已用时 ' +
+    elapsedText(Math.max(0, elapsedMs)) + ' · 已进行 ' + turns.toString() + ' 轮';
+  if (currentTool.length > 0) {
+    text += '\n当前工具：' + currentTool;
+  }
+  const body: string = lastMessage.trim();
+  text += '\n\n' + (body.length > 0
+    ? body.length > PROGRESS_MESSAGE_MAX_CHARS
+      ? body.substring(body.length - PROGRESS_MESSAGE_MAX_CHARS)
+      : body
+    : '（子代理还没有输出文本）');
+  return text;
 }
 
 /** Keep the most recent terminal jobs so status stays readable. */

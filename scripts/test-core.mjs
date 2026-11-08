@@ -37,6 +37,7 @@ copyCore('Latex');
 copyCore('Markdown', ['Latex']);
 copyCore('SubagentJob');
 copyCore('WebUrl');
+copyCore('SubAgentRoster');
 copyCore('Types');
 copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
@@ -70,8 +71,8 @@ copyCore('McpProtocol');
 copyCore('CodeHighlight');
 copyCore('SharePayload');
 copyCore('DeepLink');
-copyCore('Types', ['ModelOverride', 'McpProtocol']);
-copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
+copyCore('Types', ['ModelOverride', 'McpProtocol', 'SubAgentRoster']);
+copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol', 'SubAgentRoster']);
 copyCore('BackupCrypto', ['Backup', 'SessionExport']);
 copyCore('ImageGen', ['OpenCodeRules']);
 copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
@@ -111,6 +112,7 @@ markTypeOnly('SyncMerge', 'Types', ['StoredSession']);
 markTypeOnly('SessionParams', 'Types', ['AppSettings', 'SessionMeta', 'ThinkingLevel']);
 markTypeOnly('Types', 'ModelOverride', ['ModelOverride']);
 markTypeOnly('Types', 'McpProtocol', ['McpServerConfig']);
+markTypeOnly('Types', 'SubAgentRoster', ['SubAgentDefinition']);
 markTypeOnly('Backup', 'Types', ['AppSettings', 'StoredSession']);
 markTypeOnly('Backup', 'SessionExport', ['SessionBundleEnvelope']);
 markTypeOnly('Backup', 'ModelOverride', ['ModelOverride']);
@@ -208,6 +210,7 @@ const webDav = await import(pathToFileURL(join(tmp, 'WebDav.mts')).href);
 const scheduled = await import(pathToFileURL(join(tmp, 'ScheduledTask.mts')).href);
 const device = await import(pathToFileURL(join(tmp, 'Device.mts')).href);
 const syncMerge = await import(pathToFileURL(join(tmp, 'SyncMerge.mts')).href);
+const roster = await import(pathToFileURL(join(tmp, 'SubAgentRoster.mts')).href);
 const oauth = await import(pathToFileURL(join(tmp, 'OAuth.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
@@ -3047,4 +3050,119 @@ test('responses sends [DONE] as completion', () => {
   const state = responses.newResponsesStreamState();
   const done = responses.parseResponsesData('[DONE]', state);
   assert.equal(done.done, true);
+});
+
+test('subagent progress level parsing', () => {
+  assert.equal(jobs.parseProgressLevel('frequent'), 'frequent');
+  assert.equal(jobs.parseProgressLevel('  MODERATE '), 'moderate');
+  assert.equal(jobs.parseProgressLevel('none'), 'none');
+  assert.equal(jobs.parseProgressLevel('hourly'), 'none');
+  assert.equal(jobs.parseProgressLevel(''), 'none');
+  assert.equal(jobs.progressInterval('frequent'), 15000);
+  assert.equal(jobs.progressInterval('moderate'), 60000);
+  assert.equal(jobs.progressInterval('none'), 0);
+});
+
+test('subagent progress signature tracks tool, turns and latest text', () => {
+  const base = jobs.progressSignature('shell_execute', 1, 'working');
+  assert.equal(base, 'shell_execute|1|working');
+  assert.notEqual(base, jobs.progressSignature('read_file', 1, 'working'));
+  assert.notEqual(base, jobs.progressSignature('shell_execute', 2, 'working'));
+  assert.notEqual(base, jobs.progressSignature('shell_execute', 1, 'done'));
+  // Only the first 200 characters matter.
+  const long = 'x'.repeat(300);
+  assert.equal(jobs.progressSignature('t', 1, long),
+    jobs.progressSignature('t', 1, 'x'.repeat(200)));
+});
+
+test('subagent progress message summarises the run', () => {
+  const record = jobs.newJobRecord('abcd1234', 'parent', 'child', '调研',
+    'do it', 'gpt-5.5', 1000);
+  record.state = 'running';
+  const text = jobs.progressMessage(record, 'shell_execute', 80000, 3, '正在读取文件');
+  assert.ok(text.startsWith('[后台任务进度 · 调研 · job_id=abcd1234]'));
+  assert.ok(text.includes('状态：运行中'));
+  assert.ok(text.includes('已用时'));
+  assert.ok(text.includes('已进行 3 轮'));
+  assert.ok(text.includes('当前工具：shell_execute'));
+  assert.ok(text.includes('正在读取文件'));
+
+  // Without a tool the line is omitted, and an empty transcript says so.
+  const quiet = jobs.progressMessage(record, '', 1000, 0, '   ');
+  assert.ok(!quiet.includes('当前工具'));
+  assert.ok(quiet.includes('（子代理还没有输出文本）'));
+
+  // The tail of a long message is kept, bounded to 800 characters.
+  const body = 'y'.repeat(1200) + 'END';
+  const long = jobs.progressMessage(record, '', 1000, 1, body);
+  assert.ok(long.endsWith('END'));
+  assert.ok(long.length < 1200);
+  assert.ok(!long.includes('y'.repeat(801)));
+});
+
+test('subagent roster normalizes names and always keeps the built-in', () => {
+  assert.deepEqual(roster.defaultAgents(), [roster.builtinAgent()]);
+  assert.equal(roster.normalizeAgentName('  Research Bot! '), 'research-bot');
+  assert.equal(roster.normalizeAgentName('--a__b--'), 'a__b');
+  assert.equal(roster.normalizeAgentName('中文'), '');
+  // Unknown input still yields a usable identifier.
+  assert.equal(roster.normalizeAgentName('!!!'), '');
+
+  const raw = [
+    { id: '1', name: 'Research', description: '  finds things  ', instructions: 'be thorough', builtIn: false },
+    { id: '2', name: 'research', description: 'duplicate', instructions: '', builtIn: false },
+    { id: '3', name: '', description: '', instructions: '', builtIn: false },
+    { id: '4', name: 'helper', description: 'fake builtin', instructions: '', builtIn: false }
+  ];
+  const agents = roster.normalizeAgents(raw);
+  assert.equal(agents[0].name, 'helper');
+  assert.equal(agents[0].builtIn, true);
+  assert.equal(agents.length, 3);
+  assert.equal(agents[1].name, 'research');
+  assert.equal(agents[1].description, 'finds things');
+  assert.equal(agents[1].instructions, 'be thorough');
+  assert.equal(agents[2].name, 'agent');
+  // Limits and field clamps hold for stored data.
+  assert.equal(roster.normalizeAgents(undefined).length, 1);
+  const many = [];
+  for (let i = 0; i < 20; i++) {
+    many.push({ id: 'id' + i, name: 'a' + i, description: 'd'.repeat(500), instructions: '', builtIn: false });
+  }
+  const clamped = roster.normalizeAgents(many);
+  assert.equal(clamped.length, roster.MAX_SUB_AGENTS);
+  assert.equal(clamped[1].description.length, roster.SUB_AGENT_DESCRIPTION_MAX);
+  const longName = roster.normalizeAgents([
+    { id: 'x', name: 'n'.repeat(80), description: '', instructions: '', builtIn: false }
+  ]);
+  assert.equal(longName[1].name.length, roster.SUB_AGENT_NAME_MAX);
+});
+
+test('subagent roster prompt and resolution', () => {
+  // A lone built-in costs nothing in the system prompt.
+  assert.equal(roster.rosterPrompt(roster.defaultAgents()), '');
+  const agents = roster.normalizeAgents([
+    { id: 'r', name: 'research', description: '查找资料', instructions: '先列提纲', builtIn: false }
+  ]);
+  const prompt = roster.rosterPrompt(agents);
+  assert.ok(prompt.startsWith('## 子代理名册'));
+  assert.ok(prompt.includes('- research：查找资料'));
+  assert.ok(prompt.includes('不写 agent 时使用 helper'));
+
+  assert.equal(roster.resolveAgent(agents, '').name, 'helper');
+  assert.equal(roster.resolveAgent(agents, 'RESEARCH').name, 'research');
+  assert.equal(roster.resolveAgent(agents, 'missing'), null);
+  assert.equal(roster.agentNameList(agents), 'helper、research');
+
+  // Custom instructions are appended to the generic child brief.
+  const custom = roster.resolveAgent(agents, 'research');
+  assert.ok(roster.childBrief(custom).includes('先列提纲'));
+  assert.ok(roster.childBrief(custom).includes('独立的子代理'));
+  assert.ok(!roster.childBrief(roster.builtinAgent()).includes('先列提纲'));
+});
+
+test('subagent child session titles carry the agent name', () => {
+  assert.equal(roster.childSessionTitle('调研', 'helper'), '子代理 · 调研');
+  assert.equal(roster.childSessionTitle('调研', 'research'), '子代理 · research · 调研');
+  assert.equal(roster.childSessionTitle('', 'research'), '子代理 · research');
+  assert.equal(roster.childSessionTitle('', 'helper'), '子代理');
 });

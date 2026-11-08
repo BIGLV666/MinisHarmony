@@ -63,6 +63,10 @@ export interface SubagentRequest {
   wait: boolean;
   /** Wall-clock budget, clamped by the handler. */
   maxMinutes: number;
+  /** Only delegate, background mode: none (default), frequent or moderate. */
+  progressReport: string;
+  /** Only delegate: roster name; empty means the built-in `helper`. */
+  agent: string;
 }
 
 /**

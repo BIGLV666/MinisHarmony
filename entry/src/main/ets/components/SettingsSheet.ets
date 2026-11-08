@@ -44,6 +44,14 @@ import { CrashLog } from '../service/CrashLog';
 import { formatDateTime } from '../core/Device';
 import { MemoryFile } from '../core/Memory';
 import { SOUL_PRESETS, SoulPreset } from '../core/Soul';
+import {
+  MAX_SUB_AGENTS,
+  SubAgentDefinition,
+  SUB_AGENT_DESCRIPTION_MAX,
+  defaultAgents,
+  normalizeAgentName,
+  normalizeAgents
+} from '../core/SubAgentRoster';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
@@ -247,6 +255,12 @@ export struct SettingsSheet {
   @State codexPlan: string = '';
   @State codexVerifier: string = '';
   @State codexState: string = '';
+  @State subAgents: SubAgentDefinition[] = defaultAgents();
+  @State agentEditing: boolean = false;
+  @State agentIndex: number = -1;
+  @State agentName: string = '';
+  @State agentDescription: string = '';
+  @State agentInstructions: string = '';
 
   aboutToAppear(): void {
     // UIContext is not attached yet during aboutToAppear; read status on the
@@ -304,6 +318,9 @@ export struct SettingsSheet {
     this.codexLoggedIn = OAuthService.hasCodexToken();
     this.codexMask = OAuthService.codexMaskedToken();
     this.codexPlan = OAuthService.codexPlan();
+    this.subAgents = normalizeAgents(copy.subAgents);
+    this.agentEditing = false;
+    this.agentIndex = -1;
   }
 
   private async startClaudeLogin(): Promise<void> {
@@ -630,9 +647,75 @@ export struct SettingsSheet {
       webDavUser: this.webDavUser.trim(),
       webDavPassword: this.webDavPassword,
       webDavAutoSync: this.webDavAutoSync,
-      webDavLastSyncAt: this.webDavLastSyncAt
+      webDavLastSyncAt: this.webDavLastSyncAt,
+      subAgents: normalizeAgents(this.subAgents)
     };
     return next;
+  }
+
+  private beginAgent(index: number): void {
+    this.agentEditing = true;
+    this.agentIndex = index;
+    if (index >= 0 && index < this.subAgents.length) {
+      const agent: SubAgentDefinition = this.subAgents[index];
+      this.agentName = agent.name;
+      this.agentDescription = agent.description;
+      this.agentInstructions = agent.instructions;
+    } else {
+      this.agentIndex = -1;
+      this.agentName = '';
+      this.agentDescription = '';
+      this.agentInstructions = '';
+    }
+  }
+
+  private saveAgent(): void {
+    const name: string = normalizeAgentName(this.agentName);
+    if (name.length === 0) {
+      this.onToast('名字只能包含小写字母、数字、- 和 _');
+      return;
+    }
+    for (let i = 0; i < this.subAgents.length; i++) {
+      if (i !== this.agentIndex && this.subAgents[i].name === name) {
+        this.onToast('已经有同名子代理：' + name);
+        return;
+      }
+    }
+    const agent: SubAgentDefinition = {
+      id: this.agentIndex >= 0 && this.agentIndex < this.subAgents.length
+        ? this.subAgents[this.agentIndex].id
+        : util.generateRandomUUID(true),
+      name: name,
+      description: this.agentDescription.trim(),
+      instructions: this.agentInstructions.trim(),
+      builtIn: false
+    };
+    const list: SubAgentDefinition[] = this.subAgents.slice();
+    if (this.agentIndex >= 0 && this.agentIndex < list.length) {
+      list[this.agentIndex] = agent;
+    } else {
+      list.push(agent);
+    }
+    this.subAgents = normalizeAgents(list);
+    this.agentEditing = false;
+    this.agentIndex = -1;
+  }
+
+  private deleteAgent(index: number): void {
+    if (index < 0 || index >= this.subAgents.length || this.subAgents[index].builtIn) {
+      return;
+    }
+    const list: SubAgentDefinition[] = [];
+    for (let i = 0; i < this.subAgents.length; i++) {
+      if (i !== index) {
+        list.push(this.subAgents[i]);
+      }
+    }
+    this.subAgents = normalizeAgents(list);
+    if (this.agentEditing) {
+      this.agentEditing = false;
+      this.agentIndex = -1;
+    }
   }
 
   private beginOverride(index: number): void {
@@ -2007,6 +2090,145 @@ export struct SettingsSheet {
             .padding({ left: 12, right: 12, top: 8, bottom: 8 })
             .backgroundColor($r('app.color.surface_alt'))
             .borderRadius(11)
+
+            this.sectionTitle('子代理名册', '给 subagent_task 起名字；说明会进入系统提示，最多 ' +
+              MAX_SUB_AGENTS.toString() + ' 个（含内置）')
+            Column({ space: 8 }) {
+              ForEach(this.subAgents, (agent: SubAgentDefinition, index: number) => {
+                Row({ space: 8 }) {
+                  Column({ space: 2 }) {
+                    Row({ space: 6 }) {
+                      Text(agent.name)
+                        .fontSize(12)
+                        .fontWeight(FontWeight.Medium)
+                        .fontColor($r('app.color.text_primary'))
+                      if (agent.builtIn) {
+                        Text('内置')
+                          .fontSize(9)
+                          .fontColor($r('app.color.text_tertiary'))
+                          .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+                          .backgroundColor($r('app.color.surface_alt'))
+                          .borderRadius(6)
+                      }
+                    }
+                    Text(agent.description.length > 0 ? agent.description : '（没有说明）')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .maxLines(2)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+
+                  if (!agent.builtIn) {
+                    Text('编辑')
+                      .fontSize(11)
+                      .fontColor($r('app.color.accent'))
+                      .onClick(() => {
+                        this.beginAgent(index);
+                      })
+                    Text('删除')
+                      .fontSize(11)
+                      .fontColor($r('app.color.danger'))
+                      .onClick(() => {
+                        this.deleteAgent(index);
+                      })
+                  }
+                }
+                .width('100%')
+                .padding(10)
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(10)
+              }, (agent: SubAgentDefinition, index: number) => agent.id + index.toString())
+
+              if (this.agentEditing) {
+                Column({ space: 8 }) {
+                  TextInput({ text: this.agentName, placeholder: '名字，例如 research' })
+                    .width('100%')
+                    .height(38)
+                    .fontSize(12)
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(9)
+                    .onChange((value: string) => {
+                      this.agentName = value;
+                    })
+                  TextInput({ text: this.agentDescription, placeholder: '一句话说明它擅长什么' })
+                    .width('100%')
+                    .height(38)
+                    .fontSize(12)
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(9)
+                    .onChange((value: string) => {
+                      this.agentDescription = value;
+                    })
+                  Text('说明最多 ' + SUB_AGENT_DESCRIPTION_MAX.toString() +
+                    ' 字符，会进入主对话的系统提示')
+                    .fontSize(9)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .width('100%')
+                  TextArea({
+                    text: this.agentInstructions,
+                    placeholder: '附加给这个子代理的系统提示（可选）'
+                  })
+                    .width('100%')
+                    .height(90)
+                    .fontSize(11)
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(9)
+                    .onChange((value: string) => {
+                      this.agentInstructions = value;
+                    })
+                  Row({ space: 8 }) {
+                    Button('保存')
+                      .layoutWeight(1)
+                      .height(36)
+                      .fontSize(12)
+                      .fontColor($r('app.color.on_accent'))
+                      .backgroundColor($r('app.color.accent'))
+                      .borderRadius(9)
+                      .onClick(() => {
+                        this.saveAgent();
+                      })
+                    Button('取消')
+                      .height(36)
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_secondary'))
+                      .backgroundColor($r('app.color.surface_alt'))
+                      .borderRadius(9)
+                      .onClick(() => {
+                        this.agentEditing = false;
+                        this.agentIndex = -1;
+                      })
+                  }
+                  .width('100%')
+                }
+                .width('100%')
+                .padding(10)
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(10)
+                .alignItems(HorizontalAlign.Start)
+              } else {
+                Button('添加子代理')
+                  .width('100%')
+                  .height(36)
+                  .fontSize(12)
+                  .fontColor($r('app.color.accent'))
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+                  .enabled(this.subAgents.length < MAX_SUB_AGENTS)
+                  .onClick(() => {
+                    this.beginAgent(-1);
+                  })
+              }
+
+              Text('模型用 subagent_task 的 agent 参数选择名字；不写则使用内置 helper。' +
+                '说明会占用每轮系统提示，名字最多 40 字符。')
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+                .lineHeight(14)
+                .width('100%')
+            }
+            .width('100%')
 
             this.sectionTitle('Agent 与日志', '工具往返上限与 OpenMinis 一致；日志只记录元数据')
             Column({ space: 8 }) {

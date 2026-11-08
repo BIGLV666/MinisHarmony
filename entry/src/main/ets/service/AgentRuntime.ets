@@ -139,10 +139,19 @@ export class AgentRuntime {
    * call is never cut off. If the turn was about to end, `finish` keeps the
    * loop alive to read it instead of settling.
    */
-  injectInput(text: string): void {
+  injectInput(text: string, replacePrefix: string = ''): void {
     const trimmed: string = text.trim();
     if (trimmed.length === 0 || this.finished) {
       return;
+    }
+    // Progress reports supersede an older unread one instead of piling up.
+    if (replacePrefix.length > 0) {
+      for (let i = this.pendingInputs.length - 1; i >= 0; i--) {
+        if (this.pendingInputs[i].startsWith(replacePrefix)) {
+          this.pendingInputs[i] = trimmed;
+          return;
+        }
+      }
     }
     this.pendingInputs.push(trimmed);
   }

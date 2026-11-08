@@ -13,6 +13,7 @@ import {
 import { normalizeSoulId } from '../core/Soul';
 import { normalizeModelOverrides } from '../core/ModelOverride';
 import { normalizeMcpServers } from '../core/McpProtocol';
+import { normalizeAgents } from '../core/SubAgentRoster';
 import {
   AppSettings,
   ChatMessage,
@@ -138,6 +139,7 @@ function normalizeSettings(source: AppSettings): AppSettings {
     webDavAutoSync: source.webDavAutoSync === true,
     webDavLastSyncAt: source.webDavLastSyncAt !== undefined &&
       source.webDavLastSyncAt > 0 ? source.webDavLastSyncAt : 0,
+    subAgents: normalizeAgents(source.subAgents),
     // OAuth access tokens are runtime-only; the Asset Store is the only home.
     oauthToken: ''
   };

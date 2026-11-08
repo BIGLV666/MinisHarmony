@@ -95,6 +95,8 @@ interface SubagentArgs {
   message?: string;
   wait?: boolean;
   max_minutes?: number;
+  progress_report?: string;
+  agent?: string;
 }
 
 interface ClipboardWriteArgs {
@@ -432,7 +434,9 @@ export class LocalToolRuntime implements ToolRuntime {
       jobId: args.job_id !== undefined ? args.job_id.trim() : '',
       message: args.message !== undefined ? args.message : '',
       wait: args.wait === true,
-      maxMinutes: numberArg(args.max_minutes, 0)
+      maxMinutes: numberArg(args.max_minutes, 0),
+      progressReport: args.progress_report !== undefined ? args.progress_report : '',
+      agent: args.agent !== undefined ? args.agent : ''
     };
     return this.subagent.execute(request);
   }

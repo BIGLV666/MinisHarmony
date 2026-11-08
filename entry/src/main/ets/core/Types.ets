@@ -12,6 +12,7 @@
 
 import { ModelOverride, normalizeModelOverrides } from './ModelOverride';
 import { McpServerConfig, normalizeMcpServers } from './McpProtocol';
+import { SubAgentDefinition, defaultAgents, normalizeAgents } from './SubAgentRoster';
 
 export const OPENCODE_GO_BASE: string = 'https://opencode.ai/zen/go/v1';
 export const OPENCODE_DEFAULT_MODEL: string = 'kimi-k3';
@@ -131,6 +132,8 @@ export interface AppSettings {
   webDavAutoSync: boolean;
   /** Epoch ms of the last successful sync; 0 when never synced. */
   webDavLastSyncAt: number;
+  /** Named subagents; the built-in `helper` is always first. */
+  subAgents: SubAgentDefinition[];
   /**
    * Runtime-only access token from an OAuth login. Never persisted and never
    * exported; request builders switch to `Authorization: Bearer` when set.
@@ -502,7 +505,8 @@ export function defaultSettings(): AppSettings {
     webDavUser: '',
     webDavPassword: '',
     webDavAutoSync: false,
-    webDavLastSyncAt: 0
+    webDavLastSyncAt: 0,
+    subAgents: defaultAgents()
   };
 }
 
@@ -607,6 +611,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     webDavUser: source.webDavUser !== undefined ? source.webDavUser : '',
     webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : '',
     webDavAutoSync: source.webDavAutoSync === true,
+    subAgents: normalizeAgents(source.subAgents),
     oauthToken: source.oauthToken !== undefined ? source.oauthToken : '',
     oauthAccountId: source.oauthAccountId !== undefined ? source.oauthAccountId : '',
     webDavLastSyncAt: source.webDavLastSyncAt !== undefined &&

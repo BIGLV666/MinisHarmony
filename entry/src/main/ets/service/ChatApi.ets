@@ -4,6 +4,7 @@ import { util } from '@kit.ArkTS';
 import { AppSettings, ChatMessage, PART_IMAGE } from '../core/Types';
 import { claudeOAuthRequestHeaders } from './OAuth';
 import { soulPrompt } from '../core/Soul';
+import { rosterPrompt } from '../core/SubAgentRoster';
 import { capsForModel, clampMaxTokens } from '../core/ModelCaps';
 import {
   ModelOverride,
@@ -307,6 +308,12 @@ function buildSystemPrompt(settings: AppSettings, memoryContext: string): string
     systemPrompt = systemPrompt.length > 0
       ? soul + '\n\n' + systemPrompt
       : soul;
+  }
+  const roster: string = rosterPrompt(settings.subAgents).trim();
+  if (roster.length > 0) {
+    systemPrompt = systemPrompt.length > 0
+      ? systemPrompt + '\n\n' + roster
+      : roster;
   }
   const memory: string = memoryContext.trim();
   if (memory.length > 0) {

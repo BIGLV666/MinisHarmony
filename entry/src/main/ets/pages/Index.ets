@@ -23,7 +23,7 @@ import {
   textPart
 } from '../core/Types';
 import { capsForModel } from '../core/ModelCaps';
-import { BACKGROUND_PREFIX } from '../core/SubagentJob';
+import { BACKGROUND_PREFIX, PROGRESS_PREFIX } from '../core/SubagentJob';
 import { ToolRuntime } from '../core/ToolTypes';
 import {
   applySessionParams,
@@ -1894,9 +1894,27 @@ struct Index {
     if (session === null) {
       return;
     }
+    const progress: boolean = text.startsWith(PROGRESS_PREFIX);
     if (parentSessionId === this.currentId && this.streaming && this.agent !== null) {
-      this.agent.injectInput(text);
+      // An unread progress report is replaced by the newer one.
+      this.agent.injectInput(text, progress ? PROGRESS_PREFIX : '');
       return;
+    }
+    if (progress && session.messages.length > 0) {
+      const last: ChatMessage = session.messages[session.messages.length - 1];
+      if (last.role === 'user' && textOf(last).startsWith(PROGRESS_PREFIX)) {
+        // The parent never answered the previous report: supersede it.
+        last.parts = [textPart(text)];
+        session.meta.updatedAt = Date.now();
+        this.persistSoon();
+        if (parentSessionId === this.currentId) {
+          this.messages = session.messages.slice();
+          if (!this.streaming) {
+            this.runAgent(session, '', false);
+          }
+        }
+        return;
+      }
     }
     const notice: ChatMessage = newChatMessage(
       util.generateRandomUUID(true), 'user', text);

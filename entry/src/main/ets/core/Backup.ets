@@ -18,6 +18,7 @@ import {
   normalizeThinkingLevel,
   normalizeToolNames
 } from './Types';
+import { normalizeAgents } from './SubAgentRoster';
 import {
   SESSION_EXPORT_APP,
   SESSION_EXPORT_VERSION,
@@ -140,7 +141,8 @@ export function parseBackupSettings(text: string): AppSettings | null {
   const raw: AppSettings = root.settings;
   const base: AppSettings = defaultSettings();
   base.preset = raw.preset === 'custom' || raw.preset === 'anthropic' ||
-    raw.preset === 'gemini' || raw.preset === 'copilot' ? raw.preset : 'opencode';
+    raw.preset === 'gemini' || raw.preset === 'copilot' ||
+    raw.preset === 'codex' ? raw.preset : 'opencode';
   base.baseUrl = stringOr(raw.baseUrl, base.baseUrl);
   base.modelId = stringOr(raw.modelId, base.modelId);
   base.fallbackModels = normalizeToolNames(raw.fallbackModels);
@@ -184,6 +186,7 @@ export function parseBackupSettings(text: string): AppSettings | null {
   base.webDavPassword = '';
   base.webDavAutoSync = boolOr(raw.webDavAutoSync, false);
   base.webDavLastSyncAt = numberOr(raw.webDavLastSyncAt, 0);
+  base.subAgents = normalizeAgents(raw.subAgents);
   // cloneSettings normalizes/clamps every field a second time.
   return cloneSettings(base);
 }

@@ -97,6 +97,9 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('prompt', 'string',
       'action=delegate 时必填。交给子代理的完整任务说明；子代理看不到当前对话，' +
         '必须写清目标、输入、约束和期望输出。'),
+    field('agent', 'string',
+      'action=delegate 时可选。系统提示「子代理名册」里的名字，例如 research；' +
+        '省略时使用内置 helper。'),
     field('label', 'string', '可选短标签，用于状态、后台消息与子会话标题。'),
     field('job_id', 'string',
       'action=status/steer/cancel/resume 使用。启动时返回的 job_id，接受前缀；' +
@@ -108,7 +111,11 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       'action=delegate 时有效。false（默认）立即返回 job_id，结果稍后以后台消息送达；' +
         'true 阻塞到结束并直接返回结果，仅在下一次操作必须依赖结果时使用。'),
     field('max_minutes', 'number',
-      'action=delegate 时的实际耗时上限，默认 10，最大 60；超时返回已产生的部分结果。')
+      'action=delegate 时的实际耗时上限，默认 10，最大 60；超时返回已产生的部分结果。'),
+    field('progress_report', 'string',
+      'action=delegate 且后台执行时有效。none（默认）只在结束时报告；frequent 每 15 秒' +
+        '在有变化时发一条「[后台任务进度 …]」；moderate 每分钟一条。每条都会占用父对话' +
+        '一个回合，除非用户要求跟进，否则保持 none。wait=true 时忽略。')
   ];
   const browserFields: FieldEntry[] = [
     field('action', 'string',

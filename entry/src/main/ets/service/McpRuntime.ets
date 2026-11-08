@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolParameters, ToolResult, ToolProperty, ToolRuntime } from '../core/ToolTypes';
 import { McpServerConfig, McpToolInfo } from '../core/McpProtocol';
 import { McpClient } from './McpClient';
+import { McpOAuthService } from './McpOAuth';
 
 export interface McpServerStatus {
   serverId: string;
@@ -62,10 +63,16 @@ class McpRegistryStore {
     }
     this.seq++;
     const seq: number = this.seq;
+    // Resolve OAuth tokens first (refreshing in parallel), then discover.
+    const tokenTasks: Promise<string>[] = [];
+    for (let i = 0; i < enabled.length; i++) {
+      tokenTasks.push(McpOAuthService.validToken(enabled[i]));
+    }
+    const bearers: string[] = await Promise.all(tokenTasks);
     const clients: McpClient[] = [];
     const tasks: Promise<McpToolInfo[]>[] = [];
     for (let i = 0; i < enabled.length; i++) {
-      const client: McpClient = new McpClient(enabled[i]);
+      const client: McpClient = new McpClient(enabled[i], bearers[i]);
       clients.push(client);
       tasks.push(client.listTools());
     }

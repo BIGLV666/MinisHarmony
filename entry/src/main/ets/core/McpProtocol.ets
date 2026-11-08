@@ -10,6 +10,8 @@
  * Everything here is pure so it can be unit-tested under Node.
  */
 
+import { McpOAuthConfig, emptyMcpOAuth, normalizeMcpOAuth } from './McpOAuth';
+
 export const MCP_PROTOCOL_VERSION: string = '2024-11-05';
 
 export interface McpServerConfig {
@@ -19,6 +21,8 @@ export interface McpServerConfig {
   /** JSON object of extra headers (for example an API token). */
   headers: string;
   enabled: boolean;
+  /** Static OAuth settings; an empty block means the server is unauthenticated. */
+  oauth: McpOAuthConfig;
 }
 
 export interface McpRpcError {
@@ -66,7 +70,14 @@ export interface McpToolInfo {
 }
 
 export function defaultMcpServer(id: string): McpServerConfig {
-  return { id: id, name: '', url: '', headers: '', enabled: true };
+  return {
+    id: id,
+    name: '',
+    url: '',
+    headers: '',
+    enabled: true,
+    oauth: emptyMcpOAuth()
+  };
 }
 
 export function normalizeMcpServers(list: McpServerConfig[] | undefined): McpServerConfig[] {
@@ -104,7 +115,8 @@ export function normalizeMcpServers(list: McpServerConfig[] | undefined): McpSer
       name: name,
       url: url,
       headers: item.headers !== undefined ? item.headers : '',
-      enabled: item.enabled !== false
+      enabled: item.enabled !== false,
+      oauth: normalizeMcpOAuth(item.oauth)
     });
   }
   return out;

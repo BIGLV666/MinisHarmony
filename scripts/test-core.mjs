@@ -67,12 +67,13 @@ copyCore('Soul');
 copyCore('SkillDoc');
 copyCore('ModelCaps');
 copyCore('ModelOverride');
-copyCore('McpProtocol');
+copyCore('McpOAuth');
+copyCore('McpProtocol', ['McpOAuth']);
 copyCore('CodeHighlight');
 copyCore('SharePayload');
 copyCore('DeepLink');
 copyCore('Types', ['ModelOverride', 'McpProtocol', 'SubAgentRoster']);
-copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol', 'SubAgentRoster']);
+copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol', 'McpOAuth', 'SubAgentRoster']);
 copyCore('BackupCrypto', ['Backup', 'SessionExport']);
 copyCore('ImageGen', ['OpenCodeRules']);
 copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
@@ -117,6 +118,8 @@ markTypeOnly('Backup', 'Types', ['AppSettings', 'StoredSession']);
 markTypeOnly('Backup', 'SessionExport', ['SessionBundleEnvelope']);
 markTypeOnly('Backup', 'ModelOverride', ['ModelOverride']);
 markTypeOnly('Backup', 'McpProtocol', ['McpServerConfig']);
+markTypeOnly('Backup', 'McpOAuth', ['McpOAuthConfig']);
+markTypeOnly('McpProtocol', 'McpOAuth', ['McpOAuthConfig']);
 markTypeOnly('AnthropicProtocol', 'Types', ['ChatMessage']);
 markTypeOnly('AnthropicProtocol', 'ToolProtocol', ['ImageResolver']);
 markTypeOnly('AnthropicProtocol', 'ToolTypes', ['ToolDefinition']);
@@ -192,6 +195,7 @@ const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
+const mcpOAuth = await import(pathToFileURL(join(tmp, 'McpOAuth.mts')).href);
 const highlight = await import(pathToFileURL(join(tmp, 'CodeHighlight.mts')).href);
 const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
 const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
@@ -1449,6 +1453,102 @@ test('MCP tool lists and call results flatten into model-friendly text', () => {
   assert.equal(servers.length, 1);
   assert.equal(servers[0].url, 'https://x/mcp');
   assert.equal(servers[0].name, 'A');
+});
+
+test('MCP servers keep a normalized OAuth block', () => {
+  const servers = mcp.normalizeMcpServers([{
+    id: 's', name: 'S', url: 'https://x/mcp', headers: '', enabled: true,
+    oauth: {
+      mode: 'static', clientId: ' cid ', authorizationEndpoint: 'https://a/authorize',
+      tokenEndpoint: 'https://a/token', scopes: '', redirectUri: '', resource: '',
+      clientSecretSet: true
+    }
+  }]);
+  assert.equal(servers[0].oauth.clientId, 'cid');
+  assert.equal(servers[0].oauth.clientSecretSet, true);
+  // Settings written before this feature have no oauth block at all.
+  const legacy = mcp.normalizeMcpServers([{
+    id: 'l', name: 'L', url: 'https://x/mcp', headers: '', enabled: true
+  }]);
+  assert.equal(mcpOAuth.isMcpOAuthConfigured(legacy[0].oauth), false);
+});
+
+test('MCP OAuth canonicalizes the RFC 8707 resource identifier', () => {
+  assert.equal(mcpOAuth.canonicalResourceUri('https://mcp.example.com/api/'),
+    'https://mcp.example.com/api');
+  assert.equal(mcpOAuth.canonicalResourceUri('https://mcp.example.com/#frag'),
+    'https://mcp.example.com');
+  assert.equal(mcpOAuth.canonicalResourceUri('  https://mcp.example.com/v1  '),
+    'https://mcp.example.com/v1');
+  assert.equal(mcpOAuth.canonicalResourceUri(''), '');
+  assert.equal(mcpOAuth.canonicalResourceUri('/just/a/path'), '');
+  assert.equal(mcpOAuth.canonicalResourceUri('not a uri'), '');
+  assert.equal(mcpOAuth.canonicalResourceUri('https:///path'), '');
+});
+
+test('MCP OAuth authorization URL carries PKCE and refresh hints', () => {
+  const url = mcpOAuth.buildMcpAuthorizeUrl(
+    'https://auth.example.com/authorize', 'client-42',
+    'http://127.0.0.1:54546/callback', 'CHAL', 'STATE123',
+    'https://mcp.example.com', 'openid email');
+  assert.ok(url.startsWith('https://auth.example.com/authorize?'));
+  assert.ok(url.includes('response_type=code'));
+  assert.ok(url.includes('client_id=client-42'));
+  assert.ok(url.includes('code_challenge=CHAL'));
+  assert.ok(url.includes('code_challenge_method=S256'));
+  assert.ok(url.includes('state=STATE123'));
+  assert.ok(url.includes('access_type=offline'));
+  assert.ok(url.includes('prompt=consent'));
+  assert.ok(url.includes('resource=https%3A%2F%2Fmcp.example.com'));
+  assert.ok(url.includes('scope=openid%20email'));
+  assert.ok(url.includes('redirect_uri=http%3A%2F%2F127.0.0.1%3A54546%2Fcallback'));
+  const reused = mcpOAuth.buildMcpAuthorizeUrl(
+    'https://auth.example.com/authorize?audience=x', 'c',
+    'http://127.0.0.1:54546/callback', 'CH', 'S', '', '');
+  assert.ok(reused.includes('authorize?audience=x&'));
+  assert.ok(!reused.includes('resource='));
+  assert.ok(!reused.includes('scope='));
+});
+
+test('MCP OAuth token bodies include secret and resource only when set', () => {
+  const plain = mcpOAuth.mcpTokenExchangeBody(
+    'c d', 'http://localhost:54546/callback', 'cid', 'ver', '', '');
+  assert.equal(plain, 'grant_type=authorization_code&code=c%20d' +
+    '&redirect_uri=http%3A%2F%2Flocalhost%3A54546%2Fcallback' +
+    '&client_id=cid&code_verifier=ver');
+  const full = mcpOAuth.mcpTokenExchangeBody(
+    'code', 'r', 'cid', 'ver', 'sekret', 'https://mcp.example.com');
+  assert.ok(full.includes('client_secret=sekret'));
+  assert.ok(full.includes('resource=https%3A%2F%2Fmcp.example.com'));
+  const refresh = mcpOAuth.mcpRefreshBody(
+    'r t', 'cid', '', 'https://mcp.example.com');
+  assert.equal(refresh, 'grant_type=refresh_token&refresh_token=r%20t' +
+    '&client_id=cid&resource=https%3A%2F%2Fmcp.example.com');
+});
+
+test('MCP OAuth config normalization and defaults', () => {
+  const empty = mcpOAuth.normalizeMcpOAuth(undefined);
+  assert.equal(mcpOAuth.isMcpOAuthConfigured(empty), false);
+  const cfg = mcpOAuth.normalizeMcpOAuth({
+    mode: 'dynamic', clientId: ' cid ', authorizationEndpoint: ' https://a/authorize ',
+    tokenEndpoint: ' https://a/token ', scopes: ' openid ',
+    redirectUri: '', resource: '', clientSecretSet: false
+  });
+  assert.equal(cfg.mode, 'static');
+  assert.equal(cfg.clientId, 'cid');
+  assert.equal(cfg.scopes, 'openid');
+  assert.equal(mcpOAuth.isMcpOAuthConfigured(cfg), true);
+  assert.equal(mcpOAuth.effectiveRedirectUri(cfg),
+    'http://localhost:54546/callback');
+  assert.equal(mcpOAuth.effectiveResource(cfg, 'https://mcp.example.com/mcp/'),
+    'https://mcp.example.com/mcp');
+  const override = mcpOAuth.normalizeMcpOAuth({
+    mode: 'static', clientId: 'c', authorizationEndpoint: 'a', tokenEndpoint: 't',
+    scopes: '', redirectUri: '', resource: ' https://res.example.com/ ',
+    clientSecretSet: true
+  });
+  assert.equal(mcpOAuth.effectiveResource(override, 'https://mcp.example.com'),
+    'https://res.example.com');
 });
 
 test('whole-library backup strips secrets and restores non-secret settings', () => {

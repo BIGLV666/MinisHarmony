@@ -28,6 +28,7 @@ import {
 } from './SessionExport';
 import { ModelOverride } from './ModelOverride';
 import { McpServerConfig } from './McpProtocol';
+import { McpOAuthConfig, normalizeMcpOAuth } from './McpOAuth';
 
 export const BACKUP_KIND: string = 'backup';
 
@@ -72,12 +73,17 @@ export function redactedSettings(settings: AppSettings): AppSettings {
   const servers: McpServerConfig[] = [];
   for (let i = 0; i < copy.mcpServers.length; i++) {
     const server: McpServerConfig = copy.mcpServers[i];
+    // OAuth endpoints/client id are not secret; the client secret and tokens
+    // are, and stay in the Asset Store.
+    const oauth: McpOAuthConfig = normalizeMcpOAuth(server.oauth);
+    oauth.clientSecretSet = false;
     servers.push({
       id: server.id,
       name: server.name,
       url: server.url,
       headers: '',
-      enabled: server.enabled
+      enabled: server.enabled,
+      oauth: oauth
     });
   }
   copy.mcpServers = servers;

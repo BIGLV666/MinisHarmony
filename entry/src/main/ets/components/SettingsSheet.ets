@@ -72,7 +72,16 @@ import {
   overrideSummary
 } from '../core/ModelOverride';
 import { McpServerConfig, normalizeMcpServers } from '../core/McpProtocol';
+import {
+  McpOAuthConfig,
+  McpOAuthLoginStart,
+  McpOAuthOutcome,
+  emptyMcpOAuth,
+  isMcpOAuthConfigured,
+  normalizeMcpOAuth
+} from '../core/McpOAuth';
 import { McpRegistry, McpServerStatus } from '../service/McpRuntime';
+import { McpOAuthService } from '../service/McpOAuth';
 import {
   ANTHROPIC_DEFAULT_BASE,
   ANTHROPIC_DEFAULT_MODEL
@@ -231,6 +240,23 @@ export struct SettingsSheet {
   @State mcpEnabled: boolean = true;
   @State mcpRefreshing: boolean = false;
   @State mcpStatusText: string = '';
+  @State mcpOAuthExpanded: boolean = false;
+  @State mcpOAuthClientId: string = '';
+  @State mcpOAuthAuthorizeUrl: string = '';
+  @State mcpOAuthTokenUrl: string = '';
+  @State mcpOAuthScopes: string = '';
+  @State mcpOAuthRedirect: string = '';
+  @State mcpOAuthResource: string = '';
+  @State mcpOAuthSecret: string = '';
+  /** Index of the saved server whose login panel is open; -1 closes it. */
+  @State mcpOAuthIndex: number = -1;
+  @State mcpOAuthLoggedIn: boolean = false;
+  @State mcpOAuthMask: string = '';
+  @State mcpOAuthVerifier: string = '';
+  @State mcpOAuthState: string = '';
+  @State mcpOAuthPaste: string = '';
+  @State mcpOAuthBusy: boolean = false;
+  @State mcpOAuthStatus: string = '';
   @State webDavUrl: string = '';
   @State webDavUser: string = '';
   @State webDavPassword: string = '';
@@ -830,6 +856,7 @@ export struct SettingsSheet {
       this.editingMcp = false;
       return;
     }
+    this.mcpOAuthSecret = '';
     if (index >= 0 && index < this.mcpServers.length) {
       const item: McpServerConfig = this.mcpServers[index];
       this.mcpIndex = index;
@@ -837,14 +864,50 @@ export struct SettingsSheet {
       this.mcpUrl = item.url;
       this.mcpHeadersText = item.headers;
       this.mcpEnabled = item.enabled;
+      const config: McpOAuthConfig = normalizeMcpOAuth(item.oauth);
+      this.mcpOAuthExpanded = isMcpOAuthConfigured(config) || config.clientSecretSet;
+      this.mcpOAuthClientId = config.clientId;
+      this.mcpOAuthAuthorizeUrl = config.authorizationEndpoint;
+      this.mcpOAuthTokenUrl = config.tokenEndpoint;
+      this.mcpOAuthScopes = config.scopes;
+      this.mcpOAuthRedirect = config.redirectUri;
+      this.mcpOAuthResource = config.resource;
     } else {
       this.mcpIndex = -1;
       this.mcpName = '';
       this.mcpUrl = '';
       this.mcpHeadersText = '';
       this.mcpEnabled = true;
+      this.mcpOAuthExpanded = false;
+      this.mcpOAuthClientId = '';
+      this.mcpOAuthAuthorizeUrl = '';
+      this.mcpOAuthTokenUrl = '';
+      this.mcpOAuthScopes = '';
+      this.mcpOAuthRedirect = '';
+      this.mcpOAuthResource = '';
     }
     this.editingMcp = true;
+  }
+
+  private draftMcpOAuth(): McpOAuthConfig {
+    if (!this.mcpOAuthExpanded) {
+      return emptyMcpOAuth();
+    }
+    const existingSecret: boolean = this.mcpIndex >= 0 &&
+      this.mcpIndex < this.mcpServers.length &&
+      this.mcpServers[this.mcpIndex].oauth.clientSecretSet;
+    const secret: string = this.mcpOAuthSecret.trim();
+    const draft: McpOAuthConfig = {
+      mode: 'static',
+      clientId: this.mcpOAuthClientId,
+      authorizationEndpoint: this.mcpOAuthAuthorizeUrl,
+      tokenEndpoint: this.mcpOAuthTokenUrl,
+      scopes: this.mcpOAuthScopes,
+      redirectUri: this.mcpOAuthRedirect,
+      resource: this.mcpOAuthResource,
+      clientSecretSet: secret.length > 0 || existingSecret
+    };
+    return normalizeMcpOAuth(draft);
   }
 
   private saveMcp(): void {
@@ -857,12 +920,25 @@ export struct SettingsSheet {
       this.onToast('MCP 请求头需为 JSON 对象，且每个值都是字符串');
       return;
     }
+    const id: string = this.mcpIndex >= 0
+      ? this.mcpServers[this.mcpIndex].id
+      : util.generateRandomUUID(true);
+    const oauth: McpOAuthConfig = this.draftMcpOAuth();
+    const secret: string = this.mcpOAuthSecret.trim();
+    if (secret.length > 0) {
+      McpOAuthService.setClientSecret(id, secret);
+      this.mcpOAuthSecret = '';
+    } else if (!this.mcpOAuthExpanded) {
+      // Turning OAuth off discards the stored client secret with it.
+      McpOAuthService.setClientSecret(id, '');
+    }
     const item: McpServerConfig = {
-      id: this.mcpIndex >= 0 ? this.mcpServers[this.mcpIndex].id : util.generateRandomUUID(true),
+      id: id,
       name: this.mcpName.trim().length > 0 ? this.mcpName.trim() : url,
       url: url,
       headers: this.mcpHeadersText.trim(),
-      enabled: this.mcpEnabled
+      enabled: this.mcpEnabled,
+      oauth: oauth
     };
     const next: McpServerConfig[] = [];
     for (let i = 0; i < this.mcpServers.length; i++) {
@@ -877,10 +953,14 @@ export struct SettingsSheet {
     }
     this.mcpServers = next;
     this.editingMcp = false;
+    this.mcpOAuthIndex = -1;
     this.mcpStatusText = '已保存，点「刷新」发现工具';
   }
 
   private removeMcp(index: number): void {
+    const removedId: string = index >= 0 && index < this.mcpServers.length
+      ? this.mcpServers[index].id
+      : '';
     const next: McpServerConfig[] = [];
     for (let i = 0; i < this.mcpServers.length; i++) {
       if (i !== index) {
@@ -891,6 +971,14 @@ export struct SettingsSheet {
     if (this.mcpIndex === index) {
       this.editingMcp = false;
       this.mcpIndex = -1;
+    }
+    if (this.mcpOAuthIndex === index) {
+      this.mcpOAuthIndex = -1;
+    } else if (this.mcpOAuthIndex > index) {
+      this.mcpOAuthIndex--;
+    }
+    if (removedId.length > 0) {
+      McpOAuthService.purge(removedId);
     }
   }
 
@@ -903,10 +991,96 @@ export struct SettingsSheet {
         name: item.name,
         url: item.url,
         headers: item.headers,
-        enabled: i === index ? enabled : item.enabled
+        enabled: i === index ? enabled : item.enabled,
+        oauth: item.oauth
       });
     }
     this.mcpServers = next;
+  }
+
+  private openMcpOAuth(index: number): void {
+    if (index < 0 || index >= this.mcpServers.length) {
+      return;
+    }
+    this.mcpOAuthIndex = index;
+    this.mcpOAuthPaste = '';
+    this.mcpOAuthVerifier = '';
+    this.mcpOAuthState = '';
+    this.mcpOAuthStatus = '';
+    const server: McpServerConfig = this.mcpServers[index];
+    McpOAuthService.maskedToken(server.id).then((mask: string) => {
+      if (this.mcpOAuthIndex !== index) {
+        return;
+      }
+      this.mcpOAuthMask = mask;
+      this.mcpOAuthLoggedIn = mask.length > 0;
+    });
+  }
+
+  private async startMcpOAuthLogin(): Promise<void> {
+    if (this.mcpOAuthBusy || this.mcpOAuthIndex < 0 ||
+      this.mcpOAuthIndex >= this.mcpServers.length) {
+      return;
+    }
+    const server: McpServerConfig = this.mcpServers[this.mcpOAuthIndex];
+    if (!isMcpOAuthConfigured(server.oauth)) {
+      this.onToast('请先在编辑页填写 Client ID 与授权/令牌端点');
+      return;
+    }
+    this.mcpOAuthBusy = true;
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const start: McpOAuthLoginStart | null =
+      await McpOAuthService.beginLogin(context, server);
+    this.mcpOAuthBusy = false;
+    if (start === null) {
+      this.onToast('无法打开浏览器，请稍后重试');
+      return;
+    }
+    this.mcpOAuthVerifier = start.verifier;
+    this.mcpOAuthState = start.state;
+    this.mcpOAuthStatus = '已在浏览器打开授权页，完成后把回调地址粘贴到下方';
+  }
+
+  private async completeMcpOAuthLogin(): Promise<void> {
+    if (this.mcpOAuthBusy || this.mcpOAuthIndex < 0 ||
+      this.mcpOAuthIndex >= this.mcpServers.length) {
+      return;
+    }
+    const pasted: string = this.mcpOAuthPaste.trim();
+    if (pasted.length === 0) {
+      this.onToast('请先粘贴回调地址或授权码');
+      return;
+    }
+    const server: McpServerConfig = this.mcpServers[this.mcpOAuthIndex];
+    this.mcpOAuthBusy = true;
+    const outcome: McpOAuthOutcome = await McpOAuthService.completeLogin(
+      server, this.mcpOAuthVerifier, this.mcpOAuthState, pasted);
+    this.mcpOAuthBusy = false;
+    this.mcpOAuthStatus = outcome.message;
+    if (outcome.ok) {
+      const mask: string = await McpOAuthService.maskedToken(server.id);
+      this.mcpOAuthLoggedIn = mask.length > 0;
+      this.mcpOAuthMask = mask;
+      this.mcpOAuthVerifier = '';
+      this.mcpOAuthState = '';
+      this.mcpOAuthPaste = '';
+      this.refreshMcp();
+    }
+  }
+
+  private async logoutMcpOAuth(): Promise<void> {
+    if (this.mcpOAuthIndex < 0 || this.mcpOAuthIndex >= this.mcpServers.length) {
+      return;
+    }
+    const server: McpServerConfig = this.mcpServers[this.mcpOAuthIndex];
+    await McpOAuthService.signOut(server.id);
+    this.mcpOAuthLoggedIn = false;
+    this.mcpOAuthMask = '';
+    this.mcpOAuthVerifier = '';
+    this.mcpOAuthState = '';
+    this.mcpOAuthPaste = '';
+    this.mcpOAuthStatus = '已退出 MCP OAuth';
+    this.refreshMcp();
   }
 
   private async refreshMcp(): Promise<void> {
@@ -3198,6 +3372,12 @@ export struct SettingsSheet {
                       .onChange((on: boolean) => {
                         this.setMcpEnabled(this.mcpServers.indexOf(server), on);
                       })
+                    if (isMcpOAuthConfigured(server.oauth)) {
+                      Text('OAuth')
+                        .fontSize(10)
+                        .fontColor($r('app.color.accent'))
+                        .onClick(() => this.openMcpOAuth(this.mcpServers.indexOf(server)))
+                    }
                     Text('编辑')
                       .fontSize(10)
                       .fontColor($r('app.color.accent'))
@@ -3212,7 +3392,103 @@ export struct SettingsSheet {
                   .backgroundColor($r('app.color.surface'))
                   .borderRadius(9)
                 }, (server: McpServerConfig) => server.id + ':' +
-                  (server.enabled ? '1' : '0'))
+                  (server.enabled ? '1' : '0') + ':' +
+                  (isMcpOAuthConfigured(server.oauth) ? '1' : '0'))
+
+                if (this.mcpOAuthIndex >= 0 && this.mcpOAuthIndex < this.mcpServers.length) {
+                  Column({ space: 8 }) {
+                    Row({ space: 8 }) {
+                      Text('OAuth · ' + this.mcpServers[this.mcpOAuthIndex].name)
+                        .fontSize(11)
+                        .fontColor($r('app.color.text_primary'))
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                        .layoutWeight(1)
+                      Text('关闭')
+                        .fontSize(10)
+                        .fontColor($r('app.color.text_secondary'))
+                        .onClick(() => {
+                          this.mcpOAuthIndex = -1;
+                        })
+                    }
+                    .width('100%')
+
+                    Text(this.mcpOAuthLoggedIn
+                      ? '状态：已授权 ' + this.mcpOAuthMask
+                      : '状态：未授权')
+                      .fontSize(10)
+                      .fontColor(this.mcpOAuthLoggedIn
+                        ? $r('app.color.accent')
+                        : $r('app.color.text_tertiary'))
+                      .width('100%')
+
+                    Text('回调地址需与 OAuth 应用登记的一致（默认 http://localhost:54546/callback）。' +
+                      '授权后从浏览器地址栏复制完整回调地址，粘贴到下方完成登录。')
+                      .fontSize(9)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(14)
+                      .width('100%')
+
+                    Row({ space: 8 }) {
+                      Button(this.mcpOAuthBusy ? '请稍候…' : '开始登录', { type: ButtonType.Normal })
+                        .layoutWeight(1)
+                        .height(32)
+                        .fontSize(11)
+                        .fontColor($r('app.color.on_accent'))
+                        .backgroundColor($r('app.color.accent'))
+                        .borderRadius(8)
+                        .enabled(!this.mcpOAuthBusy)
+                        .onClick(() => this.startMcpOAuthLogin())
+                      if (this.mcpOAuthLoggedIn) {
+                        Button('退出登录', { type: ButtonType.Normal })
+                          .layoutWeight(1)
+                          .height(32)
+                          .fontSize(11)
+                          .fontColor($r('app.color.danger'))
+                          .backgroundColor($r('app.color.surface'))
+                          .borderRadius(8)
+                          .enabled(!this.mcpOAuthBusy)
+                          .onClick(() => this.logoutMcpOAuth())
+                      }
+                    }
+                    .width('100%')
+
+                    TextInput({
+                      text: this.mcpOAuthPaste,
+                      placeholder: '粘贴回调地址或授权码'
+                    })
+                      .height(36)
+                      .fontSize(11)
+                      .backgroundColor($r('app.color.surface'))
+                      .borderRadius(9)
+                      .onChange((value: string) => {
+                        this.mcpOAuthPaste = value;
+                      })
+
+                    Button(this.mcpOAuthBusy ? '请稍候…' : '完成登录', { type: ButtonType.Normal })
+                      .width('100%')
+                      .height(32)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_primary'))
+                      .backgroundColor($r('app.color.surface'))
+                      .borderRadius(8)
+                      .enabled(!this.mcpOAuthBusy)
+                      .onClick(() => this.completeMcpOAuthLogin())
+
+                    if (this.mcpOAuthStatus.length > 0) {
+                      Text(this.mcpOAuthStatus)
+                        .fontSize(9)
+                        .fontColor($r('app.color.text_tertiary'))
+                        .lineHeight(14)
+                        .width('100%')
+                    }
+                  }
+                  .width('100%')
+                  .padding(12)
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(11)
+                  .alignItems(HorizontalAlign.Start)
+                }
 
                 if (this.mcpStatusText.length > 0) {
                   Text(this.mcpStatusText)
@@ -3254,6 +3530,105 @@ export struct SettingsSheet {
                       .onChange((value: string) => {
                         this.mcpHeadersText = value;
                       })
+
+                    Row({ space: 8 }) {
+                      Column({ space: 2 }) {
+                        Text('OAuth 登录（静态客户端）')
+                          .fontSize(11)
+                          .fontColor($r('app.color.text_primary'))
+                        Text('填写 OAuth 应用的客户端信息，保存后在服务列表点 OAuth 完成授权。')
+                          .fontSize(9)
+                          .fontColor($r('app.color.text_tertiary'))
+                      }
+                      .layoutWeight(1)
+                      .alignItems(HorizontalAlign.Start)
+                      Toggle({ type: ToggleType.Switch, isOn: this.mcpOAuthExpanded })
+                        .selectedColor($r('app.color.accent'))
+                        .onChange((on: boolean) => {
+                          this.mcpOAuthExpanded = on;
+                        })
+                    }
+                    .width('100%')
+
+                    if (this.mcpOAuthExpanded) {
+                      this.fieldLabel('Client ID')
+                      TextInput({ text: this.mcpOAuthClientId, placeholder: 'OAuth 应用的 client_id' })
+                        .height(36)
+                        .fontSize(11)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.mcpOAuthClientId = value;
+                        })
+
+                      this.fieldLabel('授权端点')
+                      TextInput({ text: this.mcpOAuthAuthorizeUrl, placeholder: 'https://auth.example.com/authorize' })
+                        .height(36)
+                        .fontSize(11)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.mcpOAuthAuthorizeUrl = value;
+                        })
+
+                      this.fieldLabel('令牌端点')
+                      TextInput({ text: this.mcpOAuthTokenUrl, placeholder: 'https://auth.example.com/token' })
+                        .height(36)
+                        .fontSize(11)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.mcpOAuthTokenUrl = value;
+                        })
+
+                      this.fieldLabel('作用域（可选，空格分隔）')
+                      TextInput({ text: this.mcpOAuthScopes, placeholder: 'openid email' })
+                        .height(36)
+                        .fontSize(11)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.mcpOAuthScopes = value;
+                        })
+
+                      this.fieldLabel('回调地址（可选）')
+                      TextInput({ text: this.mcpOAuthRedirect, placeholder: 'http://localhost:54546/callback' })
+                        .height(36)
+                        .fontSize(11)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.mcpOAuthRedirect = value;
+                        })
+
+                      this.fieldLabel('资源标识（可选，RFC 8707）')
+                      TextInput({ text: this.mcpOAuthResource, placeholder: '留空则使用服务地址' })
+                        .height(36)
+                        .fontSize(11)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.mcpOAuthResource = value;
+                        })
+
+                      this.fieldLabel('Client Secret（可选，保存在安全存储）')
+                      TextInput({
+                        text: this.mcpOAuthSecret,
+                        placeholder: this.mcpIndex >= 0 &&
+                          this.mcpIndex < this.mcpServers.length &&
+                          this.mcpServers[this.mcpIndex].oauth.clientSecretSet
+                          ? '已保存，留空保持不变'
+                          : '公共客户端可留空'
+                      })
+                        .height(36)
+                        .fontSize(11)
+                        .type(InputType.Password)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.mcpOAuthSecret = value;
+                        })
+                    }
 
                     Row({ space: 8 }) {
                       Text('启用')

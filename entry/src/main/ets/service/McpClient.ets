@@ -17,7 +17,22 @@ import {
   toolsFromResult
 } from '../core/McpProtocol';
 
-function headersOf(config: McpServerConfig, sessionId: string): Record<string, string> {
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const wanted: string = name.toLowerCase();
+  const keys: string[] = Object.keys(headers);
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i].toLowerCase() === wanted) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function headersOf(
+  config: McpServerConfig,
+  sessionId: string,
+  bearer: string
+): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/event-stream',
@@ -29,6 +44,10 @@ function headersOf(config: McpServerConfig, sessionId: string): Record<string, s
     for (let i = 0; i < keys.length; i++) {
       headers[keys[i]] = extra[keys[i]];
     }
+  }
+  // A user-supplied Authorization header wins over the OAuth login.
+  if (bearer.length > 0 && !hasHeader(headers, 'Authorization')) {
+    headers['Authorization'] = 'Bearer ' + bearer;
   }
   if (sessionId.length > 0) {
     headers['Mcp-Session-Id'] = sessionId;
@@ -43,20 +62,22 @@ function headersOf(config: McpServerConfig, sessionId: string): Record<string, s
  */
 export class McpClient {
   config: McpServerConfig;
+  private bearer: string;
   private nextId: number = 1;
   private sessionId: string = '';
   private tools: McpToolInfo[] = [];
   lastError: string = '';
 
-  constructor(config: McpServerConfig) {
+  constructor(config: McpServerConfig, bearer: string = '') {
     this.config = config;
+    this.bearer = bearer;
   }
 
   private async post(payload: string, expectReply: boolean): Promise<McpRpcResponse | null> {
     const request: http.HttpRequest = http.createHttp();
     const options: http.HttpRequestOptions = {
       method: http.RequestMethod.POST,
-      header: headersOf(this.config, this.sessionId),
+      header: headersOf(this.config, this.sessionId, this.bearer),
       extraData: payload,
       connectTimeout: 15000,
       readTimeout: 60000,

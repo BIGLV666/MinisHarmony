@@ -1,4 +1,11 @@
-import { ChatAttachment, ChatMessage, messageKey, modelName, scaleFont } from '../core/Types';
+import {
+  ChatAttachment,
+  ChatMessage,
+  messageKey,
+  modelName,
+  scaleFont,
+  textOf
+} from '../core/Types';
 import { capsForModel, contextPercent, formatWindow } from '../core/ModelCaps';
 import { formatTokens } from '../service/Format';
 import { MessageBubble } from './MessageBubble';
@@ -46,7 +53,28 @@ export struct ChatView {
   };
   onRewind: (id: string) => void = (id: string) => {
   };
+  /** Receives the assistant turn plus the question it answers. */
+  onSnapshot: (message: ChatMessage, question: string) => void =
+    (message: ChatMessage, question: string) => {
+    };
   onOpenLink: ((url: string) => void) | null = null;
+
+  /** Nearest preceding user message, used as the header question on the card. */
+  private questionFor(message: ChatMessage): string {
+    let index: number = -1;
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].id === message.id) {
+        index = i;
+        break;
+      }
+    }
+    for (let i = index - 1; i >= 0; i--) {
+      if (this.messages[i].role === 'user') {
+        return textOf(this.messages[i]);
+      }
+    }
+    return '';
+  }
 
   private scroller: Scroller = new Scroller();
 
@@ -380,6 +408,7 @@ export struct ChatView {
                   onRegenerate: () => this.onRegenerate(),
                   onEdit: () => this.onEdit(message.id),
                   onRewind: () => this.onRewind(message.id),
+                  onSnapshot: () => this.onSnapshot(message, this.questionFor(message)),
                   onOpenLink: this.onOpenLink
                 })
               }

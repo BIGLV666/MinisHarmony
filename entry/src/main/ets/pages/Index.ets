@@ -59,6 +59,9 @@ import {
 import { BACKUP_MIN_PASSWORD, isEncryptedBackup } from '../core/BackupCrypto';
 import { decryptBackupText, DecryptOutcome } from '../service/BackupCrypto';
 import { SettingsImageGen } from '../service/ImageGen';
+import { ScreenshotOutcome, saveShareCard } from '../service/Screenshot';
+import { shareCardFileName } from '../core/ShareCard';
+import { shareCardView } from '../components/ShareCardView';
 import { AttachmentStore } from '../service/AttachmentStore';
 import { MemoryStore } from '../service/MemoryStore';
 import { SkillDoc, SkillCommand, matchSkillCommand } from '../core/SkillDoc';
@@ -339,6 +342,24 @@ struct Index {
 
   private toast(message: string): void {
     this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 });
+  }
+
+  /**
+   * Render the turn offscreen (full height, independent of the scroll
+   * position) and save it as a PNG through the system document picker.
+   */
+  private async shareTurn(message: ChatMessage, question: string): Promise<void> {
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const title: string = this.currentTitle();
+    const outcome: ScreenshotOutcome = await saveShareCard(
+      context,
+      this.getUIContext(),
+      () => {
+        shareCardView(question, message, title, this.accent);
+      },
+      shareCardFileName(title, new Date())
+    );
+    this.toast(outcome.message);
   }
 
   private createChat(persist: boolean = true): void {
@@ -2036,6 +2057,9 @@ struct Index {
       onRegenerate: () => this.regenerateLast(),
       onEdit: (id: string) => this.beginEdit(id),
       onRewind: (id: string) => this.requestRewind(id),
+      onSnapshot: (message: ChatMessage, question: string) => {
+        this.shareTurn(message, question);
+      },
       onOpenLink: (url: string) => {
         this.browserUrl = url;
         this.showBrowser = true;

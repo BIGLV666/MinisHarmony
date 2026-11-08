@@ -47,6 +47,7 @@ copyCore('EditPatch');
 copyCore('Memory');
 copyCore('ContextBudget', ['Types']);
 copyCore('MarkdownExport', ['Types']);
+copyCore('ShareCard', ['MarkdownExport']);
 copyCore('ToolArgs');
 copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
@@ -185,6 +186,7 @@ const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href)
 const latex = await import(pathToFileURL(join(tmp, 'Latex.mts')).href);
 const jobs = await import(pathToFileURL(join(tmp, 'SubagentJob.mts')).href);
 const webUrl = await import(pathToFileURL(join(tmp, 'WebUrl.mts')).href);
+const shareCard = await import(pathToFileURL(join(tmp, 'ShareCard.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -1976,4 +1978,37 @@ test('web URLs get https and hosts display without noise', () => {
   assert.equal(webUrl.webHost('example.com'), 'example.com');
   assert.equal(webUrl.webHost('https://sub.www.example.com/'), 'sub.www.example.com');
   assert.equal(webUrl.webHost(''), '');
+});
+
+test('share card names, truncation and tool summary stay bounded', () => {
+  assert.equal(
+    shareCard.shareCardFileName('我的/会话', new Date(2026, 10, 8)),
+    '我的_会话-2026-11-08-share.png'
+  );
+  assert.equal(shareCard.shareCardFileName('   ', new Date(2026, 0, 2)),
+    '对话-2026-01-02-share.png');
+
+  assert.equal(shareCard.shareCardBody('  你好  '), '你好');
+  assert.equal(
+    shareCard.shareCardStamp(new Date(2026, 10, 8, 9, 5).getTime()),
+    '2026-11-08 09:05'
+  );
+
+  const long = 'x'.repeat(shareCard.MAX_SHARE_BODY_CHARS + 50);
+  const body = shareCard.shareCardBody(long);
+  assert.equal(body.length,
+    shareCard.MAX_SHARE_BODY_CHARS + '\n\n…（内容过长，已截断）'.length);
+  assert.ok(body.endsWith('…（内容过长，已截断）'));
+
+  const many = [];
+  for (let i = 0; i < shareCard.MAX_SHARE_TOOL_LINES + 3; i++) {
+    many.push('✓ tool' + i);
+  }
+  const lines = shareCard.shareCardToolLines(many);
+  assert.equal(lines.length, shareCard.MAX_SHARE_TOOL_LINES + 1);
+  assert.equal(lines[shareCard.MAX_SHARE_TOOL_LINES], '…还有 3 个工具调用');
+
+  const few = ['✓ a', '✕ b'];
+  assert.deepEqual(shareCard.shareCardToolLines(few), ['✓ a', '✕ b']);
+  assert.notEqual(shareCard.shareCardToolLines(few), few);
 });

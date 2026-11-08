@@ -9,6 +9,7 @@ import {
   parseMarkdown
 } from '../core/Markdown';
 import { scaleFont } from '../core/Types';
+import { latexToText } from '../core/Latex';
 import { MathBlockView } from './MathBlockView';
 import {
   CodeSegment,
@@ -27,6 +28,11 @@ export struct MarkdownView {
   @StorageProp('fontScale') fontScale: number = 1;
   /** When set, http(s) links open in the in-app browser. */
   onOpenLink: ((url: string) => void) | null = null;
+  /**
+   * Offscreen snapshot cards cannot host ArkWeb, so display math falls back to
+   * the Unicode approximation there. The interactive chat view keeps KaTeX.
+   */
+  @Prop plainMath: boolean = false;
   @State blocks: MdBlock[] = [];
 
   aboutToAppear(): void {
@@ -244,9 +250,18 @@ export struct MarkdownView {
 
   @Builder
   mathBlock(block: MdBlock) {
-    MathBlockView({
-      source: block.raw !== undefined ? block.raw : block.text
-    })
+    if (this.plainMath) {
+      Text(latexToText(block.raw !== undefined ? block.raw : block.text))
+        .fontSize(scaleFont(15, this.fontScale))
+        .fontFamily('monospace')
+        .fontColor($r('app.color.text_primary'))
+        .textAlign(TextAlign.Center)
+        .width('100%')
+    } else {
+      MathBlockView({
+        source: block.raw !== undefined ? block.raw : block.text
+      })
+    }
   }
 
   @Builder

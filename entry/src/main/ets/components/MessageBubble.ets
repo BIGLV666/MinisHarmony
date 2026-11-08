@@ -42,6 +42,9 @@ export struct MessageBubble {
   };
   onRewind: () => void = () => {
   };
+  /** Render this turn into a shareable PNG (host builds the offscreen card). */
+  onSnapshot: () => void = () => {
+  };
   onOpenLink: ((url: string) => void) | null = null;
 
   private isUser(): boolean {
@@ -348,6 +351,10 @@ export struct MessageBubble {
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
             .onClick(() => this.copy())
+          Text('截图')
+            .fontSize(11)
+            .fontColor($r('app.color.text_tertiary'))
+            .onClick(() => this.onSnapshot())
         }
         if (this.canRegenerate) {
           Text(this.message.error ? '重试' : '重新生成')

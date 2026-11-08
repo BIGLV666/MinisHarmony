@@ -213,11 +213,21 @@ $HDC shell aa start -a EntryAbility -b app.minis.client --ps sandboxProbe true
 sleep 10
 $HDC shell hilog -x -T MinisHarmony | grep PROBE
 
-# 启动 iSH 并跑冒烟命令（echo/uname/id/alpine-release）
+# 启动 iSH 并跑冒烟命令（内核/连续两条命令/Python 三组）
 $HDC shell aa start -a EntryAbility -b app.minis.client --ps sandboxIsh true
 sleep 15
 $HDC shell hilog -x -T MinisHarmony | grep ISH
 ```
+
+也可以一条命令完成构建、签名、安装、冒烟和断言：
+
+```bash
+scripts/verify-sandbox.sh --install   # 已安装时去掉 --install
+```
+
+脚本检查 `ISH1|hello-from-ish`、`ISH1|3.21.3`、`ISH2|pwd=/tmp`、
+`ISH2|smoke=kept`、`ISH3|python 3.12` 与 `ISH END`，失败时打印应用回传的
+原始日志；需要平板已连接（`hdc list targets` 非空）。
 
 也可以直接在平板上点：设置 → 工具与沙箱 → 启动 Linux 沙箱；输出面板
 支持长按复制。

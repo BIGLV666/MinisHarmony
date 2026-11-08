@@ -70,11 +70,18 @@ export default class EntryAbility extends UIAbility {
       'echo hello-from-ish; uname -a; id; cat /etc/alpine-release';
     const second: string = 'pwd; echo smoke=$MINIS_SMOKE; ' +
       'echo workspace=$(ls /var/minis/workspace | wc -l) entries';
+    // The preinstalled Python is only useful if its C extensions load, which
+    // exercises musl, OpenSSL and SQLite from the offline package set.
+    const third: string = 'python3 -c "import ssl, sqlite3, sys; ' +
+      'print(\'python\', sys.version.split()[0])"; echo python_exit=$?';
     SandboxIsh.run(this.context, first, 180000, options).then((one: SandboxRunResult) => {
       this.logIsh('ISH1', one.output, one.exitCode, Date.now() - began);
       return SandboxIsh.run(this.context, second, 60000, options);
     }).then((two: SandboxRunResult) => {
       this.logIsh('ISH2', two.output, two.exitCode, Date.now() - began);
+      return SandboxIsh.run(this.context, third, 120000, options);
+    }).then((three: SandboxRunResult) => {
+      this.logIsh('ISH3', three.output, three.exitCode, Date.now() - began);
       hilog.info(DOMAIN, TAG, 'ISH END total=%{public}dms',
         Date.now() - began);
     }).catch((error: Error) => {

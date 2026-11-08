@@ -59,6 +59,7 @@ export struct SettingsSheet {
   @State probeModels: string[] = [];
   @State toolsEnabled: boolean = true;
   @State allowWriteTools: boolean = false;
+  @State confirmWriteTools: boolean = false;
   @State sandboxMode: SandboxMode = 'local';
   @State sandboxUrl: string = '';
   @State sandboxToken: string = '';
@@ -88,6 +89,7 @@ export struct SettingsSheet {
     this.maxTokensText = copy.maxTokens.toString();
     this.toolsEnabled = copy.toolsEnabled;
     this.allowWriteTools = copy.allowWriteTools;
+    this.confirmWriteTools = copy.confirmWriteTools;
     this.sandboxMode = copy.sandboxMode;
     this.sandboxUrl = copy.sandboxUrl;
     this.sandboxToken = copy.sandboxToken;
@@ -155,6 +157,7 @@ export struct SettingsSheet {
       loggingEnabled: this.loggingEnabled,
       memoryEnabled: this.memoryEnabled,
       imageToolsEnabled: this.imageToolsEnabled,
+      confirmWriteTools: this.confirmWriteTools,
       backgroundEnabled: this.backgroundEnabled,
       thinkingLevel: this.settings.thinkingLevel,
       enterToSend: this.enterToSend,
@@ -798,6 +801,31 @@ export struct SettingsSheet {
               .padding({ left: 12, right: 12, top: 8, bottom: 8 })
               .backgroundColor($r('app.color.surface_alt'))
               .borderRadius(11)
+
+              if (this.allowWriteTools) {
+                Row({ space: 10 }) {
+                  Column({ space: 3 }) {
+                    Text('写入前逐次确认')
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_primary'))
+                    Text('每次 write_file / file_edit 执行前弹窗，可选择允许或拒绝；拒绝会作为错误结果返回给模型。')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(14)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  Toggle({ type: ToggleType.Switch, isOn: this.confirmWriteTools })
+                    .selectedColor($r('app.color.accent'))
+                    .onChange((on: boolean) => {
+                      this.confirmWriteTools = on;
+                    })
+                }
+                .width('100%')
+                .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(11)
+              }
 
               if (this.sandboxMode === 'local') {
                 Row({ space: 10 }) {

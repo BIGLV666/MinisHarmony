@@ -72,11 +72,16 @@ struct Index {
   @State editing: boolean = false;
   @State editId: string = '';
   @State editText: string = '';
+  /** Pending write-tool confirmation; the agent loop waits on it. */
+  @State confirmVisible: boolean = false;
+  @State confirmName: string = '';
+  @State confirmArgs: string = '';
 
   private store: StoredSession[] = [];
   private agent: AgentRuntime | null = null;
   private workspaceRoot: string = '';
   private saveTimer: number = -1;
+  private confirmResolve: ((allowed: boolean) => void) | null = null;
 
   aboutToAppear(): void {
     this.bootstrap();
@@ -474,7 +479,10 @@ struct Index {
       onError: (message: string) => {
         this.toast(message);
       }
-    });
+    }, this.settings.confirmWriteTools
+      ? (name: string, argumentsText: string) =>
+        this.askToolPermission(name, argumentsText)
+      : null);
     if (fresh) {
       this.agent.start(userText);
     } else {
@@ -727,6 +735,9 @@ struct Index {
   }
 
   private stopStream(): void {
+    // Unblock a tool waiting for confirmation, otherwise the loop would keep
+    // a pending promise after the generation was stopped.
+    this.settleToolPermission(false);
     if (this.agent !== null) {
       this.agent.cancel();
       this.agent = null;
@@ -734,6 +745,26 @@ struct Index {
     this.streaming = false;
     BackgroundGuard.end().catch((error: Error) => {});
     this.persistSoon();
+  }
+
+  private askToolPermission(name: string, argumentsText: string): Promise<boolean> {
+    this.confirmName = name;
+    this.confirmArgs = argumentsText.length > 1500
+      ? argumentsText.substring(0, 1500) + '\n…（已截断）'
+      : argumentsText;
+    this.confirmVisible = true;
+    return new Promise<boolean>((resolve: (allowed: boolean) => void) => {
+      this.confirmResolve = resolve;
+    });
+  }
+
+  private settleToolPermission(allowed: boolean): void {
+    const resolve: ((allowed: boolean) => void) | null = this.confirmResolve;
+    this.confirmResolve = null;
+    this.confirmVisible = false;
+    if (resolve !== null) {
+      resolve(allowed);
+    }
   }
 
   private applySettings(next: AppSettings): void {
@@ -941,6 +972,67 @@ struct Index {
       }
       .width('86%')
       .constraintSize({ maxWidth: 380 })
+      .padding(20)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  toolPermissionDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+      Column({ space: 10 }) {
+        Text('允许模型修改文件？')
+          .fontSize(17)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+        Text('工具：' + this.confirmName)
+          .fontSize(11)
+          .fontColor($r('app.color.text_tertiary'))
+        Scroll() {
+          Text(this.confirmArgs)
+            .fontSize(10)
+            .fontColor($r('app.color.text_secondary'))
+            .width('100%')
+            .textAlign(TextAlign.Start)
+        }
+        .width('100%')
+        .constraintSize({ maxHeight: 200 })
+        .padding(10)
+        .backgroundColor($r('app.color.surface_alt'))
+        .borderRadius(9)
+        .scrollBar(BarState.Auto)
+        Row({ space: 10 }) {
+          Button('拒绝', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
+            .onClick(() => this.settleToolPermission(false))
+          Button('允许', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.on_accent'))
+            .backgroundColor($r('app.color.accent'))
+            .borderRadius(11)
+            .onClick(() => this.settleToolPermission(true))
+        }
+        .width('100%')
+        .margin({ top: 4 })
+      }
+      .width('86%')
+      .constraintSize({ maxWidth: 420 })
       .padding(20)
       .backgroundColor($r('app.color.surface'))
       .borderRadius(18)
@@ -1166,6 +1258,10 @@ struct Index {
 
       if (this.editing) {
         this.editDialog()
+      }
+
+      if (this.confirmVisible) {
+        this.toolPermissionDialog()
       }
 
       if (this.rewindId.length > 0) {

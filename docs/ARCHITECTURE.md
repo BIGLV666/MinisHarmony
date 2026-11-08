@@ -169,6 +169,14 @@ interface ToolRuntime {
   而不是工作区；
 - `fetch_url` 只接受 `http(s)`，30 秒读超时。
 
+### 写入确认
+
+`AgentRuntime.runTool()` 在执行 `write_file` 或 `file_edit` 前，如果构造时传入了
+确认回调，会先 `await` 用户的选择。UI 把工具名与参数（截断到 1500 字符）显示在弹层里，
+「允许」继续执行，「拒绝」把该 part 写成 `error` 并附带「用户拒绝了这次工具调用」，
+模型下一轮能看到并调整策略。停止生成时 `Index.stopStream()` 先以拒绝结算挂起的
+Promise，避免循环卡在未决的确认上。子代理不传回调，因此不会被弹窗阻塞。
+
 ### 逐工具开关
 
 `AppSettings.disabledTools` 保存被关闭的工具名。`definitions()` 先按总开关、

@@ -51,6 +51,8 @@ export interface AppSettings {
   allowWriteTools: boolean;
   /** Expose read_image; only enable when the selected model accepts images. */
   imageToolsEnabled: boolean;
+  /** Ask the user before every write_file / file_edit call. */
+  confirmWriteTools: boolean;
   /** Where tool calls execute: in the app sandbox or a remote helper. */
   sandboxMode: SandboxMode;
   sandboxUrl: string;
@@ -336,6 +338,7 @@ export function defaultSettings(): AppSettings {
     toolsEnabled: true,
     allowWriteTools: false,
     imageToolsEnabled: false,
+    confirmWriteTools: false,
     sandboxMode: 'local',
     sandboxUrl: '',
     sandboxToken: '',
@@ -380,6 +383,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     toolsEnabled: source.toolsEnabled,
     allowWriteTools: source.allowWriteTools,
     imageToolsEnabled: source.imageToolsEnabled === true,
+    confirmWriteTools: source.confirmWriteTools === true,
     sandboxMode: source.sandboxMode,
     sandboxUrl: source.sandboxUrl,
     sandboxToken: source.sandboxToken,

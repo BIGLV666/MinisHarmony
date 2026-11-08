@@ -237,6 +237,8 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(settings.baseUrl, types.OPENCODE_GO_BASE);
   assert.equal(settings.toolsEnabled, true);
   assert.equal(settings.allowWriteTools, false);
+  assert.equal(settings.confirmWriteTools, false);
+  assert.equal(types.cloneSettings({ ...settings, confirmWriteTools: true }).confirmWriteTools, true);
   assert.equal(settings.sandboxMode, 'local');
   assert.equal(settings.backgroundEnabled, true);
   assert.equal(settings.thinkingLevel, 'off');

@@ -56,6 +56,13 @@ export interface AgentCallbacks {
   onError: (message: string) => void;
 }
 
+/**
+ * Asked immediately before a write tool runs when the user enabled
+ * confirmation. Resolve `false` to skip the call; the part becomes an error
+ * the model can see and react to.
+ */
+export type ToolConfirmHandler = (name: string, argumentsText: string) => Promise<boolean>;
+
 interface ToolAccumulator {
   id: string;
   name: string;
@@ -74,6 +81,7 @@ export class AgentRuntime {
   private tools: ToolRuntime;
   private session: StoredSession;
   private callbacks: AgentCallbacks;
+  private confirmTool: ToolConfirmHandler | null;
 
   private handle: ChatStreamHandle | null = null;
   private lastAssistant: ChatMessage | null = null;
@@ -93,12 +101,14 @@ export class AgentRuntime {
     settings: AppSettings,
     tools: ToolRuntime,
     session: StoredSession,
-    callbacks: AgentCallbacks
+    callbacks: AgentCallbacks,
+    confirmTool: ToolConfirmHandler | null = null
   ) {
     this.settings = settings;
     this.tools = tools;
     this.session = session;
     this.callbacks = callbacks;
+    this.confirmTool = confirmTool;
     this.maxTurns = clampMaxTurns(settings.maxAgentTurns);
   }
 
@@ -381,47 +391,7 @@ export class AgentRuntime {
         call.argumentsText = args;
       }
       const repeat: number = this.loopGuard.observe(call.toolName, args);
-      const job: Promise<void> = this.tools.execute(call.toolName, args).then(
-        (result: ToolResult) => {
-          if (!this.running || this.cancelled) {
-            return;
-          }
-          let content: string = result.content;
-          if (repeat >= TOOL_LOOP_THRESHOLD) {
-            content = toolLoopWarning(call.toolName, repeat) + '\n\n' + content;
-          }
-          call.resultText = truncateText(content, MAX_TOOL_RESULT);
-          call.status = result.ok ? TOOL_DONE : TOOL_ERROR;
-          call.isError = !result.ok;
-          if (result.imageUri !== undefined && result.imageUri.length > 0) {
-            call.uri = result.imageUri;
-            call.mimeType = result.imageMimeType !== undefined
-              ? result.imageMimeType
-              : '';
-          }
-          this.toolCount++;
-          this.log(
-            EVENT_TOOL_DONE, result.ok ? LOG_INFO : LOG_WARN, this.step,
-            call.toolName, result.ok, Date.now() - toolStartedAt,
-            'resultChars=' + call.resultText.length.toString() +
-              (repeat >= TOOL_LOOP_THRESHOLD ? ' loop=' + repeat.toString() : '')
-          );
-          this.emit();
-        }
-      ).catch((error: Error) => {
-        if (!this.running || this.cancelled) {
-          return;
-        }
-        call.resultText = '工具执行异常：' + error.message;
-        call.status = TOOL_ERROR;
-        call.isError = true;
-        this.toolCount++;
-        this.log(
-          EVENT_TOOL_DONE, LOG_ERROR, this.step, call.toolName, false,
-          Date.now() - toolStartedAt, error.message
-        );
-        this.emit();
-      });
+      const job: Promise<void> = this.runTool(call, args, repeat, toolStartedAt);
       jobs.push(job);
     }
     this.emit();
@@ -442,6 +412,84 @@ export class AgentRuntime {
       this.callbacks.onError('工具调度失败：' + error.message);
       this.finish();
     });
+  }
+
+  /**
+   * One tool call, including the optional user confirmation. Confirmation is
+   * requested only for writes and only when the caller supplied a handler, so
+   * subagents (which run without UI) are never blocked.
+   */
+  private async runTool(
+    call: MessagePart,
+    args: string,
+    repeat: number,
+    toolStartedAt: number
+  ): Promise<void> {
+    const needsConfirm: boolean = this.confirmTool !== null &&
+      (call.toolName === 'write_file' || call.toolName === 'file_edit');
+    if (needsConfirm) {
+      const handler: ToolConfirmHandler | null = this.confirmTool;
+      let allowed: boolean = false;
+      if (handler !== null) {
+        allowed = await handler(call.toolName, args);
+      }
+      if (!this.running || this.cancelled) {
+        return;
+      }
+      if (!allowed) {
+        call.resultText = '用户拒绝了这次工具调用：' + call.toolName;
+        call.status = TOOL_ERROR;
+        call.isError = true;
+        this.toolCount++;
+        this.log(
+          EVENT_TOOL_DONE, LOG_WARN, this.step, call.toolName, false,
+          Date.now() - toolStartedAt, 'denied by user'
+        );
+        this.emit();
+        return;
+      }
+    }
+    try {
+      const result: ToolResult = await this.tools.execute(call.toolName, args);
+      if (!this.running || this.cancelled) {
+        return;
+      }
+      let content: string = result.content;
+      if (repeat >= TOOL_LOOP_THRESHOLD) {
+        content = toolLoopWarning(call.toolName, repeat) + '\n\n' + content;
+      }
+      call.resultText = truncateText(content, MAX_TOOL_RESULT);
+      call.status = result.ok ? TOOL_DONE : TOOL_ERROR;
+      call.isError = !result.ok;
+      if (result.imageUri !== undefined && result.imageUri.length > 0) {
+        call.uri = result.imageUri;
+        call.mimeType = result.imageMimeType !== undefined
+          ? result.imageMimeType
+          : '';
+      }
+      this.toolCount++;
+      this.log(
+        EVENT_TOOL_DONE, result.ok ? LOG_INFO : LOG_WARN, this.step,
+        call.toolName, result.ok, Date.now() - toolStartedAt,
+        'resultChars=' + call.resultText.length.toString() +
+          (repeat >= TOOL_LOOP_THRESHOLD ? ' loop=' + repeat.toString() : '')
+      );
+      this.emit();
+    } catch (e) {
+      if (!this.running || this.cancelled) {
+        return;
+      }
+      const error: Error = e as Error;
+      call.resultText = '工具执行异常：' + error.message;
+      call.status = TOOL_ERROR;
+      call.isError = true;
+      this.toolCount++;
+      this.log(
+        EVENT_TOOL_DONE, LOG_ERROR, this.step, call.toolName, false,
+        Date.now() - toolStartedAt, error.message
+      );
+      this.emit();
+    }
   }
 
   private accumulate(deltas: ToolCallDelta[]): void {

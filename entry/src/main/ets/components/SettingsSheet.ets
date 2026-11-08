@@ -1136,7 +1136,7 @@ export struct SettingsSheet {
 
   @Builder
   deviceToggleRow(title: string, description: string, value: boolean,
-    apply: (next: boolean) => void) {
+    apply: (next: boolean) => void, available: boolean) {
     Row({ space: 10 }) {
       Column({ space: 3 }) {
         Text(title)
@@ -1149,9 +1149,15 @@ export struct SettingsSheet {
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      Toggle({ type: ToggleType.Switch, isOn: value })
-        .selectedColor($r('app.color.accent'))
-        .onChange((next: boolean) => apply(next))
+      if (available) {
+        Toggle({ type: ToggleType.Switch, isOn: value })
+          .selectedColor($r('app.color.accent'))
+          .onChange((next: boolean) => apply(next))
+      } else {
+        Text('暂不可用')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+      }
     }
     .width('100%')
     .padding({ left: 12, right: 12, top: 8, bottom: 8 })
@@ -2157,22 +2163,22 @@ export struct SettingsSheet {
                   '开启后模型可调用 calendar 查看事件或新建事件；首次使用会请求系统日历权限。',
                   this.calendarToolsEnabled, (next: boolean) => {
                     this.calendarToolsEnabled = next;
-                  })
+                  }, true)
                 this.deviceToggleRow('允许搜索通讯录',
-                  '开启后模型可调用 contacts 按姓名/电话/邮箱搜索；只读，不会修改通讯录。',
+                  '通讯录需要受限 ACL 权限，正在申请中；获批并重新签名前暂不可用。',
                   this.contactsToolsEnabled, (next: boolean) => {
                     this.contactsToolsEnabled = next;
-                  })
+                  }, false)
                 this.deviceToggleRow('允许获取定位',
                   '开启后模型可调用 location 读取当前经纬度；坐标会发送给模型与服务商。',
                   this.locationToolsEnabled, (next: boolean) => {
                     this.locationToolsEnabled = next;
-                  })
+                  }, true)
                 this.deviceToggleRow('允许查询天气',
                   '开启后模型可调用 weather；未指定城市时使用设备定位（同样需要定位权限）。',
                   this.weatherToolsEnabled, (next: boolean) => {
                     this.weatherToolsEnabled = next;
-                  })
+                  }, true)
               }
 
               Column({ space: 6 }) {

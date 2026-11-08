@@ -107,6 +107,7 @@ java -jar /home/biglv/harmony-sdk/sdk/default/openharmony/toolchains/lib/hap-sig
 | --- | --- |
 | `hdc list targets` 为空 | 平板 USB 模式只暴露了 MTP 接口，说明 USB 调试未打开或未授权。打开开发者选项里的 USB 调试，重新插拔并点「允许」。 |
 | 安装报 `9568289` / profile 不匹配 | 包名、UDID、证书和 Profile 不是同一套；核对 AGC 里注册的设备与当前平板 UDID。 |
+| 安装报 `9568289 grant request permissions failed: ohos.permission.READ_CONTACTS` | 通讯录是 system_basic 受限 ACL 权限，Profile 的 `allowed-acls` 必须是 `["ohos.permission.READ_CONTACTS"]`。当前版本已暂时从 `module.json5` 移除该权限，通讯录工具对模型隐藏；等 AGC 的 ACL 申请通过后再加回。 |
 | 安装报签名校验失败 | 用了自签证书，或 `.cer`/`.p7b` 不匹配。必须是 AGC 针对该 CSR 签发的调试证书。 |
 | 构建报 `00303168 SDK component missing` | 用了 `-p product=default`。本机没有 HarmonyOS SDK 组件，改 `-p product=ohos`。 |
 | 安装成功但启动闪退 | 用 `hdc hilog` 看崩溃栈；OpenHarmony 构建在 HarmonyOS 上缺少 HMS 组件时会出现这种情况，需要改用 HarmonyOS SDK 重新构建。 |

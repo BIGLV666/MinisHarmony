@@ -76,7 +76,10 @@ export class DeviceTools implements DeviceToolsHandler {
       return this.settings.calendarToolsEnabled;
     }
     if (name === 'contacts') {
-      return this.settings.contactsToolsEnabled;
+      // READ_CONTACTS is a system_basic (ACL) permission. Until the ACL is
+      // approved and included in the signing profile, keep the tool out of the
+      // model-visible list instead of failing at install time.
+      return false;
     }
     if (name === 'location') {
       return this.settings.locationToolsEnabled;
@@ -88,6 +91,9 @@ export class DeviceTools implements DeviceToolsHandler {
   }
 
   async execute(name: string, argumentsJson: string): Promise<ToolResult> {
+    if (name === 'contacts') {
+      return { ok: false, content: '通讯录工具需要受限 ACL 权限，当前签名尚未包含该权限。' };
+    }
     if (!this.enabled(name)) {
       return { ok: false, content: '该设备工具已在设置中关闭：' + name };
     }

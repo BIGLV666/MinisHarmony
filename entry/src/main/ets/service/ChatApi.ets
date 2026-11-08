@@ -4,6 +4,12 @@ import { util } from '@kit.ArkTS';
 import { AppSettings, ChatMessage } from '../core/Types';
 import { soulPrompt } from '../core/Soul';
 import { capsForModel, clampMaxTokens } from '../core/ModelCaps';
+import {
+  ModelOverride,
+  applyExtraBody,
+  findModelOverride,
+  mergeExtraHeaders
+} from '../core/ModelOverride';
 import { ApiMessage, ImageResolver, toApiMessages } from '../core/ToolProtocol';
 import { ToolDefinition, ToolParameters } from '../core/ToolTypes';
 import {
@@ -54,6 +60,7 @@ interface ChatRequestBody {
   stream: boolean;
   stream_options?: StreamOptions;
   temperature?: number;
+  top_p?: number;
   max_tokens?: number;
   /** Only sent when the user opted into thinking via /thinking. */
   reasoning_effort?: string;
@@ -234,13 +241,14 @@ export function startChatStream(
     return handle;
   }
 
+  const caps = capsForModel(settings.modelId);
   const body: ChatRequestBody = {
     model: settings.modelId,
     messages: buildMessages(settings, history, memoryContext, resolveImage),
     stream: true,
     stream_options: { include_usage: true },
     temperature: settings.temperature,
-    max_tokens: clampMaxTokens(settings.maxTokens, capsForModel(settings.modelId))
+    max_tokens: clampMaxTokens(settings.maxTokens, caps)
   };
   if (settings.thinkingLevel !== 'off') {
     body.reasoning_effort = settings.thinkingLevel;
@@ -249,8 +257,21 @@ export function startChatStream(
     body.tools = buildToolDefinitions(tools);
     body.tool_choice = 'auto';
   }
+  const overrides: ModelOverride[] = settings.modelOverrides !== undefined ? settings.modelOverrides : [];
+  const override: ModelOverride | null = findModelOverride(overrides, settings.modelId);
+  if (override !== null) {
+    if (override.temperature >= 0) {
+      body.temperature = override.temperature;
+    }
+    if (override.topP >= 0) {
+      body.top_p = override.topP;
+    }
+    if (override.maxTokens > 0) {
+      body.max_tokens = clampMaxTokens(override.maxTokens, caps);
+    }
+  }
 
-  const headers: Record<string, string> = {
+  let headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept': 'text/event-stream',
     'Authorization': 'Bearer ' + apiKey,
@@ -259,11 +280,17 @@ export function startChatStream(
   if (shouldAttachSessionHeader(baseUrl, sessionId)) {
     headers[OPENCODE_SESSION_HEADER] = sessionId;
   }
+  if (override !== null) {
+    headers = mergeExtraHeaders(headers, override.extraHeaders);
+  }
+  const payload: string = override !== null
+    ? applyExtraBody(JSON.stringify(body), override.extraBody)
+    : JSON.stringify(body);
 
   const options: http.HttpRequestOptions = {
     method: http.RequestMethod.POST,
     header: headers,
-    extraData: JSON.stringify(body),
+    extraData: payload,
     connectTimeout: 20000,
     readTimeout: 600000,
     usingCache: false

@@ -91,7 +91,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [ ] | 模型组 | fallback / 负载均衡 | 按顺序重试 | P3 |
 | - [x] | thinking level | 逐模型推理档位 | 设置页四档（off/low/medium/high）+ `/thinking` 循环；请求体 `reasoning_effort`。全局设置，不做逐模型元数据 | P2 |
 | - [ ] | fast mode | 优先级队列 | 取决于上游支持 | P3 |
-| - [ ] | 逐模型参数覆盖 | temperature/top_p/headers/extra_body | `AppSettings` 增加 per-model 表 | P2 |
+| - [x] | 逐模型参数覆盖 | temperature/top_p/headers/extra_body | `AppSettings.modelOverrides` 按模型 ID 精确匹配；设置页可增删改；温度/top_p/最大输出覆盖请求字段，请求头 JSON 合并，extra_body 顶层字段覆盖基础请求体；非法 JSON 在保存时拒绝、请求时忽略 | P2 |
 | - [x] | 模型能力元数据 | models.dev 目录、上下文长度 | `core/ModelCaps.ets` 按家族前缀内置上下文/输出/视觉/推理估计；顶栏显示 `已用 / 窗口 (百分比)`，模型列表显示能力标签，`max_tokens` 按上限夹取；离线可用，不做远端拉取 | P2 |
 
 ## 5. 记忆 / 技能 / 人格
@@ -256,3 +256,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 剪贴板工具 | `clipboard_read` / `clipboard_write` 经 `pasteboard` 读写纯文本；默认关闭，设置页「允许访问剪贴板」；读取截断到 24k 字符、写入上限 100k；子代理继承，远程模式不暴露 |
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
 | 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |
+| 2026-11-08 | 逐模型参数覆盖 | `core/ModelOverride.ets` + 设置页「逐模型参数」：按模型 ID 精确匹配，覆盖 temperature / top_p / max_tokens，合并额外请求头与 extra_body；未知模型或全局参数不受影响；坏 JSON 保存时拒绝；57 项测试通过 |

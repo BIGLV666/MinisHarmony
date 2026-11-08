@@ -2,6 +2,7 @@ import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { SecureStore } from './SecureStore';
 import { normalizeSoulId } from '../core/Soul';
+import { normalizeModelOverrides } from '../core/ModelOverride';
 import {
   AppSettings,
   ChatMessage,
@@ -102,7 +103,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     accentColor: normalizeAccentColor(source.accentColor),
     fontScale: clampFontScale(source.fontScale),
     soulId: normalizeSoulId(source.soulId),
-    enabledSkills: normalizeToolNames(source.enabledSkills)
+    enabledSkills: normalizeToolNames(source.enabledSkills),
+    modelOverrides: normalizeModelOverrides(source.modelOverrides)
   };
 }
 

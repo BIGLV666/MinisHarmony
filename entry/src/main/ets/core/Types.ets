@@ -10,6 +10,8 @@
  * OpenAI `tool_calls` shape when converted back into a request.
  */
 
+import { ModelOverride, normalizeModelOverrides } from './ModelOverride';
+
 export const OPENCODE_GO_BASE: string = 'https://opencode.ai/zen/go/v1';
 export const OPENCODE_DEFAULT_MODEL: string = 'kimi-k3';
 export const APP_VERSION: string = '1.0.0';
@@ -101,6 +103,8 @@ export interface AppSettings {
   soulId: string;
   /** Skill ids (imported SKILL.md files) injected into the system prompt. */
   enabledSkills: string[];
+  /** Optional per-model request overrides (temperature, top_p, headers, body). */
+  modelOverrides: ModelOverride[];
 }
 
 export const DEFAULT_ACCENT_COLOR: string = '#2F6BFF';
@@ -431,7 +435,8 @@ export function defaultSettings(): AppSettings {
     accentColor: DEFAULT_ACCENT_COLOR,
     fontScale: 1,
     soulId: 'general',
-    enabledSkills: []
+    enabledSkills: [],
+    modelOverrides: []
   };
 }
 
@@ -485,7 +490,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     soulId: source.soulId !== undefined && source.soulId.length > 0
       ? source.soulId
       : 'general',
-    enabledSkills: normalizeToolNames(source.enabledSkills)
+    enabledSkills: normalizeToolNames(source.enabledSkills),
+    modelOverrides: normalizeModelOverrides(source.modelOverrides)
   };
 }
 

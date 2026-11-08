@@ -500,6 +500,24 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 空消息。`read_image` 与用户附件共用同一条 `image_url` 通路，但开关互不影响。
 模型能力表未标记视觉时只提示，不阻止发送。
 
+## 逐模型参数
+
+`AppSettings.modelOverrides` 是一张按模型 ID 精确匹配的表（不走前缀、不做
+大小写折叠）：每条记录可带 temperature、top_p、max_tokens 三个数值覆盖，
+以及两个 JSON 文本字段 `extraHeaders` / `extraBody`。数值用 `-1` / `0`
+表示“继承全局”，空字符串表示没有额外内容。
+
+`ChatApi.startChatStream()` 在组装完基础请求体和默认请求头后应用覆盖：
+数值直接写入类型化字段，`max_tokens` 仍按 `ModelCaps` 夹取；请求头经
+`mergeExtraHeaders()` 合并（同名时覆盖）；最后把 body 序列化后交给
+`applyExtraBody()`，它只合并顶层键、同名时覆盖，再重新序列化，因此
+`ChatRequestBody` 保持严格类型，同时能携带任意 provider 字段。
+
+两个 JSON 字段在设置页保存前校验：请求头必须是“字符串到字符串”的对象，
+extra_body 必须是 JSON 对象；失败时提示并拒绝保存。运行时若读到历史遗留的
+坏值，解析失败会退回原始请求而不阻断对话。覆盖只作用于聊天请求，
+`/compact` 摘要与子代理沿用各自构建的请求体。
+
 ## 剪贴板工具
 
 `clipboard_read` / `clipboard_write` 走 `@kit.BasicServicesKit` 的 `pasteboard`，

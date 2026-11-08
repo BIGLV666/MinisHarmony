@@ -53,6 +53,8 @@ copyCore('Appearance');
 copyCore('Soul');
 copyCore('SkillDoc');
 copyCore('ModelCaps');
+copyCore('ModelOverride');
+copyCore('Types', ['ModelOverride']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -84,6 +86,7 @@ markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'T
 markTypeOnly('ToolProtocol', 'Types', ['ChatMessage']);
 markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'MessagePart', 'StoredSession']);
 markTypeOnly('SessionParams', 'Types', ['AppSettings', 'SessionMeta', 'ThinkingLevel']);
+markTypeOnly('Types', 'ModelOverride', ['ModelOverride']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -143,6 +146,7 @@ const appearance = await import(pathToFileURL(join(tmp, 'Appearance.mts')).href)
 const soul = await import(pathToFileURL(join(tmp, 'Soul.mts')).href);
 const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
+const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -1159,6 +1163,54 @@ test('multi-session bundle round-trips every session with fresh ids', () => {
   const empty = sessionExport.parseSessionsExport(
     JSON.stringify({ app: 'MinisHarmony', version: 1, sessions: [] }), () => 'x', now);
   assert.equal(empty.ok, false);
+});
+
+test('model overrides match by exact id and normalize numeric fields', () => {
+  const list = modelOverride.normalizeModelOverrides([
+    { modelId: ' kimi-k3 ', temperature: 0.3, topP: 0.9, maxTokens: 4096.7,
+      extraHeaders: '{"X-Title":"Minis"}', extraBody: '{"provider":{}}' },
+    { modelId: 'kimi-k3', temperature: 1.5, topP: 1, maxTokens: 1,
+      extraHeaders: '', extraBody: '' },
+    { modelId: '', temperature: 1, topP: 1, maxTokens: 1, extraHeaders: '', extraBody: '' },
+    { modelId: 'claude-x', temperature: -1, topP: -1, maxTokens: 0,
+      extraHeaders: '', extraBody: '' }
+  ]);
+  assert.equal(list.length, 2);
+  assert.equal(list[0].modelId, 'kimi-k3');
+  assert.equal(list[0].temperature, 0.3);
+  assert.equal(list[0].maxTokens, 4096);
+  assert.equal(list[1].temperature, -1);
+  assert.equal(modelOverride.findModelOverride(list, 'kimi-k3').maxTokens, 4096);
+  assert.equal(modelOverride.findModelOverride(list, 'Kimi-K3'), null);
+  assert.equal(modelOverride.findModelOverride(list, ''), null);
+  assert.equal(modelOverride.overrideSummary(list[1]), '未设置覆盖项');
+});
+
+test('extra headers and extra body validate and merge safely', () => {
+  assert.deepEqual(modelOverride.parseExtraHeaders(''), {});
+  assert.deepEqual(modelOverride.parseExtraHeaders(' {"X-A":"1"} '), { 'X-A': '1' });
+  assert.equal(modelOverride.parseExtraHeaders('{"X-A":1}'), null);
+  assert.equal(modelOverride.parseExtraHeaders('[]'), null);
+  assert.equal(modelOverride.parseExtraHeaders('{'), null);
+
+  assert.deepEqual(modelOverride.parseExtraBody(''), {});
+  assert.equal(modelOverride.parseExtraBody('[1]'), null);
+  assert.equal(modelOverride.parseExtraBody('nope'), null);
+
+  const headers = modelOverride.mergeExtraHeaders(
+    { 'Content-Type': 'application/json', 'X-B': 'old' },
+    '{"X-B":"new","X-C":"3"}');
+  assert.deepEqual(headers, {
+    'Content-Type': 'application/json', 'X-B': 'new', 'X-C': '3'
+  });
+
+  const base = JSON.stringify({ model: 'm', temperature: 1, top_p: 0.5, tools: [] });
+  const merged = JSON.parse(modelOverride.applyExtraBody(base, '{"top_p":0.2,"seed":7}'));
+  assert.equal(merged.model, 'm');
+  assert.equal(merged.top_p, 0.2);
+  assert.equal(merged.seed, 7);
+  assert.equal(modelOverride.applyExtraBody(base, 'not json'), base);
+  assert.equal(modelOverride.applyExtraBody(base, ''), base);
 });
 
 test('workspace listing sorts directories first and formats sizes', () => {

@@ -26,6 +26,14 @@ import { SOUL_PRESETS, SoulPreset } from '../core/Soul';
 import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
+import {
+  ModelOverride,
+  OVERRIDE_INHERIT,
+  isValidExtraBody,
+  isValidExtraHeaders,
+  normalizeModelOverrides,
+  overrideSummary
+} from '../core/ModelOverride';
 
 interface ToolChoice {
   name: string;
@@ -110,6 +118,15 @@ export struct SettingsSheet {
   @State memoryFiles: MemoryFile[] = [];
   @State memoryIndex: number = 0;
   @State memoryText: string = '';
+  @State modelOverrides: ModelOverride[] = [];
+  @State editingOverride: boolean = false;
+  @State ovIndex: number = -1;
+  @State ovModelId: string = '';
+  @State ovTemperatureText: string = '';
+  @State ovTopPText: string = '';
+  @State ovMaxTokensText: string = '';
+  @State ovHeadersText: string = '';
+  @State ovBodyText: string = '';
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -142,6 +159,7 @@ export struct SettingsSheet {
     this.accentColor = copy.accentColor;
     this.fontScale = copy.fontScale;
     this.disabledTools = copy.disabledTools.slice();
+    this.modelOverrides = normalizeModelOverrides(copy.modelOverrides);
   }
 
   private toolEnabled(name: string): boolean {
@@ -249,9 +267,117 @@ export struct SettingsSheet {
       appLockEnabled: this.appLockEnabled,
       accentColor: this.accentColor,
       fontScale: this.fontScale,
-      enabledSkills: this.enabledSkills.slice()
+      enabledSkills: this.enabledSkills.slice(),
+      modelOverrides: normalizeModelOverrides(this.modelOverrides)
     };
     return next;
+  }
+
+  private beginOverride(index: number): void {
+    if (this.editingOverride && index < 0) {
+      this.editingOverride = false;
+      return;
+    }
+    this.editingOverride = true;
+    this.ovIndex = index;
+    if (index >= 0 && index < this.modelOverrides.length) {
+      const item: ModelOverride = this.modelOverrides[index];
+      this.ovModelId = item.modelId;
+      this.ovTemperatureText = item.temperature >= 0 ? item.temperature.toString() : '';
+      this.ovTopPText = item.topP >= 0 ? item.topP.toString() : '';
+      this.ovMaxTokensText = item.maxTokens > 0 ? item.maxTokens.toString() : '';
+      this.ovHeadersText = item.extraHeaders;
+      this.ovBodyText = item.extraBody;
+    } else {
+      this.ovIndex = -1;
+      this.ovModelId = this.modelId.trim();
+      this.ovTemperatureText = '';
+      this.ovTopPText = '';
+      this.ovMaxTokensText = '';
+      this.ovHeadersText = '';
+      this.ovBodyText = '';
+    }
+  }
+
+  private parseOptionalNumber(text: string, min: number, max: number): number {
+    const trimmed: string = text.trim();
+    if (trimmed.length === 0) {
+      return OVERRIDE_INHERIT;
+    }
+    const value: number = Number(trimmed);
+    if (Number.isNaN(value) || value < min || value > max) {
+      return Number.NaN;
+    }
+    return value;
+  }
+
+  private saveOverride(): void {
+    const id: string = this.ovModelId.trim();
+    if (id.length === 0) {
+      this.onToast('请填写模型 ID');
+      return;
+    }
+    if (!isValidExtraHeaders(this.ovHeadersText)) {
+      this.onToast('请求头需为 JSON 对象，且每个值都是字符串');
+      return;
+    }
+    if (!isValidExtraBody(this.ovBodyText)) {
+      this.onToast('附加请求体需为 JSON 对象');
+      return;
+    }
+    const temperature: number = this.parseOptionalNumber(this.ovTemperatureText, 0, 2);
+    if (Number.isNaN(temperature)) {
+      this.onToast('温度需在 0–2 之间，留空表示继承');
+      return;
+    }
+    const topP: number = this.parseOptionalNumber(this.ovTopPText, 0, 1);
+    if (Number.isNaN(topP)) {
+      this.onToast('top_p 需在 0–1 之间，留空表示不发送');
+      return;
+    }
+    const maxTokens: number = this.parseOptionalNumber(this.ovMaxTokensText, 1, 1000000);
+    if (Number.isNaN(maxTokens)) {
+      this.onToast('最大输出需为正整数，留空表示继承');
+      return;
+    }
+    const item: ModelOverride = {
+      modelId: id,
+      temperature: temperature,
+      topP: topP,
+      maxTokens: maxTokens > 0 ? Math.floor(maxTokens) : 0,
+      extraHeaders: this.ovHeadersText.trim(),
+      extraBody: this.ovBodyText.trim()
+    };
+    const next: ModelOverride[] = [];
+    for (let i = 0; i < this.modelOverrides.length; i++) {
+      if (i === this.ovIndex) {
+        next.push(item);
+        continue;
+      }
+      if (this.modelOverrides[i].modelId === id) {
+        continue;
+      }
+      next.push(this.modelOverrides[i]);
+    }
+    if (this.ovIndex < 0) {
+      next.push(item);
+    }
+    this.modelOverrides = next;
+    this.editingOverride = false;
+  }
+
+  private removeOverride(index: number): void {
+    const next: ModelOverride[] = [];
+    for (let i = 0; i < this.modelOverrides.length; i++) {
+      if (i !== index) {
+        next.push(this.modelOverrides[i]);
+      }
+    }
+    this.modelOverrides = next;
+    if (this.ovIndex === index) {
+      this.editingOverride = false;
+      this.ovIndex = -1;
+    }
   }
 
   private clearLogs(): void {
@@ -663,6 +789,181 @@ export struct SettingsSheet {
               .margin({ top: 8 })
             }
             .width('100%')
+
+            Column({ space: 8 }) {
+              Row({ space: 8 }) {
+                Column({ space: 3 }) {
+                  Text('逐模型参数')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text('按模型 ID 精确匹配，覆盖温度、top_p、最大输出，并追加请求头与请求体字段。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Text(this.editingOverride ? '取消' : '添加')
+                  .fontSize(11)
+                  .fontColor($r('app.color.accent'))
+                  .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(8)
+                  .onClick(() => this.beginOverride(-1))
+              }
+              .width('100%')
+
+              if (this.modelOverrides.length === 0 && !this.editingOverride) {
+                Text('还没有覆盖项；不添加时所有模型使用上方的全局参数。')
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .width('100%')
+              }
+
+              ForEach(this.modelOverrides, (item: ModelOverride) => {
+                Row({ space: 8 }) {
+                  Column({ space: 2 }) {
+                    Text(item.modelId)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_primary'))
+                    Text(overrideSummary(item))
+                      .fontSize(9)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .maxLines(2)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  Text('编辑')
+                    .fontSize(10)
+                    .fontColor($r('app.color.accent'))
+                    .onClick(() => this.beginOverride(this.modelOverrides.indexOf(item)))
+                  Text('删除')
+                    .fontSize(10)
+                    .fontColor($r('app.color.danger'))
+                    .onClick(() => this.removeOverride(this.modelOverrides.indexOf(item)))
+                }
+                .width('100%')
+                .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(9)
+              }, (item: ModelOverride) => item.modelId + ':' + overrideSummary(item))
+
+              if (this.editingOverride) {
+                Column({ space: 8 }) {
+                  this.fieldLabel('模型 ID（与请求里的 model 完全一致）')
+                  TextInput({ text: this.ovModelId, placeholder: '例如 kimi-k3' })
+                    .height(38)
+                    .fontSize(12)
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(9)
+                    .onChange((value: string) => {
+                      this.ovModelId = value;
+                    })
+
+                  Row({ space: 8 }) {
+                    Column({ space: 4 }) {
+                      this.fieldLabel('温度')
+                      TextInput({ text: this.ovTemperatureText, placeholder: '继承' })
+                        .height(36)
+                        .fontSize(12)
+                        .type(InputType.Number)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.ovTemperatureText = value;
+                        })
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+
+                    Column({ space: 4 }) {
+                      this.fieldLabel('top_p')
+                      TextInput({ text: this.ovTopPText, placeholder: '不发送' })
+                        .height(36)
+                        .fontSize(12)
+                        .type(InputType.Number)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.ovTopPText = value;
+                        })
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+
+                    Column({ space: 4 }) {
+                      this.fieldLabel('最大输出')
+                      TextInput({ text: this.ovMaxTokensText, placeholder: '继承' })
+                        .height(36)
+                        .fontSize(12)
+                        .type(InputType.Number)
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onChange((value: string) => {
+                          this.ovMaxTokensText = value;
+                        })
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+                  }
+                  .width('100%')
+
+                  this.fieldLabel('附加请求头（JSON 对象，值必须是字符串）')
+                  TextArea({ text: this.ovHeadersText, placeholder: '{"X-Title":"MinisHarmony"}' })
+                    .height(64)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_primary'))
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(9)
+                    .onChange((value: string) => {
+                      this.ovHeadersText = value;
+                    })
+
+                  this.fieldLabel('附加请求体（JSON 对象，与基础字段同名时覆盖）')
+                  TextArea({ text: this.ovBodyText, placeholder: '{"provider":{"order":["moonshot"]}}' })
+                    .height(64)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_primary'))
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(9)
+                    .onChange((value: string) => {
+                      this.ovBodyText = value;
+                    })
+
+                  Row({ space: 8 }) {
+                    Button('取消', { type: ButtonType.Normal })
+                      .layoutWeight(1)
+                      .height(34)
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_secondary'))
+                      .backgroundColor($r('app.color.surface'))
+                      .borderRadius(9)
+                      .onClick(() => {
+                        this.editingOverride = false;
+                      })
+                    Button('保存覆盖项', { type: ButtonType.Normal })
+                      .layoutWeight(1)
+                      .height(34)
+                      .fontSize(12)
+                      .fontColor($r('app.color.on_accent'))
+                      .backgroundColor($r('app.color.accent'))
+                      .borderRadius(9)
+                      .onClick(() => this.saveOverride())
+                  }
+                  .width('100%')
+                }
+                .width('100%')
+                .padding(10)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(11)
+                .alignItems(HorizontalAlign.Start)
+              }
+            }
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
 
             this.sectionTitle('Agent 与日志', '工具往返上限与 OpenMinis 一致；日志只记录元数据')
             Column({ space: 8 }) {

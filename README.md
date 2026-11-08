@@ -39,6 +39,7 @@ x-opencode-session`，或者缓存永远不命中。
 | **平板双栏** | ≥ 840vp 自动侧栏 + 对话区；窄屏切换为单栏并支持返回 |
 | **OpenCode Go 预设** | 一键填入当前基址，自动注入 `x-opencode-session` |
 | **OpenAI 兼容** | 任意兼容 `/chat/completions` 的服务，可自定义基址与模型 |
+| **逐模型参数** | 按模型 ID 覆盖温度 / `top_p` / 最大输出，追加请求头与 `extra_body` 字段；留空继承全局 |
 | **流式输出** | SSE 增量解析，思考过程（`reasoning_content` / `reasoning`）折叠展示 |
 | **图片消息** | 输入栏从系统相册多选（最多 4 张、10 MB），随消息以多模态 `image_url` 发送；气泡缩略图可点开全屏 |
 | **工具调用循环** | 解析流式 `tool_calls`，同一轮多个工具并行执行，默认最多 200 轮模型/工具往返（可调整），工具卡片可展开 |
@@ -318,9 +319,10 @@ node --experimental-strip-types --experimental-transform-types scripts/test-core
 - tool call 配对：重复 id 去重、空工具名跳过；
 - 技能命令：`/技能id` 匹配、参数拆分、大小写；
 - 模型能力：家族前缀估计、窗口占比、`max_tokens` 夹取；
+- 逐模型参数：按 ID 匹配、数值规范化、请求头合并、extra_body 覆盖与非法 JSON 回退；
 - Markdown 块级与行内解析。
 
-当前结果：**55 项全部通过**。
+当前结果：**57 项全部通过**。
 
 另外做了静态与编译检查：
 

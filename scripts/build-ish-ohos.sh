@@ -19,7 +19,12 @@
 #   scripts/build-ish-ohos.sh --rootfs        # also prepare the Alpine fakefs
 #   scripts/build-ish-ohos.sh --rootfs --push # ... and push it to the tablet
 #   scripts/build-ish-ohos.sh --bundle-rootfs # ... and refresh rawfile/ish-rootfs.zip
+#   scripts/build-ish-ohos.sh --no-python     # build a rootfs without Python 3
 #   scripts/build-ish-ohos.sh --clean         # remove the build directory first
+#
+# The rootfs includes Python 3 by default: the guest cannot download packages
+# (iSH has no network), so `--rootfs` unpacks the pinned Alpine package set
+# from scripts/ish-rootfs-python.py before rebuilding meta.db.
 #
 # Environment overrides:
 #   ISH_SRC        iSH checkout (default /home/biglv/project/OpenMinis/deps/ish)
@@ -59,6 +64,7 @@ DO_ROOTFS=0
 DO_PUSH=0
 DO_BUNDLE=0
 DO_CLEAN=0
+DO_PYTHON=1
 
 usage() {
     sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -70,6 +76,7 @@ while [ $# -gt 0 ]; do
         --rootfs) DO_ROOTFS=1 ;;
         --push) DO_ROOTFS=1; DO_PUSH=1 ;;
         --bundle-rootfs) DO_ROOTFS=1; DO_BUNDLE=1 ;;
+        --no-python) DO_PYTHON=0 ;;
         --clean) DO_CLEAN=1 ;;
         -h|--help) usage 0 ;;
         *) echo "unknown argument: $1" >&2; usage 1 ;;
@@ -231,6 +238,12 @@ prepare_rootfs() {
     rm -rf "$root"
     mkdir -p "$root/data"
     tar -xzf "$tarball" -C "$root/data"
+
+    if [ "$DO_PYTHON" = 1 ]; then
+        log "Adding Python 3 and its dependencies to the rootfs"
+        python3 -I "$ROOT/scripts/ish-rootfs-python.py" \
+            --data "$root/data" --cache "$CACHE/python-apks"
+    fi
 
     # fakefs reads guest modes from the real tree, so import before relaxing
     # the host permissions.

@@ -44,6 +44,12 @@ interface Marker {
 export class SandboxIsh {
   private static readonly ARCHIVE: string = 'ish-rootfs.zip';
   private static readonly ROOTFS_DIR: string = 'ish-rootfs';
+  /**
+   * Bump whenever rawfile/ish-rootfs.zip changes. An installed app keeps the
+   * previously extracted tree, so without this an upgrade would keep running
+   * the old rootfs (for example one without Python).
+   */
+  private static readonly ROOTFS_VERSION: string = '2';
   private static readonly LEGACY_ROOTFS: string = '/data/local/tmp/minis-ish-rootfs';
   private static readonly MARKER: string = '[sandbox exit=';
   private static readonly READY: string = '[sandbox ready]';
@@ -84,7 +90,8 @@ export class SandboxIsh {
   /** Returns the app-private rootfs, extracting the bundled archive once. */
   private static async ensureRootfs(context: common.UIAbilityContext): Promise<string> {
     const local: string = context.filesDir + '/' + SandboxIsh.ROOTFS_DIR;
-    if (SandboxIsh.hasMetaDb(local)) {
+    if (SandboxIsh.hasMetaDb(local) &&
+      SandboxIsh.read(local + '/.minis-version') === SandboxIsh.ROOTFS_VERSION) {
       return local;
     }
     const archivePath: string = context.filesDir + '/ish-rootfs.zip';
@@ -106,6 +113,8 @@ export class SandboxIsh {
       SandboxIsh.removeTree(staging);
       throw new Error('解压后缺少 meta.db');
     }
+    // The marker lives beside data/ and meta.db; fakefs never sees it.
+    SandboxIsh.writeText(staging + '/.minis-version', SandboxIsh.ROOTFS_VERSION);
     SandboxIsh.removeTree(local);
     fileIo.renameSync(staging, local);
     return local;

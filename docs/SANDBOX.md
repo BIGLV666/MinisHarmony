@@ -83,6 +83,14 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   不把 rootfs 放在 `/data/local/tmp`，避免 `debug_hap` 域访问
   `data_local_tmp` 的 SELinux 限制，应用也天然拥有 rootfs 的读写权限。
   workspace、memory、skills、attachments 后续映射进 guest 的 `/var/minis/*`。
+- **预装 Python 3**：minirootfs 只有 busybox + apk，而 guest 没有网络，
+  运行期无法 `apk add`。因此 `scripts/ish-rootfs-python.py` 在构建时按固定
+  版本与 SHA-256 下载 Python 3.12.16 及 17 个依赖（musl、openssl、sqlite、
+  readline 等，约 13.5 MB 压缩 / 39 MB 展开），直接解包进 rootfs 目录，
+  再由 `create_fakefs.py` 重建 `meta.db`。zip 从 3.8 MB 增至 15 MB。
+  `apk` 的已安装数据库不包含这些包（无网络时也不会用它），这是已知取舍。
+  应用侧用 `filesDir/ish-rootfs/.minis-version` 标记 rootfs 版本，升级安装
+  时旧 rootfs 会被重新解压，否则新 HAP 仍会跑旧文件系统。
 - **隔离边界**：iSH 内核本身是边界：guest 只能看见 rootfs 和显式挂载的目录。
   当前 iSH 构建没有 slirp 网卡，guest 内没有外网；需要联网的数据由宿主
   `fetch_url` 获取，设置页文案不承诺沙箱内可联网。
@@ -124,6 +132,9 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       第一条设置的 `$MINIS_SMOKE` 和 `pwd=/tmp`，且总耗时明显低于两次冷启动。）
 - [ ] M4 稳定性：连续命令、并发、长输出、Python/Node 冒烟；
       应用退后台与子进程回收。
+      （2026-11-08 已把 Python 3.12.16 与依赖离线预装进 rootfs，构建可复现
+      `scripts/ish-rootfs-python.py`；`python3 -c` 冒烟与连续命令仍需平板。
+      Node 未预装，按需再评估。）
 - [ ] M5 体验：设置页沙箱状态、首次解压进度、磁盘占用、重置 rootfs。
 
 ## 4. 移植风险
@@ -134,7 +145,7 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
 | `mmap` 固定地址/大地址空间被拒 | M2 | 调整 iSH 内存布局参数 |
 | pthread / futex / signal 行为差异 | M2/M4 | 打平台补丁（`platform/linux.c` 已有 Linux 宿主层） |
 | SQLite 在应用沙箱的锁/WAL | M2 | 改 journal 模式或只读 rootfs + 可写 overlay |
-| Alpine rootfs 体积（约 3–5 MB 压缩） | M1 | 裁剪 busybox + musl，按需安装包 |
+| Alpine rootfs 体积（含 Python 约 15 MB 压缩、39 MB 展开） | M1/M4 | 已离线预装 Python；如需减重可再拆出独立 zip，首次使用时解包 |
 | GPLv2 合规 | 发布前 | 附源码与许可，提供获取方式 |
 
 ## 5. 构建与复现

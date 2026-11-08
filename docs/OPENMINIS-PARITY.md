@@ -153,7 +153,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | | 功能 | OpenMinis 行为 | MinisHarmony 方案 | 优先级 |
 |---|---|---|---|---|
 | - [ ] | 导出会话 JSON | 单会话 zip（含附件） | 写文件 + 系统分享 | P2 |
-| - [ ] | 导出 Markdown | 对话转 Markdown | 纯函数生成 | P2 |
+| - [x] | 导出 Markdown | 对话转 Markdown | 纯函数生成，经系统文档选择器保存（含思考与工具结果） | P2 |
 | - [ ] | 多会话导出 | 多选打包 | 依赖导出 | P3 |
 | - [ ] | 单轮截图分享 | 渲染一张图 | `componentSnapshot` | P3 |
 | - [ ] | 系统分享 | 文件/链接/文本 | `ShareKit` | P2 |
@@ -224,3 +224,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 上下文压缩 / 自动裁剪 | `/compact` 用模型摘要旧轮次并保留最近 3 轮；请求前按 `contextBudgetChars` 裁剪旧工具结果；37 项测试通过 |
 | 2026-11-08 | 子代理 `subagent_task` | 独立内存会话 + 相同工具；最多 3 并行、10 分钟超时、嵌套 2 层；远程模式不暴露 |
 | 2026-11-08 | 密钥安全存储 | API Key / 沙箱 Token 迁入 Asset Store Kit；旧 preferences 明文自动迁移；不可用时回退 |
+| 2026-11-08 | 导出 Markdown | 长按会话「导出为 Markdown」，系统文档选择器选择位置；38 项测试通过 |

@@ -43,6 +43,7 @@ copyCore('EventLog');
 copyCore('EditPatch');
 copyCore('Memory');
 copyCore('ContextBudget', ['Types']);
+copyCore('MarkdownExport', ['Types']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -64,6 +65,19 @@ markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'T
     source.replace(
       'import {\n  ChatMessage,\n  MessagePart,\n  PART_TOOL_CALL,',
       "import type { ChatMessage, MessagePart } from './Types.mts';\nimport {\n  PART_TOOL_CALL,"
+    )
+  );
+}
+
+{
+  const file = join(tmp, 'MarkdownExport.mts');
+  const source = readFileSync(file, 'utf8');
+  writeFileSync(
+    file,
+    source.replace(
+      'import {\n  ChatMessage,\n  MessagePart,\n  PART_REASONING,\n  PART_TOOL_CALL,\n  StoredSession,\n  modelName,\n  textOf\n} from',
+      "import type { ChatMessage, MessagePart, StoredSession } from './Types.mts';\n" +
+      "import {\n  PART_REASONING,\n  PART_TOOL_CALL,\n  modelName,\n  textOf\n} from"
     )
   );
 }
@@ -91,6 +105,7 @@ const edit = await import(pathToFileURL(join(tmp, 'EditPatch.mts')).href);
 const catalog = await import(pathToFileURL(join(tmp, 'ToolCatalog.mts')).href);
 const memory = await import(pathToFileURL(join(tmp, 'Memory.mts')).href);
 const budget = await import(pathToFileURL(join(tmp, 'ContextBudget.mts')).href);
+const exporter = await import(pathToFileURL(join(tmp, 'MarkdownExport.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -596,4 +611,30 @@ test('history budget trims old tool results without touching the transcript', ()
   const untouched = budget.fitHistoryToBudget(messages, 100000, 6);
   assert.equal(untouched.trimmedParts, 0);
   assert.equal(untouched.messages, messages);
+});
+
+test('markdown export renders roles, reasoning and tools with safe file names', () => {
+  const user = types.newChatMessage('u1', 'user', '帮我看看配置');
+  const assistant = types.newChatMessage('a1', 'assistant', '好的');
+  types.appendReasoning(assistant, '先读文件');
+  const call = types.toolCallPart('c1', 'read_file', '{"path":"a.txt"}');
+  call.resultText = 'hello';
+  assistant.parts.push(call);
+  const session = {
+    meta: {
+      id: 's1', title: '导出/测试', modelId: 'kimi-k3', updatedAt: 0,
+      messageCount: 2, pinned: false, archived: false
+    },
+    messages: [user, assistant]
+  };
+  const now = new Date(2026, 10, 8);
+  const md = exporter.exportMarkdown(session, now);
+  assert.match(md, /^# 导出\/测试/);
+  assert.match(md, /## 用户/);
+  assert.match(md, /## 助手/);
+  assert.match(md, /工具：read_file/);
+  assert.match(md, /````json/);
+  assert.match(md, /> 思考过程/);
+  assert.equal(exporter.exportFileName('a/b:c', now), 'a_b_c-2026-11-08.md');
+  assert.equal(exporter.safeFileBase('   '), '对话');
 });

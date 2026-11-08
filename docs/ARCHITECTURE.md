@@ -27,6 +27,7 @@ pages/Index.ets
         │     MemoryStore      每日记忆文件读写、注入上下文、检索
         │     LocalStore       preferences 读写与旧数据迁移
         │     AppLogger        事件日志落盘、轮转、清理
+        │     ExportService    文档选择器保存 Markdown
         │     Format           时间 / 标题 / token 格式化
         │
         └── core/              纯逻辑（Node 可测）
@@ -42,6 +43,7 @@ pages/Index.ets
               OpenCodeRules     域名 / 草稿键 / URL
               SseParser         SSE 与 OpenAI chunk（含 tool_calls / usage）
               Markdown          块级 + 行内解析
+              MarkdownExport    会话转 Markdown、文件名清洗
 ```
 
 依赖方向严格向下：`components` 不直接发请求，`core` 不 import `@kit.*`。
@@ -342,6 +344,18 @@ filesDir/memory/
 遍历 parts。索引在会话列表变化时重建，**流式输出期间不重建**，避免每个 token
 扫描全部历史。
 
+## 导出 Markdown
+
+`core/MarkdownExport.ets` 是纯函数：把 `StoredSession` 渲染成标题、模型/日期、
+按角色分隔的正文，思考以引用块呈现，工具调用与结果放进四反引号围栏（避免与
+输出里的三反引号冲突）。文件名由 `safeFileBase()` 清洗 `\/:*?"<>|`，截断到
+60 字符，再拼上 `YYYY-MM-DD.md`。
+
+`service/ExportService.ets` 只做设备侧动作：打开
+`picker.DocumentViewPicker`，让用户选择保存位置（`newFileNames` 预填文件名，
+`fileSuffixChoices` 限定 `.md`），再用 `fileIo` 写入返回的 URI。因此不需要
+申请宽泛的存储权限，也不会上传到应用之外，除非用户自己选择云盘目录。
+
 ## 平板布局
 
 - 根节点 `onAreaChange` 读取宽度，`>= 840vp` 进入双栏；
@@ -366,6 +380,6 @@ filesDir/memory/
 
 ## 可测试性
 
-`core/` 十二个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 十三个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

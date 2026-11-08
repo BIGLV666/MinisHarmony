@@ -47,6 +47,7 @@ copyCore('MarkdownExport', ['Types']);
 copyCore('ToolArgs');
 copyCore('ToolLoop');
 copyCore('SessionExport', ['Types', 'MarkdownExport']);
+copyCore('FileListing');
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -113,6 +114,7 @@ const exporter = await import(pathToFileURL(join(tmp, 'MarkdownExport.mts')).hre
 const toolArgs = await import(pathToFileURL(join(tmp, 'ToolArgs.mts')).href);
 const toolLoop = await import(pathToFileURL(join(tmp, 'ToolLoop.mts')).href);
 const sessionExport = await import(pathToFileURL(join(tmp, 'SessionExport.mts')).href);
+const listing = await import(pathToFileURL(join(tmp, 'FileListing.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -862,4 +864,23 @@ test('session JSON import validates the envelope and rebuilds parts', () => {
   // The exported source object keeps its original id and flags.
   assert.equal(original.meta.id, 's1');
   assert.equal(original.meta.pinned, true);
+});
+
+test('workspace listing sorts directories first and formats sizes', () => {
+  const entries = [
+    { name: 'b.txt', path: 'b.txt', isDir: false, size: 2048 },
+    { name: 'Zeta', path: 'Zeta', isDir: true, size: 0 },
+    { name: 'a.txt', path: 'a.txt', isDir: false, size: 10 },
+    { name: 'alpha', path: 'alpha', isDir: true, size: 0 }
+  ];
+  const sorted = listing.sortFileEntries(entries);
+  assert.deepEqual(sorted.map((e) => e.name), ['alpha', 'Zeta', 'a.txt', 'b.txt']);
+  assert.deepEqual(entries.map((e) => e.name), ['b.txt', 'Zeta', 'a.txt', 'alpha']);
+  assert.equal(listing.joinRelative('', 'a.txt'), 'a.txt');
+  assert.equal(listing.joinRelative('src/core', 'x.ets'), 'src/core/x.ets');
+  assert.equal(listing.parentRelative('src/core/x.ets'), 'src/core');
+  assert.equal(listing.parentRelative('x.ets'), '');
+  assert.equal(listing.formatFileSize(512), '512 B');
+  assert.equal(listing.formatFileSize(2048), '2.0 KB');
+  assert.equal(listing.formatFileSize(3 * 1024 * 1024), '3.0 MB');
 });

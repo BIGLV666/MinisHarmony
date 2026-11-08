@@ -466,6 +466,14 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 就已经结束，`begin()` 会在拿到任务后立刻 `end()`，不会留下悬挂的持续通知。任何
 失败（未授权、设备不支持、通知被关闭）都被吞掉，聊天继续在前台运行，不影响功能。
 
+## 工作区浏览
+
+`components/WorkspaceSheet.ets` 是设置页里的只读文件浏览器。目录 I/O 在
+`service/WorkspaceFiles.ets`：列表用 `fs.lstatSync()` 跳过符号链接，预览只读前
+256 KB，按扩展名白名单拒绝二进制文件。路径先经过 `normalizeRelativePath()`，
+与工具共享同一套「绝对路径 / `..` 拒绝」规则，因此浏览器能看到的范围不会超过模型。
+排序、相对路径计算与大小格式化放在 `core/FileListing.ets`，可在 Node 下单测。
+
 ## 平板布局
 
 - 根节点 `onAreaChange` 读取宽度，`>= 840vp` 进入双栏；
@@ -490,6 +498,6 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 
 ## 可测试性
 
-`core/` 十六个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 十七个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

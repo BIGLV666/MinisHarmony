@@ -46,6 +46,7 @@ import { titleFrom } from '../service/Format';
 import { ChatView } from '../components/ChatView';
 import { ModelPicker } from '../components/ModelPicker';
 import { SettingsSheet } from '../components/SettingsSheet';
+import { WorkspaceSheet } from '../components/WorkspaceSheet';
 import { SidebarView } from '../components/SidebarView';
 
 @Entry
@@ -64,6 +65,7 @@ struct Index {
   @State query: string = '';
   @State showSettings: boolean = false;
   @State showModels: boolean = false;
+  @State showWorkspace: boolean = false;
   @State deleteId: string = '';
   @State actionId: string = '';
   @State rewindId: string = '';
@@ -1275,7 +1277,19 @@ struct Index {
             this.showSettings = false;
           },
           onSave: (next: AppSettings) => this.applySettings(next),
-          onToast: (message: string) => this.toast(message)
+          onToast: (message: string) => this.toast(message),
+          onBrowseWorkspace: () => {
+            this.showWorkspace = true;
+          }
+        })
+      }
+
+      if (this.showWorkspace) {
+        WorkspaceSheet({
+          workspaceRoot: this.workspaceRoot,
+          onClose: () => {
+            this.showWorkspace = false;
+          }
         })
       }
 

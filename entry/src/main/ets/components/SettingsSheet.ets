@@ -45,6 +45,8 @@ export struct SettingsSheet {
   };
   onToast: (message: string) => void = (message: string) => {
   };
+  onBrowseWorkspace: () => void = () => {
+  };
 
   @State preset: ProviderPreset = 'opencode';
   @State baseUrl: string = OPENCODE_GO_BASE;
@@ -888,6 +890,33 @@ export struct SettingsSheet {
               .padding({ left: 12, right: 12, top: 8, bottom: 8 })
               .backgroundColor($r('app.color.surface_alt'))
               .borderRadius(11)
+
+              if (this.sandboxMode === 'local') {
+                Row({ space: 8 }) {
+                  Column({ space: 3 }) {
+                    Text('工作区文件')
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_primary'))
+                    Text('浏览应用私有工作区；只能查看，不能在这里修改。')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(14)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  Button('浏览', { type: ButtonType.Normal })
+                    .height(30)
+                    .fontSize(11)
+                    .fontColor($r('app.color.accent'))
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(8)
+                    .onClick(() => this.onBrowseWorkspace())
+                }
+                .width('100%')
+                .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(11)
+              }
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {

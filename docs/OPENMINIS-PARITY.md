@@ -115,7 +115,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [ ] | MCP stdio | 启动本地进程 | 鸿蒙不能 spawn，做不了 | - |
 | - [ ] | MCP OAuth | PKCE | 可复用浏览器/Web 组件 | P3 |
 | - [ ] | 内置浏览器 | 多标签、历史、下载、Cookie | ArkWeb + 动作脚本 | P2 |
-| - [ ] | 工作区文件浏览 | `minis://workspace` 文件页 | 新增文件列表页 + 预览 | P2 |
+| - [x] | 工作区文件浏览 | `minis://workspace` 文件页 | 设置 →「工作区文件 → 浏览」：目录浏览、上一级、文本预览（256 KB）、跳过符号链接；只读 | P2 |
 | - [ ] | 附件命名空间 | `minis://attachments` | 应用私有目录 | P2 |
 | - [ ] | 深链 | `minis://` 打开会话/文件 | `Want` + `uris` 配置 | P3 |
 | - [ ] | 从其他应用分享进来 | Share Extension / ShareReceiver | `Want` + `ohos.want.action.sendData` | P2 |
@@ -238,3 +238,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 逐工具开关 | `disabledTools` 持久化 + 设置页 8 个工具开关；本机/远程 runtime 过滤定义并拒绝直接调用，子代理继承 |
 | 2026-11-08 | 写入前确认 | `AgentRuntime.runTool()` 在写工具前 await 回调；UI 弹窗含参数预览，拒绝写成工具错误；停止生成会结算为拒绝 |
 | 2026-11-08 | 请求检查器 | 每次请求生成 8 位 req，写入同轮模型与工具事件；查看器显示；`turn_cap` 等非请求事件为空 |
+| 2026-11-08 | 工作区文件浏览 | 设置内入口；`WorkspaceFiles` 列表/预览，共用路径规则，跳过符号链接；排序与大小格式化纯函数可测；45 项测试通过 |

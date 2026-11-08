@@ -33,6 +33,7 @@
 | Keychain / EncryptedPrefs | `service/SecureStore.ets` | Asset Store Kit，失败时回退 preferences 明文 |
 | 会话导出 Markdown | `core/MarkdownExport.ets` + `service/ExportService.ets` | 纯函数渲染，系统文档选择器选位置写入；不做 zip / 分享卡 |
 | 请求检查器 | `LogEvent.req` | 每次模型请求 8 位随机 id，关联同轮工具事件；不含正文 |
+| 工作区浏览 | `WorkspaceFiles` + `WorkspaceSheet` | 只读列表/预览；复用工作区路径规则；跳过符号链接 |
 | 写入前确认 | `AgentRuntime.runTool()` + Index 弹层 | 仅写工具；拒绝作为工具错误返回；停止时结算为拒绝 |
 | 逐工具开关 | `AppSettings.disabledTools` + `isToolDisabled()` | 设置页开关；definitions/execute 双重检查；子代理继承 |
 | 会话导出 / 导入 JSON | `core/SessionExport.ets` + `service/ExportService.ets` | 版本化信封 `{app,version,exportedAt,session}`；导入时校验、重建 parts、分配新 ID，未完成工具标记为 error |

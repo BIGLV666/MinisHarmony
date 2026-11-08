@@ -161,6 +161,69 @@ export function sortSessionMetas(metas: SessionMeta[]): SessionMeta[] {
   return metas;
 }
 
+export interface SessionGroup {
+  label: string;
+  sessions: SessionMeta[];
+}
+
+const DAY_MS: number = 24 * 60 * 60 * 1000;
+
+function startOfLocalDay(ts: number): number {
+  const date: Date = new Date(ts);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/**
+ * Split the already-sorted sidebar list into pinned + relative-day groups.
+ * Input order is preserved inside each bucket, so callers keep updatedAt
+ * ordering without re-sorting.
+ */
+export function groupSessionMetas(metas: SessionMeta[], now: number): SessionGroup[] {
+  const pinned: SessionMeta[] = [];
+  const today: SessionMeta[] = [];
+  const yesterday: SessionMeta[] = [];
+  const week: SessionMeta[] = [];
+  const older: SessionMeta[] = [];
+  const todayStart: number = startOfLocalDay(now);
+  for (let i = 0; i < metas.length; i++) {
+    const item: SessionMeta = metas[i];
+    if (item.pinned) {
+      pinned.push(item);
+      continue;
+    }
+    const days: number = Math.round(
+      (todayStart - startOfLocalDay(item.updatedAt)) / DAY_MS
+    );
+    if (days <= 0) {
+      today.push(item);
+    } else if (days === 1) {
+      yesterday.push(item);
+    } else if (days < 7) {
+      week.push(item);
+    } else {
+      older.push(item);
+    }
+  }
+  const groups: SessionGroup[] = [];
+  if (pinned.length > 0) {
+    groups.push({ label: '置顶', sessions: pinned });
+  }
+  if (today.length > 0) {
+    groups.push({ label: '今天', sessions: today });
+  }
+  if (yesterday.length > 0) {
+    groups.push({ label: '昨天', sessions: yesterday });
+  }
+  if (week.length > 0) {
+    groups.push({ label: '最近 7 天', sessions: week });
+  }
+  if (older.length > 0) {
+    groups.push({ label: '更早', sessions: older });
+  }
+  return groups;
+}
+
 /**
  * Keep the transcript through `messageId` and drop everything after it.
  * Returns null when the id is missing or is already the last message, so the

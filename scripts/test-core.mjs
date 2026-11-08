@@ -591,6 +591,27 @@ test('pinned sessions sort above recency and archive state is independent', () =
   assert.deepEqual(sorted.map((item) => item.id), ['old-pinned', 'new', 'mid']);
 });
 
+test('sidebar groups sessions into pinned and relative day buckets', () => {
+  const meta = (id, updatedAt, pinned) => ({
+    id, title: id, updatedAt, modelId: 'm', messageCount: 0,
+    pinned, archived: false
+  });
+  const now = new Date(2026, 10, 8, 12, 0, 0).getTime();
+  const day = 24 * 60 * 60 * 1000;
+  const groups = types.groupSessionMetas([
+    meta('pin', now - 3 * day, true),
+    meta('today', now, false),
+    meta('yesterday', now - day, false),
+    meta('week', now - 3 * day, false),
+    meta('old', now - 10 * day, false)
+  ], now);
+  assert.deepEqual(groups.map((group) => group.label),
+    ['置顶', '今天', '昨天', '最近 7 天', '更早']);
+  assert.deepEqual(groups.map((group) => group.sessions.map((item) => item.id)), [
+    ['pin'], ['today'], ['yesterday'], ['week'], ['old']
+  ]);
+});
+
 test('rewind keeps the checkpoint and rejects last or missing ids', () => {
   const a = types.newChatMessage('a', 'user', 'first');
   const b = types.newChatMessage('b', 'assistant', 'answer');

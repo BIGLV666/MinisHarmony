@@ -1,4 +1,10 @@
-import { SessionMeta, SessionSearchEntry, modelName } from '../core/Types';
+import {
+  SessionGroup,
+  SessionMeta,
+  SessionSearchEntry,
+  groupSessionMetas,
+  modelName
+} from '../core/Types';
 import { formatRelative } from '../service/Format';
 
 @Component
@@ -42,6 +48,10 @@ export struct SidebarView {
    * Archived sessions stay out of the default list but remain searchable:
    * search is how users retrieve an archived conversation they forgot about.
    */
+  private grouped(): SessionGroup[] {
+    return groupSessionMetas(this.filtered(), Date.now());
+  }
+
   private filtered(): SessionMeta[] {
     const keyword: string = this.query.trim().toLowerCase();
     const result: SessionMeta[] = [];
@@ -90,6 +100,15 @@ export struct SidebarView {
         .onClick(() => this.onSettings())
     }
     .width('100%')
+  }
+
+  @Builder
+  groupHeader(label: string) {
+    Text(label)
+      .fontSize(10)
+      .fontColor($r('app.color.text_tertiary'))
+      .width('100%')
+      .padding({ left: 12, top: 8, bottom: 4 })
   }
 
   @Builder
@@ -205,13 +224,17 @@ export struct SidebarView {
         .justifyContent(FlexAlign.Center)
       } else {
         List({ space: 3 }) {
-          ForEach(this.filtered(), (item: SessionMeta) => {
-            ListItem() {
-              this.sessionRow(item)
+          ForEach(this.grouped(), (group: SessionGroup) => {
+            ListItemGroup({ header: this.groupHeader(group.label) }) {
+              ForEach(group.sessions, (item: SessionMeta) => {
+                ListItem() {
+                  this.sessionRow(item)
+                }
+              }, (item: SessionMeta) => item.id + ':' + item.title + ':' + item.updatedAt + ':' +
+                item.modelId + ':' + (this.currentId === item.id ? '1' : '0') + ':' +
+                (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : ''))
             }
-          }, (item: SessionMeta) => item.id + ':' + item.title + ':' + item.updatedAt + ':' +
-            item.modelId + ':' + (this.currentId === item.id ? '1' : '0') + ':' +
-            (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : ''))
+          }, (group: SessionGroup) => group.label + ':' + group.sessions.length.toString())
         }
         .layoutWeight(1)
         .width('100%')

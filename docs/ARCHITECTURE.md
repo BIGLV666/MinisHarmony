@@ -338,6 +338,14 @@ filesDir/memory/
 - 设置页可「清空每日记忆」，保留 `GLOBAL.md`；
 - 远程工具模式不暴露记忆工具，避免把设备记忆发给远程服务。
 
+## 侧栏分组
+
+`groupSessionMetas()` 是 `core/Types.ets` 里的纯函数：输入已经由
+`sortSessionMetas()` 排好序（置顶优先、其余按更新时间倒序），输出
+`置顶 / 今天 / 昨天 / 最近 7 天 / 更早` 五组，组内保持原顺序。日期以**本地零点**
+为边界，用 `Math.round` 计算相差天数，避免夏令时造成的边界抖动。侧栏用
+`ListItemGroup` 渲染组头；搜索时同一函数照常分组，因此搜索结果也带日期上下文。
+
 ## 全文搜索
 
 `SessionSearchEntry` 是预计算的小写文本块：标题 + 模型 + 所有 text part +

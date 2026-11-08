@@ -360,7 +360,7 @@ filesDir/memory/
 遍历 parts。索引在会话列表变化时重建，**流式输出期间不重建**，避免每个 token
 扫描全部历史。
 
-## 导出 Markdown
+## 导出 Markdown / JSON
 
 `core/MarkdownExport.ets` 是纯函数：把 `StoredSession` 渲染成标题、模型/日期、
 按角色分隔的正文，思考以引用块呈现，工具调用与结果放进四反引号围栏（避免与
@@ -371,6 +371,13 @@ filesDir/memory/
 `picker.DocumentViewPicker`，让用户选择保存位置（`newFileNames` 预填文件名，
 `fileSuffixChoices` 限定 `.md`），再用 `fileIo` 写入返回的 URI。因此不需要
 申请宽泛的存储权限，也不会上传到应用之外，除非用户自己选择云盘目录。
+
+`core/SessionExport.ets` 生成带版本号的 JSON：`{app, version, exportedAt,
+exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` 同构，
+保留每个 part 的工具参数与结果。导出时会复制消息并把 `streaming` 置为 `false`，
+不修改内存里的会话；`exportedAt` 用 ISO-8601 UTC，`exportedOn` 便于人读。
+`ExportService.saveSessionJson()` 复用同一套选择器写入流程，`fileSuffixChoices`
+为 `.json`。这个格式是恢复 / 备份功能的输入格式。
 
 ## 工具参数修复与循环检测
 
@@ -458,6 +465,6 @@ filesDir/memory/
 
 ## 可测试性
 
-`core/` 十五个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
+`core/` 十六个文件不 import `@kit.*`，由 `scripts/test-core.mjs` 复制为 `.mts` 后
 用 Node 类型剥离执行（复制时把无扩展名的相对 import 改成 `.mts`）。
 UI、HTTP、文件与网络工具需要 DevEco Studio 编译与真机验证。

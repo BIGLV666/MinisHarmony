@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { StoredSession } from '../core/Types';
 import { exportFileName, exportMarkdown } from '../core/MarkdownExport';
+import { sessionExportJson, sessionJsonFileName } from '../core/SessionExport';
 
 export interface ExportOutcome {
   ok: boolean;
@@ -10,20 +11,20 @@ export interface ExportOutcome {
 }
 
 /**
- * Render the session to Markdown, then let the user pick a destination through
- * the system document picker. The file is written to the returned URI, so no
- * broad storage permission is needed.
+ * Ask for a destination through the system document picker, then write the
+ * text to the returned URI. No broad storage permission is needed.
  */
-export async function saveSessionMarkdown(
+async function saveText(
   context: common.UIAbilityContext,
-  session: StoredSession
+  fileName: string,
+  suffixChoice: string,
+  text: string,
+  successMessage: string
 ): Promise<ExportOutcome> {
   try {
-    const now: Date = new Date();
-    const markdown: string = exportMarkdown(session, now);
     const options: picker.DocumentSaveOptions = new picker.DocumentSaveOptions();
-    options.newFileNames = [exportFileName(session.meta.title, now)];
-    options.fileSuffixChoices = ['Markdown|.md'];
+    options.newFileNames = [fileName];
+    options.fileSuffixChoices = [suffixChoice];
     const documentPicker: picker.DocumentViewPicker =
       new picker.DocumentViewPicker(context);
     const uris: string[] = await documentPicker.save(options);
@@ -35,13 +36,41 @@ export async function saveSessionMarkdown(
       fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
     );
     try {
-      fs.writeSync(file.fd, markdown);
+      fs.writeSync(file.fd, text);
     } finally {
       fs.closeSync(file);
     }
-    return { ok: true, message: '已导出 Markdown' };
+    return { ok: true, message: successMessage };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
     return { ok: false, message: '导出失败：' + error.message };
   }
+}
+
+export async function saveSessionMarkdown(
+  context: common.UIAbilityContext,
+  session: StoredSession
+): Promise<ExportOutcome> {
+  const now: Date = new Date();
+  return saveText(
+    context,
+    exportFileName(session.meta.title, now),
+    'Markdown|.md',
+    exportMarkdown(session, now),
+    '已导出 Markdown'
+  );
+}
+
+export async function saveSessionJson(
+  context: common.UIAbilityContext,
+  session: StoredSession
+): Promise<ExportOutcome> {
+  const now: Date = new Date();
+  return saveText(
+    context,
+    sessionJsonFileName(session.meta.title, now),
+    'JSON|.json',
+    sessionExportJson(session, now),
+    '已导出 JSON'
+  );
 }

@@ -46,6 +46,7 @@ copyCore('ContextBudget', ['Types']);
 copyCore('MarkdownExport', ['Types']);
 copyCore('ToolArgs');
 copyCore('ToolLoop');
+copyCore('SessionExport', ['Types', 'MarkdownExport']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -58,6 +59,7 @@ function markTypeOnly(name, from, names) {
 }
 
 markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'ToolProperty']);
+markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'StoredSession']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -110,6 +112,7 @@ const budget = await import(pathToFileURL(join(tmp, 'ContextBudget.mts')).href);
 const exporter = await import(pathToFileURL(join(tmp, 'MarkdownExport.mts')).href);
 const toolArgs = await import(pathToFileURL(join(tmp, 'ToolArgs.mts')).href);
 const toolLoop = await import(pathToFileURL(join(tmp, 'ToolLoop.mts')).href);
+const sessionExport = await import(pathToFileURL(join(tmp, 'SessionExport.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -754,4 +757,37 @@ test('markdown export renders roles, reasoning and tools with safe file names', 
   assert.match(md, /> 思考过程/);
   assert.equal(exporter.exportFileName('a/b:c', now), 'a_b_c-2026-11-08.md');
   assert.equal(exporter.safeFileBase('   '), '对话');
+});
+
+test('session JSON export keeps parts and settles streaming flags', () => {
+  const user = types.newChatMessage('u1', 'user', '你好');
+  const assistant = types.newChatMessage('a1', 'assistant', '在');
+  assistant.streaming = true;
+  const call = types.toolCallPart('c1', 'read_file', '{"path":"a.txt"}');
+  call.resultText = 'hi';
+  call.status = types.TOOL_DONE;
+  assistant.parts.push(call);
+  const session = {
+    meta: {
+      id: 's1', title: 'JSON/导出', modelId: 'kimi-k3', updatedAt: 123,
+      messageCount: 2, pinned: true, archived: false
+    },
+    messages: [user, assistant]
+  };
+  const now = new Date(2026, 10, 8, 12, 30);
+  const parsed = JSON.parse(sessionExport.sessionExportJson(session, now));
+  assert.equal(parsed.app, 'MinisHarmony');
+  assert.equal(parsed.version, 1);
+  assert.equal(parsed.session.meta.id, 's1');
+  assert.equal(parsed.session.meta.pinned, true);
+  assert.equal(parsed.session.messages.length, 2);
+  assert.equal(parsed.session.messages[1].streaming, false);
+  assert.equal(parsed.session.messages[1].parts[1].toolName, 'read_file');
+  assert.equal(parsed.session.messages[1].parts[1].resultText, 'hi');
+  // The source object is not mutated by the export.
+  assert.equal(assistant.streaming, true);
+  assert.equal(
+    sessionExport.sessionJsonFileName('JSON/导出', now),
+    'JSON_导出-2026-11-08.json'
+  );
 });

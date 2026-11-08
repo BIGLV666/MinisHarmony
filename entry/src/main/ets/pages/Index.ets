@@ -32,7 +32,7 @@ import { AppLogger } from '../service/AppLogger';
 import { BackgroundGuard } from '../service/BackgroundGuard';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
-import { ExportOutcome, saveSessionMarkdown } from '../service/ExportService';
+import { ExportOutcome, saveSessionJson, saveSessionMarkdown } from '../service/ExportService';
 import { MemoryStore } from '../service/MemoryStore';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { SubagentRunner } from '../service/SubagentRunner';
@@ -300,6 +300,21 @@ struct Index {
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     const outcome: ExportOutcome = await saveSessionMarkdown(context, session);
+    this.toast(outcome.message);
+  }
+
+  private async exportSessionJson(id: string): Promise<void> {
+    const session: StoredSession | null = this.findSession(id);
+    this.actionId = '';
+    if (session === null) {
+      return;
+    }
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const outcome: ExportOutcome = await saveSessionJson(context, session);
     this.toast(outcome.message);
   }
 
@@ -807,6 +822,14 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.exportSession(this.actionId))
+          Text('导出为 JSON')
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => this.exportSessionJson(this.actionId))
           Text('删除会话')
             .fontSize(14)
             .fontColor($r('app.color.danger'))

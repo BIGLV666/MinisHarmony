@@ -152,7 +152,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 
 | | 功能 | OpenMinis 行为 | MinisHarmony 方案 | 优先级 |
 |---|---|---|---|---|
-| - [ ] | 导出会话 JSON | 单会话 zip（含附件） | 写文件 + 系统分享 | P2 |
+| - [x] | 导出会话 JSON | 单会话 zip（含附件） | 带 `app/version/exportedAt` 信封的 JSON，保留全部 part 与工具结果；系统文档选择器保存（无附件，故不打包 zip） | P2 |
 | - [x] | 导出 Markdown | 对话转 Markdown | 纯函数生成，经系统文档选择器保存（含思考与工具结果） | P2 |
 | - [ ] | 多会话导出 | 多选打包 | 依赖导出 | P3 |
 | - [ ] | 单轮截图分享 | 渲染一张图 | `componentSnapshot` | P3 |
@@ -233,3 +233,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 日志查看器 | `AppLogger.recent(200)` + `formatEventLine()`，设置页内嵌展示；损坏行原样保留 |
 | 2026-11-08 | 记忆查看 / 编辑 | 文件选择 + TextArea 编辑 + 保存；仅允许 GLOBAL.md 与 `YYYY-MM-DD.md`，缓存即时失效 |
 | 2026-11-08 | 回车键行为 | 设置项「Enter 键发送」；开启后 `enterKeyType=Send` 且 `onSubmit` 发送，关闭保持换行；输入提示随设置切换 |
+| 2026-11-08 | 导出会话 JSON | `SessionExport` 版本化信封 + 完整 parts；长按菜单「导出为 JSON」，选择器保存；43 项测试通过 |

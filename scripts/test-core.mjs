@@ -241,6 +241,14 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(settings.backgroundEnabled, true);
   assert.equal(settings.thinkingLevel, 'off');
   assert.equal(settings.enterToSend, false);
+  assert.deepEqual(settings.disabledTools, []);
+  assert.deepEqual(
+    types.normalizeToolNames(['read_file', 'read_file', '', 'now']),
+    ['read_file', 'now']
+  );
+  assert.deepEqual(types.normalizeToolNames(undefined), []);
+  assert.equal(catalog.isToolDisabled(['read_file'], 'read_file'), true);
+  assert.equal(catalog.isToolDisabled(['read_file'], 'now'), false);
   assert.equal(types.normalizeThinkingLevel('high'), 'high');
   assert.equal(types.normalizeThinkingLevel('bogus'), 'off');
   assert.equal(types.normalizeThinkingLevel(undefined), 'off');
@@ -261,6 +269,8 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   const cloned = types.cloneSettings(settings);
   cloned.apiKey = 'changed';
   assert.equal(settings.apiKey, '');
+  cloned.disabledTools.push('now');
+  assert.deepEqual(settings.disabledTools, []);
 });
 
 test('message parts keep text and reasoning separate', () => {

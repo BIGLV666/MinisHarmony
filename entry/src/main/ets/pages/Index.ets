@@ -708,7 +708,8 @@ struct Index {
       return new RemoteToolRuntime(
         this.settings.sandboxUrl,
         this.settings.sandboxToken,
-        this.settings.allowWriteTools
+        this.settings.allowWriteTools,
+        this.settings.disabledTools
       );
     }
     return new LocalToolRuntime(
@@ -720,7 +721,8 @@ struct Index {
         this.settings,
         this.workspaceRoot,
         this.settings.allowWriteTools
-      )
+      ),
+      this.settings.disabledTools
     );
   }
 

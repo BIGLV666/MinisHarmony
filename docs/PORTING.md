@@ -32,6 +32,7 @@
 | OpenMinis `subagent_task` | `service/SubagentRunner.ets` | 独立内存会话、3 并行、10 分钟超时、2 层嵌套；无 steer/resume |
 | Keychain / EncryptedPrefs | `service/SecureStore.ets` | Asset Store Kit，失败时回退 preferences 明文 |
 | 会话导出 Markdown | `core/MarkdownExport.ets` + `service/ExportService.ets` | 纯函数渲染，系统文档选择器选位置写入；不做 zip / 分享卡 |
+| 逐工具开关 | `AppSettings.disabledTools` + `isToolDisabled()` | 设置页开关；definitions/execute 双重检查；子代理继承 |
 | 会话导出 / 导入 JSON | `core/SessionExport.ets` + `service/ExportService.ets` | 版本化信封 `{app,version,exportedAt,session}`；导入时校验、重建 parts、分配新 ID，未完成工具标记为 error |
 | Android 前台服务 / iOS background task | `service/BackgroundGuard.ets` | `dataTransfer` 长时任务，仅生成期间持有；失败静默回退 |
 | OpenMinis `read_image`（原生视觉分支） | `core/ToolProtocol.ets` + `LocalToolRuntime.imageDataUrl()` | tool 消息后追加合成 user `image_url` 消息；无 Vision Group 文本回退 |

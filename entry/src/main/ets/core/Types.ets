@@ -69,6 +69,8 @@ export interface AppSettings {
   thinkingLevel: ThinkingLevel;
   /** Physical/soft Enter sends instead of inserting a newline. */
   enterToSend: boolean;
+  /** Tool names switched off individually; empty means every available tool. */
+  disabledTools: string[];
 }
 
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
@@ -343,8 +345,27 @@ export function defaultSettings(): AppSettings {
     memoryEnabled: false,
     backgroundEnabled: true,
     thinkingLevel: 'off',
-    enterToSend: false
+    enterToSend: false,
+    disabledTools: []
   };
+}
+
+/** Keep only non-empty unique names; anything else in stored JSON is ignored. */
+export function normalizeToolNames(value: string[] | undefined): string[] {
+  const names: string[] = [];
+  if (value === undefined || !Array.isArray(value)) {
+    return names;
+  }
+  for (let i = 0; i < value.length; i++) {
+    const name: string = value[i];
+    if (typeof name !== 'string' || name.length === 0) {
+      continue;
+    }
+    if (names.indexOf(name) < 0) {
+      names.push(name);
+    }
+  }
+  return names;
 }
 
 export function cloneSettings(source: AppSettings): AppSettings {
@@ -368,7 +389,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     memoryEnabled: source.memoryEnabled === true,
     backgroundEnabled: source.backgroundEnabled !== false,
     thinkingLevel: normalizeThinkingLevel(source.thinkingLevel),
-    enterToSend: source.enterToSend === true
+    enterToSend: source.enterToSend === true,
+    disabledTools: normalizeToolNames(source.disabledTools)
   };
 }
 

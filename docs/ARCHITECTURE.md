@@ -169,6 +169,13 @@ interface ToolRuntime {
   而不是工作区；
 - `fetch_url` 只接受 `http(s)`，30 秒读超时。
 
+### 逐工具开关
+
+`AppSettings.disabledTools` 保存被关闭的工具名。`definitions()` 先按总开关、
+写入、记忆、读图片等条件筛选，再用 `isToolDisabled()` 去掉用户关闭的项；`execute()`
+也做同样检查，防止模型凭历史上下文直接调用已关闭的工具。远程 runtime 与子代理都
+读取同一份列表，子代理通过 `cloneSettings()` 继承，因此开关行为一致。
+
 ### RemoteToolRuntime
 
 把同一组工具名转发到你配置的 HTTP 服务：

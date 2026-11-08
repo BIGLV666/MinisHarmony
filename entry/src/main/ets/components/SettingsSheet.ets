@@ -16,6 +16,26 @@ import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
 
+interface ToolChoice {
+  name: string;
+  label: string;
+}
+
+/**
+ * Switches with their own settings (write access, memory, read_image) are not
+ * repeated here; this list only covers individually disableable tools.
+ */
+const TOOL_CHOICES: ToolChoice[] = [
+  { name: 'list_dir', label: '列目录' },
+  { name: 'read_file', label: '读文件' },
+  { name: 'search_text', label: '搜索文本' },
+  { name: 'write_file', label: '写文件' },
+  { name: 'file_edit', label: '精确编辑' },
+  { name: 'fetch_url', label: '抓取网页' },
+  { name: 'now', label: '当前时间' },
+  { name: 'subagent_task', label: '子代理' }
+];
+
 @Component
 export struct SettingsSheet {
   @Prop settings: AppSettings = defaultSettings();
@@ -49,6 +69,7 @@ export struct SettingsSheet {
   @State imageToolsEnabled: boolean = false;
   @State backgroundEnabled: boolean = true;
   @State enterToSend: boolean = false;
+  @State disabledTools: string[] = [];
   @State showLogs: boolean = false;
   @State logLines: string[] = [];
   @State showMemory: boolean = false;
@@ -77,6 +98,24 @@ export struct SettingsSheet {
     this.imageToolsEnabled = copy.imageToolsEnabled;
     this.backgroundEnabled = copy.backgroundEnabled;
     this.enterToSend = copy.enterToSend;
+    this.disabledTools = copy.disabledTools.slice();
+  }
+
+  private toolEnabled(name: string): boolean {
+    return this.disabledTools.indexOf(name) < 0;
+  }
+
+  private setToolEnabled(name: string, enabled: boolean): void {
+    const next: string[] = [];
+    for (let i = 0; i < this.disabledTools.length; i++) {
+      if (this.disabledTools[i] !== name) {
+        next.push(this.disabledTools[i]);
+      }
+    }
+    if (!enabled) {
+      next.push(name);
+    }
+    this.disabledTools = next;
   }
 
   private selectPreset(value: ProviderPreset): void {
@@ -118,7 +157,8 @@ export struct SettingsSheet {
       imageToolsEnabled: this.imageToolsEnabled,
       backgroundEnabled: this.backgroundEnabled,
       thinkingLevel: this.settings.thinkingLevel,
-      enterToSend: this.enterToSend
+      enterToSend: this.enterToSend,
+      disabledTools: this.disabledTools.slice()
     };
     return next;
   }
@@ -783,6 +823,43 @@ export struct SettingsSheet {
                 .backgroundColor($r('app.color.surface_alt'))
                 .borderRadius(11)
               }
+
+              Column({ space: 6 }) {
+                Column({ space: 3 }) {
+                  Text('逐工具开关')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text('关闭的工具不会出现在模型可见的工具列表里；写入、记忆与读图片仍由上面的总开关控制。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .width('100%')
+                .alignItems(HorizontalAlign.Start)
+
+                ForEach(TOOL_CHOICES, (tool: ToolChoice) => {
+                  Row({ space: 8 }) {
+                    Text(tool.label + '  ·  ' + tool.name)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_secondary'))
+                      .layoutWeight(1)
+                    Toggle({ type: ToggleType.Switch, isOn: this.toolEnabled(tool.name) })
+                      .selectedColor($r('app.color.accent'))
+                      .onChange((on: boolean) => {
+                        this.setToolEnabled(tool.name, on);
+                      })
+                  }
+                  .width('100%')
+                  .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(9)
+                }, (tool: ToolChoice) => tool.name + ':' +
+                  (this.toolEnabled(tool.name) ? '1' : '0'))
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {

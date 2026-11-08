@@ -7,7 +7,7 @@ import {
   ToolResult,
   ToolRuntime
 } from '../core/ToolTypes';
-import { builtinToolDefinitions } from '../core/ToolCatalog';
+import { builtinToolDefinitions, isToolDisabled } from '../core/ToolCatalog';
 import {
   normalizeRelativePath,
   resolveWorkspacePath,
@@ -142,6 +142,7 @@ export class LocalToolRuntime implements ToolRuntime {
   private memoryEnabled: boolean;
   private imagesEnabled: boolean;
   private subagent: SubagentHandler | null;
+  private disabledTools: string[];
   private imageCache: Map<string, string> = new Map();
 
   constructor(
@@ -149,13 +150,15 @@ export class LocalToolRuntime implements ToolRuntime {
     allowWrite: boolean,
     memoryEnabled: boolean,
     imagesEnabled: boolean,
-    subagent: SubagentHandler | null = null
+    subagent: SubagentHandler | null = null,
+    disabledTools: string[] = []
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
     this.memoryEnabled = memoryEnabled;
     this.imagesEnabled = imagesEnabled;
     this.subagent = subagent;
+    this.disabledTools = disabledTools;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -171,6 +174,9 @@ export class LocalToolRuntime implements ToolRuntime {
     const available: ToolDefinition[] = [];
     for (let i = 0; i < all.length; i++) {
       const name: string = all[i].name;
+      if (isToolDisabled(this.disabledTools, name)) {
+        continue;
+      }
       const writeTool: boolean = name === 'write_file' || name === 'file_edit';
       const memoryTool: boolean = name === 'memory_write' || name === 'memory_get';
       if (writeTool && !this.allowWrite) {
@@ -192,6 +198,9 @@ export class LocalToolRuntime implements ToolRuntime {
 
   async execute(name: string, argumentsJson: string): Promise<ToolResult> {
     try {
+      if (isToolDisabled(this.disabledTools, name)) {
+        return { ok: false, content: '工具已在此设备上关闭：' + name };
+      }
       if (name === 'now') {
         const now: Date = new Date();
         return {

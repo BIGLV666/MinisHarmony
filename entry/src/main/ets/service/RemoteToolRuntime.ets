@@ -1,6 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { ToolDefinition, ToolResult, ToolRuntime } from '../core/ToolTypes';
-import { builtinToolDefinitions } from '../core/ToolCatalog';
+import { builtinToolDefinitions, isToolDisabled } from '../core/ToolCatalog';
 import { truncateText } from '../core/Workspace';
 
 interface RemoteToolRequest {
@@ -30,11 +30,18 @@ export class RemoteToolRuntime implements ToolRuntime {
   private endpoint: string;
   private token: string;
   private allowWrite: boolean;
+  private disabledTools: string[];
 
-  constructor(endpoint: string, token: string, allowWrite: boolean) {
+  constructor(
+    endpoint: string,
+    token: string,
+    allowWrite: boolean,
+    disabledTools: string[] = []
+  ) {
     this.endpoint = endpoint.trim();
     this.token = token.trim();
     this.allowWrite = allowWrite;
+    this.disabledTools = disabledTools;
   }
 
   definitions(): ToolDefinition[] {
@@ -44,6 +51,9 @@ export class RemoteToolRuntime implements ToolRuntime {
     const available: ToolDefinition[] = [];
     for (let i = 0; i < all.length; i++) {
       const name: string = all[i].name;
+      if (isToolDisabled(this.disabledTools, name)) {
+        continue;
+      }
       if (name === 'memory_write' || name === 'memory_get') {
         continue;
       }
@@ -59,6 +69,9 @@ export class RemoteToolRuntime implements ToolRuntime {
   }
 
   async execute(name: string, argumentsJson: string): Promise<ToolResult> {
+    if (isToolDisabled(this.disabledTools, name)) {
+      return { ok: false, content: '工具已在此设备上关闭：' + name };
+    }
     if (name === 'memory_write' || name === 'memory_get') {
       return {
         ok: false,

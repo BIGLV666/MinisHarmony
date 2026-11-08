@@ -20,6 +20,7 @@ import {
   cloneSettings,
   defaultSettings,
   normalizeThinkingLevel,
+  normalizeToolNames,
   reasoningPart,
   textPart
 } from '../core/Types';
@@ -89,7 +90,8 @@ function normalizeSettings(source: AppSettings): AppSettings {
     memoryEnabled: source.memoryEnabled === true,
     backgroundEnabled: source.backgroundEnabled !== false,
     thinkingLevel: normalizeThinkingLevel(source.thinkingLevel),
-    enterToSend: source.enterToSend === true
+    enterToSend: source.enterToSend === true,
+    disabledTools: normalizeToolNames(source.disabledTools)
   };
 }
 

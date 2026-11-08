@@ -144,3 +144,16 @@ export function builtinToolDefinitions(): ToolDefinition[] {
   ];
   return definitions;
 }
+
+/**
+ * Per-tool switches live in settings as bare names. A tool is available when
+ * the catalogue includes it AND its name is not in this list.
+ */
+export function isToolDisabled(disabledTools: string[], name: string): boolean {
+  for (let i = 0; i < disabledTools.length; i++) {
+    if (disabledTools[i] === name) {
+      return true;
+    }
+  }
+  return false;
+}

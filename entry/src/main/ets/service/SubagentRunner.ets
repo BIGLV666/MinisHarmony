@@ -97,7 +97,8 @@ export class SubagentRunner implements SubagentHandler {
       this.allowWrite,
       false,
       childSettings.imageToolsEnabled,
-      nextRunner
+      nextRunner,
+      childSettings.disabledTools
     );
 
     const title: string = label.length > 0 ? label : '子代理';

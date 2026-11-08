@@ -1,6 +1,7 @@
 import { childProcessManager, common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { BusinessError, zlib } from '@kit.BasicServicesKit';
+import { util } from '@kit.ArkTS';
 
 /**
  * Drives the iSH-based on-device Linux sandbox as a persistent daemon.
@@ -64,6 +65,13 @@ export class SandboxIsh {
   private static readonly LEGACY_ROOTFS: string = '/data/local/tmp/minis-ish-rootfs';
   private static readonly MARKER: string = '[sandbox exit=';
   private static readonly READY: string = '[sandbox ready]';
+  /**
+   * The output file is read and decoded as a whole on every change. A command
+   * that streams gigabytes (yes, cat on a binary) would make that quadratic,
+   * so past this size the daemon is stopped and only the head is returned.
+   */
+  private static readonly MAX_OUTPUT_BYTES: number = 64 * 1024 * 1024;
+  private static readonly HEAD_BYTES: number = 64 * 1024;
 
   private static started: boolean = false;
   private static startError: string = '';
@@ -201,18 +209,34 @@ export class SandboxIsh {
 
     const deadline: number = Date.now() + Math.max(1000, timeoutMs);
     let text: string = '';
+    let lastSize: number = -1;
     while (Date.now() < deadline) {
-      text = SandboxIsh.read(SandboxIsh.outputPath);
-      const marker: Marker | null = SandboxIsh.findMarker(text, start, id);
-      if (marker !== null) {
-        let output: string = text.substring(start, marker.index);
-        if (output.endsWith('\n')) {
-          output = output.substring(0, output.length - 1);
-        }
-        SandboxIsh.consumed = marker.end;
-        return { output: output, exitCode: marker.code, timedOut: false, error: '' };
+      const size: number = SandboxIsh.fileSize(SandboxIsh.outputPath);
+      if (size > SandboxIsh.MAX_OUTPUT_BYTES) {
+        const head: string = SandboxIsh.readHead(SandboxIsh.outputPath);
+        SandboxIsh.stopDaemon();
+        return {
+          output: head,
+          exitCode: -1,
+          timedOut: false,
+          error: '命令输出超过 64 MB，沙箱已停止；上面是开头部分'
+        };
       }
-      await SandboxIsh.sleep(120);
+      if (size !== lastSize) {
+        lastSize = size;
+        text = SandboxIsh.read(SandboxIsh.outputPath);
+        const marker: Marker | null = SandboxIsh.findMarker(text, start, id);
+        if (marker !== null) {
+          let output: string = text.substring(start, marker.index);
+          if (output.endsWith('\n')) {
+            output = output.substring(0, output.length - 1);
+          }
+          SandboxIsh.consumed = marker.end;
+          return { output: output, exitCode: marker.code, timedOut: false, error: '' };
+        }
+      }
+      // Large outputs grow in expensive steps; poll them less often.
+      await SandboxIsh.sleep(size > 4 * 1024 * 1024 ? 500 : 120);
     }
 
     // A stuck command cannot be interrupted inside the guest from here. Stop
@@ -410,6 +434,31 @@ export class SandboxIsh {
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+  private static fileSize(path: string): number {
+    try {
+      return fileIo.statSync(path).size;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /** First HEAD_BYTES of the output, decoded; used for the oversize guard. */
+  private static readHead(path: string): string {
+    try {
+      const file = fileIo.openSync(path, fileIo.OpenMode.READ_ONLY);
+      try {
+        const buffer: ArrayBuffer = new ArrayBuffer(SandboxIsh.HEAD_BYTES);
+        const read: number = fileIo.readSync(file.fd, buffer);
+        const bytes: Uint8Array = new Uint8Array(buffer, 0, read);
+        return util.TextDecoder.create('utf-8').decodeToString(bytes);
+      } finally {
+        fileIo.closeSync(file);
+      }
+    } catch (e) {
+      return '';
     }
   }
 

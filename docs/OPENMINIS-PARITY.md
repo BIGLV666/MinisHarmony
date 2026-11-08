@@ -111,7 +111,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 
 | | 功能 | OpenMinis 行为 | MinisHarmony 方案 | 优先级 |
 |---|---|---|---|---|
-| - [ ] | MCP HTTP / SSE | JSON-RPC、工具发现 | `fetch` 实现 JSON-RPC 客户端 | P2 |
+| - [x] | MCP HTTP / SSE | JSON-RPC、工具发现 | `core/McpProtocol.ets` + `service/McpClient.ets`：Streamable HTTP 的 `initialize` / `tools/list` / `tools/call`，响应兼容纯 JSON 与 SSE；工具以 `mcp_服务_工具` 暴露，聊天时与本机工具合并；设置页增删服务、手动刷新；无 stdio 与 OAuth | P2 |
 | - [ ] | MCP stdio | 启动本地进程 | 鸿蒙不能 spawn，做不了 | - |
 | - [ ] | MCP OAuth | PKCE | 可复用浏览器/Web 组件 | P3 |
 | - [ ] | 内置浏览器 | 多标签、历史、下载、Cookie | ArkWeb + 动作脚本 | P2 |
@@ -257,3 +257,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 多会话导出 | 侧栏「选择会话」多选，导出为 `sessions` 数组的 JSON bundle；导入端统一解析单会话与 bundle，逐会话分配新 ID，坏条目跳过；54 项测试通过 |
 | 2026-11-08 | 图片附件 / 预览 | 输入栏🖼从系统相册多选（4 张、10 MB），副本存 `filesDir/attachments`；用户气泡缩略图可全屏查看；请求时转 data URL 走多模态 `image_url`；编辑重发保留图片；55 项测试通过 |
 | 2026-11-08 | 逐模型参数覆盖 | `core/ModelOverride.ets` + 设置页「逐模型参数」：按模型 ID 精确匹配，覆盖 temperature / top_p / max_tokens，合并额外请求头与 extra_body；未知模型或全局参数不受影响；坏 JSON 保存时拒绝；57 项测试通过 |
+| 2026-11-08 | MCP HTTP 工具 | 设置页「MCP 工具」可增删服务（URL + 请求头 JSON + 启用开关）；启动与保存设置时后台发现，手动刷新强制重查；`initialize` → `notifications/initialized` → `tools/list`，调用走 `tools/call`；响应支持 JSON 与 SSE；工具名 `mcp_服务_工具`，JSON Schema 原样透传；无 stdio / OAuth；59 项测试通过 |

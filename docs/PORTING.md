@@ -55,6 +55,7 @@
 | Android `ToolJsonRepair.kt` | `core/ToolArgs.ets` | 覆盖围栏/截断/尾逗号；未做类型强转与字段名模糊匹配 |
 | OpenMinis 工具循环保护 | `core/ToolLoop.ets` + `AgentRuntime` | 连续相同调用 3 次追加警告 |
 | 本地文件 / shell 工具 | `service/LocalToolRuntime.ets`、`RemoteToolRuntime.ets` | 应用工作区或远程 HTTP 服务，共用 `ToolRuntime` |
+| OpenMinis MCP 工具 | `core/McpProtocol.ets` + `service/McpClient.ets` + `McpRuntime` | Streamable HTTP JSON-RPC；自动发现与调用；工具名前缀；无 stdio / OAuth |
 | OpenCode Go 模型发现 | `ChatApi.fetchModelIds()` | 规范基址 `/zen/go/v1/models`；旧基址自动换算 |
 | OpenMinis 模型能力目录 | `core/ModelCaps.ets` | 家族前缀估计上下文/最大输出/视觉/推理；顶栏占比与模型列表标签；离线，不做 models.dev 拉取 |
 | OpenMinis 逐模型参数 | `core/ModelOverride.ets` + `ChatApi` | 按模型 ID 覆盖 temperature/top_p/max_tokens、追加请求头与 extra_body；空值继承全局 |

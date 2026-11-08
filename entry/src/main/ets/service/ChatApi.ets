@@ -42,7 +42,7 @@ export interface ChatCallbacks {
 interface ApiToolFunctionDefinition {
   name: string;
   description: string;
-  parameters: ToolParameters;
+  parameters: Object;
 }
 
 interface ApiToolDefinition {
@@ -200,12 +200,21 @@ function buildMessages(
 function buildToolDefinitions(tools: ToolDefinition[]): ApiToolDefinition[] {
   const definitions: ApiToolDefinition[] = [];
   for (let i = 0; i < tools.length; i++) {
+    let parameters: Object = tools[i].parameters;
+    const raw: string | undefined = tools[i].schemaJson;
+    if (raw !== undefined && raw.length > 0) {
+      try {
+        parameters = JSON.parse(raw) as Object;
+      } catch (e) {
+        parameters = tools[i].parameters;
+      }
+    }
     definitions.push({
       type: 'function',
       function: {
         name: tools[i].name,
         description: tools[i].description,
-        parameters: tools[i].parameters
+        parameters: parameters
       }
     });
   }

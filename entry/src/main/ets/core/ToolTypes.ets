@@ -18,6 +18,12 @@ export interface ToolDefinition {
   name: string;
   description: string;
   parameters: ToolParameters;
+  /**
+   * Raw JSON Schema for tools whose schema is richer than `ToolParameters`
+   * (MCP servers can return nested objects, enums and arrays). When present
+   * it is sent instead of `parameters`.
+   */
+  schemaJson?: string;
 }
 
 export interface ToolResult {

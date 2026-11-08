@@ -57,6 +57,7 @@ import { SkillDoc, SkillCommand, matchSkillCommand } from '../core/SkillDoc';
 import { SkillStore } from '../service/SkillStore';
 import { keepScreenOn } from '../service/ScreenWake';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
+import { McpRegistry, McpRuntime } from '../service/McpRuntime';
 import { SubagentRunner } from '../service/SubagentRunner';
 import { titleFrom } from '../service/Format';
 import { ChatView } from '../components/ChatView';
@@ -166,6 +167,8 @@ struct Index {
     this.settings = await LocalStore.loadSettings();
     this.applyAppearance(this.settings);
     AppLogger.init(context, this.settings.loggingEnabled);
+    // Discovery is best-effort; an offline server just contributes no tools.
+    McpRegistry.refresh(this.settings.mcpServers).catch((error: Error) => {});
     const loaded: StoredSession[] = await LocalStore.loadSessions();
     this.store = loaded;
     this.refreshSessions();
@@ -975,27 +978,30 @@ struct Index {
   }
 
   private makeToolRuntime(settings: AppSettings): ToolRuntime {
+    let base: ToolRuntime;
     if (settings.sandboxMode === 'remote') {
-      return new RemoteToolRuntime(
+      base = new RemoteToolRuntime(
         settings.sandboxUrl,
         settings.sandboxToken,
         settings.allowWriteTools,
         settings.disabledTools
       );
-    }
-    return new LocalToolRuntime(
-      this.workspaceRoot,
-      settings.allowWriteTools,
-      settings.memoryEnabled,
-      settings.imageToolsEnabled,
-      new SubagentRunner(
-        settings,
+    } else {
+      base = new LocalToolRuntime(
         this.workspaceRoot,
-        settings.allowWriteTools
-      ),
-      settings.disabledTools,
-      settings.clipboardToolsEnabled
-    );
+        settings.allowWriteTools,
+        settings.memoryEnabled,
+        settings.imageToolsEnabled,
+        new SubagentRunner(
+          settings,
+          this.workspaceRoot,
+          settings.allowWriteTools
+        ),
+        settings.disabledTools,
+        settings.clipboardToolsEnabled
+      );
+    }
+    return new McpRuntime(base, settings.disabledTools);
   }
 
   private stopStream(): void {
@@ -1051,6 +1057,7 @@ struct Index {
     LocalStore.saveSettings(next).catch((error: Error) => {
       this.toast('设置保存失败');
     });
+    McpRegistry.refresh(next.mcpServers).catch((error: Error) => {});
     const session: StoredSession | null = this.findSession(this.currentId);
     if (session !== null) {
       session.meta.modelId = next.modelId;

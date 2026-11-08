@@ -54,7 +54,8 @@ copyCore('Soul');
 copyCore('SkillDoc');
 copyCore('ModelCaps');
 copyCore('ModelOverride');
-copyCore('Types', ['ModelOverride']);
+copyCore('McpProtocol');
+copyCore('Types', ['ModelOverride', 'McpProtocol']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -87,6 +88,7 @@ markTypeOnly('ToolProtocol', 'Types', ['ChatMessage']);
 markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'MessagePart', 'StoredSession']);
 markTypeOnly('SessionParams', 'Types', ['AppSettings', 'SessionMeta', 'ThinkingLevel']);
 markTypeOnly('Types', 'ModelOverride', ['ModelOverride']);
+markTypeOnly('Types', 'McpProtocol', ['McpServerConfig']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -147,6 +149,7 @@ const soul = await import(pathToFileURL(join(tmp, 'Soul.mts')).href);
 const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
+const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -1211,6 +1214,84 @@ test('extra headers and extra body validate and merge safely', () => {
   assert.equal(merged.seed, 7);
   assert.equal(modelOverride.applyExtraBody(base, 'not json'), base);
   assert.equal(modelOverride.applyExtraBody(base, ''), base);
+});
+
+test('MCP names, requests and SSE replies are normalized', () => {
+  assert.equal(mcp.exposedToolName('Search Box', 'web.search'), 'mcp_search_box_web_search');
+  assert.equal(mcp.exposedToolName('a/b', 'x.y'), 'mcp_a_b_x_y');
+  const longName = mcp.exposedToolName('server', 'x'.repeat(80));
+  assert.equal(longName.length, 64);
+  assert.match(longName, /^[A-Za-z0-9_-]+$/);
+
+  const request = JSON.parse(mcp.rpcRequest(3, 'tools/list', ''));
+  assert.equal(request.jsonrpc, '2.0');
+  assert.equal(request.id, 3);
+  assert.equal(request.method, 'tools/list');
+  assert.deepEqual(request.params, {});
+  const notification = JSON.parse(mcp.rpcNotification('notifications/initialized', ''));
+  assert.equal(notification.id, undefined);
+  assert.equal(notification.method, 'notifications/initialized');
+
+  const plain = mcp.parseRpcBody('{"jsonrpc":"2.0","id":2,"result":{"ok":1}}', 2);
+  assert.equal(plain.result.ok, 1);
+  const sse = [
+    'event: message',
+    'data: {"jsonrpc":"2.0","method":"notifications/message","params":{}}',
+    '',
+    'data: {"jsonrpc":"2.0","id":2,"result":{"ok":2}}',
+    ''
+  ].join('\n');
+  assert.equal(mcp.parseRpcBody(sse, 2).result.ok, 2);
+  assert.equal(mcp.parseRpcBody('not json', 1), null);
+  const err = mcp.parseRpcBody(
+    '{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}', 1);
+  assert.equal(mcp.rpcErrorMessage(err), 'MCP 错误 (-32601)：Method not found');
+});
+
+test('MCP tool lists and call results flatten into model-friendly text', () => {
+  const tools = mcp.toolsFromResult('srv', 'Search', JSON.stringify({
+    tools: [
+      {
+        name: 'query',
+        description: 'Run a query',
+        inputSchema: {
+          type: 'object',
+          properties: { q: { type: 'string' }, limit: { type: 'number' } },
+          required: ['q']
+        }
+      },
+      { name: '' },
+      { description: 'missing name' }
+    ]
+  }));
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].exposedName, 'mcp_srv_query');
+  assert.equal(tools[0].serverName, 'Search');
+  const schema = JSON.parse(tools[0].schemaJson);
+  assert.deepEqual(schema.required, ['q']);
+  assert.equal(schema.properties.q.type, 'string');
+  assert.deepEqual(mcp.toolsFromResult('s', 'S', 'bad json'), []);
+
+  const text = mcp.callResultText(JSON.stringify({
+    content: [
+      { type: 'text', text: 'first' },
+      { type: 'image', text: '' },
+      { type: 'text', text: 'second' }
+    ],
+    isError: false
+  }));
+  assert.equal(text, 'first\n[image 内容未展开]\nsecond');
+  assert.equal(mcp.isCallError('{"isError":true}'), true);
+  assert.equal(mcp.isCallError('{"isError":false}'), false);
+
+  const servers = mcp.normalizeMcpServers([
+    { id: 'a', name: ' A ', url: ' https://x/mcp ', headers: '', enabled: true },
+    { id: 'b', name: '', url: 'ftp://nope', headers: '', enabled: true },
+    { id: 'a', name: 'dup', url: 'https://y/mcp', headers: '', enabled: false }
+  ]);
+  assert.equal(servers.length, 1);
+  assert.equal(servers[0].url, 'https://x/mcp');
+  assert.equal(servers[0].name, 'A');
 });
 
 test('workspace listing sorts directories first and formats sizes', () => {

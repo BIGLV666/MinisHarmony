@@ -500,6 +500,26 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 空消息。`read_image` 与用户附件共用同一条 `image_url` 通路，但开关互不影响。
 模型能力表未标记视觉时只提示，不阻止发送。
 
+## MCP 工具
+
+`McpClient` 走 MCP 的 Streamable HTTP 传输：每个 JSON-RPC 消息都 POST 到服务
+地址，`initialize` 后发送 `notifications/initialized`，再 `tools/list` 发现工具。
+响应既可能是 `application/json`，也可能是 `text/event-stream`；`rpcPayloads()`
+把 SSE 的 `data:` 行拆出来，`parseRpcBody()` 优先匹配请求 id，找不到时退回第一个
+带 `result`/`error` 的事件。服务返回的 `Mcp-Session-Id` 会被保存并在后续请求中带上。
+
+发现结果缓存在进程级的 `McpRegistry` 里：启动、保存设置时后台刷新，设置页的
+「刷新」强制重查；签名（启用服务的 JSON）未变时跳过重复发现。发送消息时
+`runAgent` 不会等待发现，因此离线或慢服务只会少几个工具，不会卡住对话。
+`McpRuntime` 包住本机/远程 `ToolRuntime`，把 MCP 工具追加在 definitions 末尾，
+执行时先按 `mcp_` 前缀查表，未命中再交给原运行时。
+
+工具名经 `slug()` 清洗为 `[A-Za-z0-9_-]` 并截断到 64 字符（OpenAI 限制），
+形如 `mcp_<服务>_<工具>`。`tools/call` 的 `content` 数组只展开文本项，图片/音频
+用占位符表示；`isError` 映射为工具错误。MCP 的 JSON Schema 通过
+`ToolDefinition.schemaJson` 原样发给模型，因为内置的 `ToolParameters` 只能表达
+扁平属性。stdio 服务无法在鸿蒙应用内启动，因此只支持 HTTP；OAuth 也未接。
+
 ## 逐模型参数
 
 `AppSettings.modelOverrides` 是一张按模型 ID 精确匹配的表（不走前缀、不做

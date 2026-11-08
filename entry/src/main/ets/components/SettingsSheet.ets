@@ -11,6 +11,7 @@ import {
   defaultSettings
 } from '../core/Types';
 import { common } from '@kit.AbilityKit';
+import { util } from '@kit.ArkTS';
 import {
   ACCENT_PRESETS,
   AccentPreset,
@@ -34,6 +35,8 @@ import {
   normalizeModelOverrides,
   overrideSummary
 } from '../core/ModelOverride';
+import { McpServerConfig, normalizeMcpServers } from '../core/McpProtocol';
+import { McpRegistry, McpServerStatus } from '../service/McpRuntime';
 
 interface ToolChoice {
   name: string;
@@ -127,6 +130,15 @@ export struct SettingsSheet {
   @State ovMaxTokensText: string = '';
   @State ovHeadersText: string = '';
   @State ovBodyText: string = '';
+  @State mcpServers: McpServerConfig[] = [];
+  @State editingMcp: boolean = false;
+  @State mcpIndex: number = -1;
+  @State mcpName: string = '';
+  @State mcpUrl: string = '';
+  @State mcpHeadersText: string = '';
+  @State mcpEnabled: boolean = true;
+  @State mcpRefreshing: boolean = false;
+  @State mcpStatusText: string = '';
 
   aboutToAppear(): void {
     const copy: AppSettings = cloneSettings(this.settings);
@@ -160,6 +172,7 @@ export struct SettingsSheet {
     this.fontScale = copy.fontScale;
     this.disabledTools = copy.disabledTools.slice();
     this.modelOverrides = normalizeModelOverrides(copy.modelOverrides);
+    this.mcpServers = normalizeMcpServers(copy.mcpServers);
   }
 
   private toolEnabled(name: string): boolean {
@@ -268,7 +281,8 @@ export struct SettingsSheet {
       accentColor: this.accentColor,
       fontScale: this.fontScale,
       enabledSkills: this.enabledSkills.slice(),
-      modelOverrides: normalizeModelOverrides(this.modelOverrides)
+      modelOverrides: normalizeModelOverrides(this.modelOverrides),
+      mcpServers: normalizeMcpServers(this.mcpServers)
     };
     return next;
   }
@@ -377,6 +391,117 @@ export struct SettingsSheet {
     if (this.ovIndex === index) {
       this.editingOverride = false;
       this.ovIndex = -1;
+    }
+  }
+
+  private beginMcp(index: number): void {
+    if (this.editingMcp && index < 0) {
+      this.editingMcp = false;
+      return;
+    }
+    if (index >= 0 && index < this.mcpServers.length) {
+      const item: McpServerConfig = this.mcpServers[index];
+      this.mcpIndex = index;
+      this.mcpName = item.name;
+      this.mcpUrl = item.url;
+      this.mcpHeadersText = item.headers;
+      this.mcpEnabled = item.enabled;
+    } else {
+      this.mcpIndex = -1;
+      this.mcpName = '';
+      this.mcpUrl = '';
+      this.mcpHeadersText = '';
+      this.mcpEnabled = true;
+    }
+    this.editingMcp = true;
+  }
+
+  private saveMcp(): void {
+    const url: string = this.mcpUrl.trim();
+    if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) {
+      this.onToast('MCP 地址需以 http:// 或 https:// 开头');
+      return;
+    }
+    if (!isValidExtraHeaders(this.mcpHeadersText)) {
+      this.onToast('MCP 请求头需为 JSON 对象，且每个值都是字符串');
+      return;
+    }
+    const item: McpServerConfig = {
+      id: this.mcpIndex >= 0 ? this.mcpServers[this.mcpIndex].id : util.generateRandomUUID(true),
+      name: this.mcpName.trim().length > 0 ? this.mcpName.trim() : url,
+      url: url,
+      headers: this.mcpHeadersText.trim(),
+      enabled: this.mcpEnabled
+    };
+    const next: McpServerConfig[] = [];
+    for (let i = 0; i < this.mcpServers.length; i++) {
+      if (i === this.mcpIndex) {
+        next.push(item);
+      } else {
+        next.push(this.mcpServers[i]);
+      }
+    }
+    if (this.mcpIndex < 0) {
+      next.push(item);
+    }
+    this.mcpServers = next;
+    this.editingMcp = false;
+    this.mcpStatusText = '已保存，点「刷新」发现工具';
+  }
+
+  private removeMcp(index: number): void {
+    const next: McpServerConfig[] = [];
+    for (let i = 0; i < this.mcpServers.length; i++) {
+      if (i !== index) {
+        next.push(this.mcpServers[i]);
+      }
+    }
+    this.mcpServers = next;
+    if (this.mcpIndex === index) {
+      this.editingMcp = false;
+      this.mcpIndex = -1;
+    }
+  }
+
+  private setMcpEnabled(index: number, enabled: boolean): void {
+    const next: McpServerConfig[] = [];
+    for (let i = 0; i < this.mcpServers.length; i++) {
+      const item: McpServerConfig = this.mcpServers[i];
+      next.push({
+        id: item.id,
+        name: item.name,
+        url: item.url,
+        headers: item.headers,
+        enabled: i === index ? enabled : item.enabled
+      });
+    }
+    this.mcpServers = next;
+  }
+
+  private async refreshMcp(): Promise<void> {
+    if (this.mcpRefreshing) {
+      return;
+    }
+    this.mcpRefreshing = true;
+    try {
+      const statuses: McpServerStatus[] = await McpRegistry.refresh(
+        normalizeMcpServers(this.mcpServers), true);
+      if (statuses.length === 0) {
+        this.mcpStatusText = '没有启用的 MCP 服务';
+      } else {
+        const parts: string[] = [];
+        for (let i = 0; i < statuses.length; i++) {
+          const status: McpServerStatus = statuses[i];
+          if (status.error.length > 0) {
+            parts.push(status.serverName + '：' + status.error);
+          } else {
+            parts.push(status.serverName + '：' + status.toolCount.toString() + ' 个工具');
+          }
+        }
+        this.mcpStatusText = parts.join('\n');
+      }
+    } finally {
+      this.mcpRefreshing = false;
     }
   }
 
@@ -1489,6 +1614,170 @@ export struct SettingsSheet {
                   .borderRadius(9)
                 }, (skill: SkillDoc) => skill.id + ':' +
                   (this.skillEnabled(skill.id) ? '1' : '0'))
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Column({ space: 6 }) {
+                Row({ space: 8 }) {
+                  Column({ space: 3 }) {
+                    Text('MCP 工具')
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_primary'))
+                    Text('连接支持 Streamable HTTP 的 MCP 服务，工具以 mcp_服务_工具 命名，与本机/远程工具一起提供给模型。')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .lineHeight(14)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  Text(this.mcpRefreshing ? '刷新中…' : '刷新')
+                    .fontSize(11)
+                    .fontColor($r('app.color.accent'))
+                    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(8)
+                    .onClick(() => {
+                      this.refreshMcp();
+                    })
+                  Text(this.editingMcp ? '取消' : '添加')
+                    .fontSize(11)
+                    .fontColor($r('app.color.accent'))
+                    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                    .backgroundColor($r('app.color.surface'))
+                    .borderRadius(8)
+                    .onClick(() => this.beginMcp(-1))
+                }
+                .width('100%')
+
+                if (this.mcpServers.length === 0 && !this.editingMcp) {
+                  Text('还没有 MCP 服务。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .width('100%')
+                }
+
+                ForEach(this.mcpServers, (server: McpServerConfig) => {
+                  Row({ space: 8 }) {
+                    Column({ space: 2 }) {
+                      Text(server.name)
+                        .fontSize(11)
+                        .fontColor($r('app.color.text_primary'))
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      Text(server.url)
+                        .fontSize(9)
+                        .fontColor($r('app.color.text_tertiary'))
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+                    Toggle({ type: ToggleType.Switch, isOn: server.enabled })
+                      .selectedColor($r('app.color.accent'))
+                      .onChange((on: boolean) => {
+                        this.setMcpEnabled(this.mcpServers.indexOf(server), on);
+                      })
+                    Text('编辑')
+                      .fontSize(10)
+                      .fontColor($r('app.color.accent'))
+                      .onClick(() => this.beginMcp(this.mcpServers.indexOf(server)))
+                    Text('删除')
+                      .fontSize(10)
+                      .fontColor($r('app.color.danger'))
+                      .onClick(() => this.removeMcp(this.mcpServers.indexOf(server)))
+                  }
+                  .width('100%')
+                  .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(9)
+                }, (server: McpServerConfig) => server.id + ':' +
+                  (server.enabled ? '1' : '0'))
+
+                if (this.mcpStatusText.length > 0) {
+                  Text(this.mcpStatusText)
+                    .fontSize(9)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                    .width('100%')
+                }
+
+                if (this.editingMcp) {
+                  Column({ space: 8 }) {
+                    this.fieldLabel('名称')
+                    TextInput({ text: this.mcpName, placeholder: '例如 搜索服务' })
+                      .height(36)
+                      .fontSize(12)
+                      .backgroundColor($r('app.color.surface'))
+                      .borderRadius(9)
+                      .onChange((value: string) => {
+                        this.mcpName = value;
+                      })
+
+                    this.fieldLabel('地址（JSON-RPC 端点）')
+                    TextInput({ text: this.mcpUrl, placeholder: 'https://example.com/mcp' })
+                      .height(36)
+                      .fontSize(12)
+                      .backgroundColor($r('app.color.surface'))
+                      .borderRadius(9)
+                      .onChange((value: string) => {
+                        this.mcpUrl = value;
+                      })
+
+                    this.fieldLabel('请求头（JSON 对象，可用于鉴权）')
+                    TextArea({ text: this.mcpHeadersText, placeholder: '{"Authorization":"Bearer …"}' })
+                      .height(56)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_primary'))
+                      .backgroundColor($r('app.color.surface'))
+                      .borderRadius(9)
+                      .onChange((value: string) => {
+                        this.mcpHeadersText = value;
+                      })
+
+                    Row({ space: 8 }) {
+                      Text('启用')
+                        .fontSize(11)
+                        .fontColor($r('app.color.text_secondary'))
+                        .layoutWeight(1)
+                      Toggle({ type: ToggleType.Switch, isOn: this.mcpEnabled })
+                        .selectedColor($r('app.color.accent'))
+                        .onChange((on: boolean) => {
+                          this.mcpEnabled = on;
+                        })
+                    }
+                    .width('100%')
+
+                    Row({ space: 8 }) {
+                      Button('取消', { type: ButtonType.Normal })
+                        .layoutWeight(1)
+                        .height(34)
+                        .fontSize(12)
+                        .fontColor($r('app.color.text_secondary'))
+                        .backgroundColor($r('app.color.surface'))
+                        .borderRadius(9)
+                        .onClick(() => {
+                          this.editingMcp = false;
+                        })
+                      Button('保存服务', { type: ButtonType.Normal })
+                        .layoutWeight(1)
+                        .height(34)
+                        .fontSize(12)
+                        .fontColor($r('app.color.on_accent'))
+                        .backgroundColor($r('app.color.accent'))
+                        .borderRadius(9)
+                        .onClick(() => this.saveMcp())
+                    }
+                    .width('100%')
+                  }
+                  .width('100%')
+                  .padding(10)
+                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(11)
+                  .alignItems(HorizontalAlign.Start)
+                }
               }
               .width('100%')
               .padding({ left: 12, right: 12, top: 8, bottom: 8 })

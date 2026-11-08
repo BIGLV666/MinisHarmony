@@ -136,6 +136,11 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       `scripts/ish-rootfs-python.py`；`python3 -c` 冒烟与连续命令仍需平板。
       Node 未预装，按需再评估。）
 - [ ] M5 体验：设置页沙箱状态、首次解压进度、磁盘占用、重置 rootfs。
+      （2026-11-08 已加：设置页「沙箱状态」行显示已就绪/需重新解压/尚未解压、
+      rootfs 占用与「内核常驻」状态；「重置」需两次点击确认，调用
+      `SandboxIsh.reset` 停 daemon 后删除 rootfs，下次使用重新解压。
+      `zlib.decompressFile` 没有进度回调，解压期间只显示一次性提示，没有百分比。
+      实机视觉与交互待验。）
 
 ## 4. 移植风险
 

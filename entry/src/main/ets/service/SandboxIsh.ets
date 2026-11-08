@@ -35,6 +35,17 @@ export interface SandboxRunResult {
   error: string;
 }
 
+/** What the settings page can show without booting anything. */
+export interface SandboxStatus {
+  /** The rootfs has been extracted and carries the current version. */
+  ready: boolean;
+  version: string;
+  /** Bytes occupied by the extracted rootfs. */
+  bytes: number;
+  /** A daemon is alive, or a command is in flight. */
+  running: boolean;
+}
+
 interface Marker {
   index: number;
   end: number;
@@ -65,6 +76,7 @@ export class SandboxIsh {
   private static options: SandboxOptions = { workspace: '', memory: '' };
   /** Commands share one shell, so they also share one queue. */
   private static queue: Promise<void> = Promise.resolve();
+  private static busy: number = 0;
 
   /**
    * Run one command. Calls are serialized: the guest has a single shell and a
@@ -80,11 +92,46 @@ export class SandboxIsh {
       release = resolve;
     });
     await previous;
+    SandboxIsh.busy++;
     try {
       return await SandboxIsh.execute(context, command, timeoutMs, options);
     } finally {
+      SandboxIsh.busy--;
       release();
     }
+  }
+
+  /**
+   * Report what the settings page needs: whether the rootfs is ready, how
+   * large the extracted tree is, and whether the daemon or a command is live.
+   */
+  static status(context: common.UIAbilityContext): SandboxStatus {
+    const dir: string = context.filesDir + '/' + SandboxIsh.ROOTFS_DIR;
+    const version: string = SandboxIsh.read(dir + '/.minis-version');
+    return {
+      ready: SandboxIsh.hasMetaDb(dir) && version === SandboxIsh.ROOTFS_VERSION,
+      version: version,
+      bytes: SandboxIsh.directorySize(dir),
+      running: SandboxIsh.started || SandboxIsh.busy > 0
+    };
+  }
+
+  /**
+   * Delete the extracted rootfs so the next command unpacks it again. Used
+   * after a broken extraction or when the user wants a clean system. Refuses
+   * while a command runs: removing files under a live guest would only
+   * produce I/O errors.
+   */
+  static async reset(context: common.UIAbilityContext): Promise<boolean> {
+    if (SandboxIsh.busy > 0) {
+      return false;
+    }
+    SandboxIsh.stopDaemon();
+    // Give the native poll loop a moment to notice id=-1 and exit.
+    await SandboxIsh.sleep(400);
+    SandboxIsh.removeTree(context.filesDir + '/' + SandboxIsh.ROOTFS_DIR);
+    SandboxIsh.sequence = 0;
+    return true;
   }
 
   /** Returns the app-private rootfs, extracting the bundled archive once. */
@@ -299,6 +346,39 @@ export class SandboxIsh {
       }
       search = index + 1;
     }
+  }
+
+  static formatBytes(bytes: number): string {
+    if (bytes <= 0) {
+      return '0 B';
+    }
+    if (bytes < 1024) {
+      return bytes.toString() + ' B';
+    }
+    if (bytes < 1024 * 1024) {
+      return (bytes / 1024).toFixed(1) + ' KB';
+    }
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  private static directorySize(path: string): number {
+    let total: number = 0;
+    try {
+      if (!fileIo.accessSync(path)) {
+        return 0;
+      }
+      const stat = fileIo.statSync(path);
+      if (!stat.isDirectory()) {
+        return stat.size;
+      }
+      const names: string[] = fileIo.listFileSync(path);
+      for (let i = 0; i < names.length; i++) {
+        total += SandboxIsh.directorySize(path + '/' + names[i]);
+      }
+    } catch (e) {
+      // A partially removed tree still yields the bytes counted so far.
+    }
+    return total;
   }
 
   private static hasMetaDb(dir: string): boolean {

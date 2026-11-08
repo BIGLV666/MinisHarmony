@@ -16,7 +16,12 @@ import { common } from '@kit.AbilityKit';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { SandboxProbe } from '../service/SandboxProbe';
-import { SandboxIsh, SandboxOptions, SandboxRunResult } from '../service/SandboxIsh';
+import {
+  SandboxIsh,
+  SandboxOptions,
+  SandboxRunResult,
+  SandboxStatus
+} from '../service/SandboxIsh';
 import {
   ACCENT_PRESETS,
   AccentPreset,
@@ -159,6 +164,10 @@ export struct SettingsSheet {
   @State probeReport: string = '';
   @State ishRunning: boolean = false;
   @State ishReport: string = '';
+  @State sandboxStatus: string = '正在读取…';
+  @State sandboxBytes: string = '';
+  @State sandboxResetting: boolean = false;
+  @State resetArmed: boolean = false;
   @State maxTurnsText: string = '200';
   @State contextBudgetText: string = '60000';
   @State autoCompact: boolean = true;
@@ -231,6 +240,9 @@ export struct SettingsSheet {
   private copilotDevice: DeviceAuthorization | null = null;
 
   aboutToAppear(): void {
+    // UIContext is not attached yet during aboutToAppear; read status on the
+    // first idle frame instead.
+    setTimeout(() => this.refreshSandboxStatus(), 0);
     const copy: AppSettings = cloneSettings(this.settings);
     this.preset = copy.preset;
     this.baseUrl = copy.baseUrl;
@@ -949,14 +961,67 @@ export struct SettingsSheet {
     });
   }
 
+  /** Reads the local status without booting the kernel. */
+  private refreshSandboxStatus(): void {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const status: SandboxStatus = SandboxIsh.status(context);
+      if (status.ready) {
+        this.sandboxStatus = status.running
+          ? '已启动，内核常驻'
+          : '已就绪，用到时启动内核';
+      } else if (status.version.length > 0) {
+        this.sandboxStatus = '需要重新解压（旧版本 ' + status.version + '）';
+      } else {
+        this.sandboxStatus = '尚未解压，首次使用约需十几秒';
+      }
+      this.sandboxBytes = status.bytes > 0 ? SandboxIsh.formatBytes(status.bytes) : '';
+    } catch (e) {
+      this.sandboxStatus = '无法读取沙箱目录';
+      this.sandboxBytes = '';
+    }
+  }
+
+  private async resetSandbox(): Promise<void> {
+    if (this.sandboxResetting) {
+      return;
+    }
+    if (!this.resetArmed) {
+      this.resetArmed = true;
+      this.onToast('再点一次确认删除已解压的 rootfs');
+      setTimeout(() => {
+        this.resetArmed = false;
+      }, 4000);
+      return;
+    }
+    this.resetArmed = false;
+    this.sandboxResetting = true;
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const ok: boolean = await SandboxIsh.reset(context);
+      this.ishReport = '';
+      this.onToast(ok ? '已重置，下次使用沙箱时重新解压' : '沙箱正在执行命令，稍后再试');
+    } catch (e) {
+      const error: Error = e as Error;
+      this.onToast('重置失败：' + error.message);
+    }
+    this.sandboxResetting = false;
+    this.refreshSandboxStatus();
+  }
+
   private async runIshSmoke(): Promise<void> {
     if (this.ishRunning) {
       return;
     }
     this.ishRunning = true;
-    this.ishReport = '正在启动 iSH 内核…';
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const status: SandboxStatus = SandboxIsh.status(context);
+      // decompressFile has no progress callback; at least tell the user when
+      // the wait is the one-time extraction rather than the kernel boot.
+      this.ishReport = status.ready
+        ? '正在启动 iSH 内核…'
+        : '首次使用：正在解压 rootfs（约 15 MB），可能需要十几秒…';
       const options: SandboxOptions = {
         workspace: context.filesDir + '/workspace',
         memory: context.filesDir + '/memory'
@@ -972,6 +1037,7 @@ export struct SettingsSheet {
       this.ishReport = '沙箱启动失败：' + error.message;
     }
     this.ishRunning = false;
+    this.refreshSandboxStatus();
   }
 
   private copyIshReport(): void {
@@ -3068,6 +3134,35 @@ export struct SettingsSheet {
               }
               .width('100%')
 
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text('沙箱状态')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(this.sandboxStatus +
+                    (this.sandboxBytes.length > 0 ? ' · 占用 ' + this.sandboxBytes : ''))
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Text(this.sandboxResetting
+                  ? '重置中…'
+                  : (this.resetArmed ? '确认重置' : '重置'))
+                  .fontSize(11)
+                  .fontColor(this.resetArmed
+                    ? $r('app.color.danger')
+                    : $r('app.color.text_secondary'))
+                  .onClick(() => {
+                    this.resetSandbox();
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
               Column({ space: 6 }) {
                 Row({ space: 8 }) {
                   Button(this.ishRunning ? '沙箱启动中…' : '启动 Linux 沙箱')
@@ -3110,7 +3205,7 @@ export struct SettingsSheet {
                   .backgroundColor($r('app.color.surface_alt'))
                   .borderRadius(9)
                 } else {
-                  Text('在原生子进程里启动 iSH ARM64 内核并执行一条冒烟命令；根文件系统从 /data/local/tmp/minis-ish-rootfs 读取。')
+                  Text('在原生子进程里启动 iSH ARM64 内核并执行一条冒烟命令；rootfs 随应用分发（含 Python 3），首次使用解压到应用私有目录。')
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)

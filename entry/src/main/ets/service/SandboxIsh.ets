@@ -266,6 +266,10 @@ export class SandboxIsh {
     SandboxIsh.outputPath = dir + '/ish-daemon-output.txt';
     SandboxIsh.commandPath = dir + '/ish-daemon-command.txt';
     SandboxIsh.requestPath = dir + '/ish-daemon-request.txt';
+    // realfs mounts fail on a missing host directory; create both up front so
+    // a fresh install (no memory yet) still gets its mounts.
+    SandboxIsh.ensureDirectory(SandboxIsh.options.workspace);
+    SandboxIsh.ensureDirectory(SandboxIsh.options.memory);
     // A previous daemon may still be alive (a timeout or reset happened while
     // this call was queued). Tell it to stop and give its 80 ms poll loop time
     // to see the request; deleting the command file first would strand it.
@@ -328,6 +332,12 @@ export class SandboxIsh {
   private static writeCommand(id: number, command: string): string {
     const temporary: string = SandboxIsh.commandPath + '.tmp';
     const body: string = 'id=' + id.toString() + '\n' + command;
+    // The harness reads at most kMaxCommand bytes; a longer command would be
+    // silently ignored and the caller would wait until the timeout.
+    const bytes: Uint8Array = new util.TextEncoder().encodeInto(body);
+    if (bytes.length > 16000) {
+      return '命令过长（' + bytes.length.toString() + ' 字节，上限 16000 字节）';
+    }
     if (!SandboxIsh.writeText(temporary, body)) {
       return '无法写入沙箱命令文件';
     }
@@ -439,6 +449,19 @@ export class SandboxIsh {
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+  private static ensureDirectory(path: string): void {
+    if (path.length === 0) {
+      return;
+    }
+    try {
+      if (!fileIo.accessSync(path)) {
+        fileIo.mkdirSync(path, true);
+      }
+    } catch (e) {
+      // The mount will report the failure through [sandbox warn].
     }
   }
 

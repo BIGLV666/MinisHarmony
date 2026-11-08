@@ -133,6 +133,12 @@ void fail(const char *stage, int err) {
             strerror(err < 0 ? -err : err));
 }
 
+/** Non-fatal: the sandbox still runs without the optional mount. */
+void warn(const char *stage, int err) {
+    dprintf(STDOUT_FILENO, "\n[sandbox warn] %s failed: %d (%s)\n", stage, err,
+            strerror(err < 0 ? -err : err));
+}
+
 bool readFile(const char *path, char *buffer, size_t capacity) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
@@ -276,7 +282,8 @@ void mountGuestDir(const char *host, const char *point) {
     generic_mkdirat(kAtPwd, point, 0755);
     int err = do_mount(&realfs, host, point, "", 0);
     if (err < 0) {
-        fail("mount_realfs", err);
+        // A missing or unreadable host directory only disables that mount.
+        warn("mount_realfs", err);
     }
 }
 

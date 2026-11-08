@@ -33,6 +33,7 @@
 | Keychain / EncryptedPrefs | `service/SecureStore.ets` | Asset Store Kit，失败时回退 preferences 明文 |
 | 会话导出 Markdown | `core/MarkdownExport.ets` + `service/ExportService.ets` | 纯函数渲染，系统文档选择器选位置写入；不做 zip / 分享卡 |
 | 请求检查器 | `LogEvent.req` | 每次模型请求 8 位随机 id，关联同轮工具事件；不含正文 |
+| 应用锁 | `service/AppLock.ets` | 启动时系统 PIN/人脸/指纹；无凭据 fail-open；仅启动锁 |
 | 首次引导 | `OnboardingView` + `onboardingDone` | 三步、可跳过；只收集 API Key；已有配置不触发 |
 | 工作区浏览 | `WorkspaceFiles` + `WorkspaceSheet` | 只读列表/预览；复用工作区路径规则；跳过符号链接 |
 | 写入前确认 | `AgentRuntime.runTool()` + Index 弹层 | 仅写工具；拒绝作为工具错误返回；停止时结算为拒绝 |

@@ -89,6 +89,8 @@ export interface AppSettings {
   disabledTools: string[];
   /** First-run guide finished or skipped; never show it again when true. */
   onboardingDone: boolean;
+  /** Ask for the system credential before showing the app at launch. */
+  appLockEnabled: boolean;
 }
 
 export const DEFAULT_MAX_AGENT_TURNS: number = 200;
@@ -366,7 +368,8 @@ export function defaultSettings(): AppSettings {
     thinkingLevel: 'off',
     enterToSend: false,
     disabledTools: [],
-    onboardingDone: false
+    onboardingDone: false,
+    appLockEnabled: false
   };
 }
 
@@ -412,7 +415,8 @@ export function cloneSettings(source: AppSettings): AppSettings {
     thinkingLevel: normalizeThinkingLevel(source.thinkingLevel),
     enterToSend: source.enterToSend === true,
     disabledTools: normalizeToolNames(source.disabledTools),
-    onboardingDone: source.onboardingDone === true
+    onboardingDone: source.onboardingDone === true,
+    appLockEnabled: source.appLockEnabled === true
   };
 }
 

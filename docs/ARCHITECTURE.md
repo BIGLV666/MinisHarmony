@@ -475,6 +475,14 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 与工具共享同一套「绝对路径 / `..` 拒绝」规则，因此浏览器能看到的范围不会超过模型。
 排序、相对路径计算与大小格式化放在 `core/FileListing.ets`，可在 Node 下单测。
 
+## 应用锁
+
+`service/AppLock.ets` 在 `appLockEnabled` 时调用 `userAuth.getUserAuthInstance()`，
+认证方式为 PIN / 人脸 / 指纹，信任等级 ATL3。`Index.bootstrap()` 在加载完成后请求；
+取消或失败时保留全屏锁定页，用户可再次点击解锁。设备未录入任何凭据或 API 不可用
+时会以「放行」结算——应用锁的目标是防止旁人随手打开，而不是在无凭据设备上把用户
+永久锁在外面。锁只发生在启动时，从系统文件选择器返回不会再次弹窗。
+
 ## 首次引导
 
 `components/OnboardingView.ets` 只在 `settings.onboardingDone === false` 且 API Key

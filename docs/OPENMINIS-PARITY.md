@@ -187,7 +187,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 工作区路径 jail | 沙箱根目录 | `normalizeRelativePath` + symlink 检查 | — |
 | - [x] | 写入需显式开启 | 工具权限 | `allowWriteTools` | — |
 | - [x] | 密钥安全存储 | Keychain / EncryptedPrefs | `Asset Store Kit`；不可用时回退 preferences 并保留明文兼容 | P1 |
-| - [ ] | 应用锁 | Face ID / 生物识别 | `userIAM.userAuth` | P2 |
+| - [x] | 应用锁 | Face ID / 生物识别 | 设置「启动时验证系统锁屏」；启动调用 `userAuth`（PIN/人脸/指纹，ATL3），无可用认证时放行 | P2 |
 | - [ ] | 加密备份 | `BackupCrypto` | AES-GCM + 口令派生 | P3 |
 | - [ ] | 崩溃 / 诊断导出 | 诊断包 | `hiAppEvent` + 日志打包 | P3 |
 | - [x] | 请求检查器 | LLM 请求日志 | 每次模型请求生成 8 位 `req`，写入 `model_start/done/error` 与同轮工具事件；日志查看器显示 `req=`，不含正文 | P2 |
@@ -241,3 +241,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 工作区文件浏览 | 设置内入口；`WorkspaceFiles` 列表/预览，共用路径规则，跳过符号链接；排序与大小格式化纯函数可测；45 项测试通过 |
 | 2026-11-08 | 首次引导 | 无 Key 的首次启动显示三步引导，Key 写入 Asset Store，跳过即 `onboardingDone=true`；已有配置不触发 |
 | 2026-11-08 | 思考档位 UI | 设置页四档选择，`/thinking` 改为 off→low→medium→high 循环；`cycleThinkingLevel` 纯函数可测 |
+| 2026-11-08 | 应用锁 | 启动锁；`service/AppLock.ets` 调用系统认证，取消后显示锁定页可重试；设备无认证时 fail-open |

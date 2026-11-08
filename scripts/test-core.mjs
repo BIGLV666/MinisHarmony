@@ -248,6 +248,8 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.deepEqual(settings.disabledTools, []);
   assert.equal(settings.onboardingDone, false);
   assert.equal(types.cloneSettings({ ...settings, onboardingDone: true }).onboardingDone, true);
+  assert.equal(settings.appLockEnabled, false);
+  assert.equal(types.cloneSettings({ ...settings, appLockEnabled: true }).appLockEnabled, true);
   assert.deepEqual(
     types.normalizeToolNames(['read_file', 'read_file', '', 'now']),
     ['read_file', 'now']

@@ -49,6 +49,7 @@ import { ModelPicker } from '../components/ModelPicker';
 import { SettingsSheet } from '../components/SettingsSheet';
 import { WorkspaceSheet } from '../components/WorkspaceSheet';
 import { OnboardingView } from '../components/OnboardingView';
+import { authenticate } from '../service/AppLock';
 import { SidebarView } from '../components/SidebarView';
 
 @Entry
@@ -69,6 +70,8 @@ struct Index {
   @State showModels: boolean = false;
   @State showWorkspace: boolean = false;
   @State showOnboarding: boolean = false;
+  @State locked: boolean = false;
+  @State unlocking: boolean = false;
   @State deleteId: string = '';
   @State actionId: string = '';
   @State rewindId: string = '';
@@ -132,6 +135,22 @@ struct Index {
     this.showOnboarding = !this.settings.onboardingDone &&
       this.settings.apiKey.trim().length === 0;
     this.ready = true;
+    if (this.settings.appLockEnabled) {
+      this.lockApp();
+    }
+  }
+
+  private async lockApp(): Promise<void> {
+    if (this.unlocking) {
+      return;
+    }
+    this.locked = true;
+    this.unlocking = true;
+    const unlocked: boolean = await authenticate('解锁 Minis Harmony');
+    this.unlocking = false;
+    if (unlocked) {
+      this.locked = false;
+    }
   }
 
   private finishOnboarding(apiKey: string, skipped: boolean): void {
@@ -1007,6 +1026,36 @@ struct Index {
   }
 
   @Builder
+  lockScreen() {
+    Column({ space: 12 }) {
+      Text('🔒')
+        .fontSize(30)
+      Text('Minis Harmony 已锁定')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary'))
+      Text('验证系统锁屏密码、人脸或指纹后继续。')
+        .fontSize(11)
+        .fontColor($r('app.color.text_secondary'))
+      Button(this.unlocking ? '验证中…' : '解锁', { type: ButtonType.Normal })
+        .height(38)
+        .width(160)
+        .fontSize(13)
+        .fontColor($r('app.color.on_accent'))
+        .backgroundColor($r('app.color.accent'))
+        .borderRadius(10)
+        .enabled(!this.unlocking)
+        .onClick(() => {
+          this.lockApp();
+        })
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor($r('app.color.surface'))
+  }
+
+  @Builder
   toolPermissionDialog() {
     Stack({ alignContent: Alignment.Center }) {
       Column()
@@ -1331,6 +1380,10 @@ struct Index {
             this.showModels = false;
           }
         })
+      }
+
+      if (this.locked) {
+        this.lockScreen()
       }
     }
     .width('100%')

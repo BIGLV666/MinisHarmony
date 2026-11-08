@@ -86,6 +86,7 @@ export struct SettingsSheet {
   @State backgroundEnabled: boolean = true;
   @State enterToSend: boolean = false;
   @State thinkingLevel: ThinkingLevel = 'off';
+  @State appLockEnabled: boolean = false;
   @State disabledTools: string[] = [];
   @State showLogs: boolean = false;
   @State logLines: string[] = [];
@@ -117,6 +118,7 @@ export struct SettingsSheet {
     this.backgroundEnabled = copy.backgroundEnabled;
     this.enterToSend = copy.enterToSend;
     this.thinkingLevel = copy.thinkingLevel;
+    this.appLockEnabled = copy.appLockEnabled;
     this.disabledTools = copy.disabledTools.slice();
   }
 
@@ -179,7 +181,8 @@ export struct SettingsSheet {
       thinkingLevel: this.thinkingLevel,
       enterToSend: this.enterToSend,
       disabledTools: this.disabledTools.slice(),
-      onboardingDone: this.settings.onboardingDone
+      onboardingDone: this.settings.onboardingDone,
+      appLockEnabled: this.appLockEnabled
     };
     return next;
   }
@@ -749,6 +752,29 @@ export struct SettingsSheet {
                   .selectedColor($r('app.color.accent'))
                   .onChange((on: boolean) => {
                     this.enterToSend = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text('启动时验证系统锁屏')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text('打开应用时先通过系统密码 / 人脸 / 指纹；设备没有可用认证时自动放行，避免把自己锁在外面。')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.appLockEnabled })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.appLockEnabled = on;
                   })
               }
               .width('100%')

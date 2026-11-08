@@ -13,6 +13,7 @@ import {
 import { AttachmentStore } from '../service/AttachmentStore';
 import { formatRelative, formatTokens } from '../service/Format';
 import { MarkdownView } from './MarkdownView';
+import { i18nVariants, t } from '../core/I18n';
 
 /**
  * Per-message reasoning display state. The list rebuilds a bubble whenever
@@ -33,6 +34,7 @@ const reasoningStates: Map<string, ReasoningState> = new Map<string, ReasoningSt
 
 @Component
 export struct MessageBubble {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop message: ChatMessage = {
     id: '',
     role: 'assistant',
@@ -74,8 +76,17 @@ export struct MessageBubble {
 
   /** Compaction summaries get a distinct label from ordinary notices. */
   private isSummary(): boolean {
-    return this.isSystem() &&
-      this.content().startsWith('以下是本次对话较早部分的摘要');
+    if (!this.isSystem()) {
+      return false;
+    }
+    // Summaries created before a language switch keep the old prefix.
+    const prefixes: string[] = i18nVariants('以下是本次对话较早部分的摘要');
+    for (let i = 0; i < prefixes.length; i++) {
+      if (this.content().startsWith(prefixes[i])) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private content(): string {
@@ -127,7 +138,7 @@ export struct MessageBubble {
     for (let i = 0; i < lines.length; i++) {
       const line: string = lines[i].trim();
       if (line.length > 0) {
-        return line.length > 42 ? line.substring(0, 42) + '…' : line;
+        return line.length > 42 ? line.substring(0, 42) + t('…') : line;
       }
     }
     return '';
@@ -137,13 +148,13 @@ export struct MessageBubble {
   private reasoningSummary(): string {
     const state: ReasoningState = this.reasoningState();
     const excerpt: string = this.reasoningExcerpt();
-    let head: string = '思考过程';
+    let head: string = t('思考过程');
     if (state.sawStreaming && state.startedAt > 0) {
       const end: number = state.endedAt > 0 ? state.endedAt : Date.now();
       const seconds: number = Math.max(1, Math.round((end - state.startedAt) / 1000));
-      head = '思考了 ' + seconds.toString() + ' 秒';
+      head = t('思考了 ') + seconds.toString() + t(' 秒');
     }
-    return excerpt.length > 0 ? head + ' · ' + excerpt : head;
+    return excerpt.length > 0 ? head + t(' · ') + excerpt : head;
   }
 
   private calls(): MessagePart[] {
@@ -183,15 +194,15 @@ export struct MessageBubble {
 
   private toolStatus(status: string): string {
     if (status === TOOL_RUNNING) {
-      return '执行中…';
+      return t('执行中…');
     }
     if (status === TOOL_DONE) {
-      return '完成';
+      return t('完成');
     }
     if (status === TOOL_ERROR) {
-      return '失败';
+      return t('失败');
     }
-    return '等待执行';
+    return t('等待执行');
   }
 
   /** The last few lines are what matter while a build or install streams. */
@@ -211,9 +222,9 @@ export struct MessageBubble {
       this.content()
     );
     pasteboard.getSystemPasteboard().setData(data).then(() => {
-      this.getUIContext().getPromptAction().showToast({ message: '已复制' });
+      this.getUIContext().getPromptAction().showToast({ message: t('已复制') });
     }).catch((error: Error) => {
-      this.getUIContext().getPromptAction().showToast({ message: '复制失败' });
+      this.getUIContext().getPromptAction().showToast({ message: t('复制失败') });
     });
   }
 
@@ -221,12 +232,12 @@ export struct MessageBubble {
   systemCard() {
     Column({ space: 6 }) {
       Row({ space: 8 }) {
-        Text(this.isSummary() ? '对话摘要' : '提示')
+        Text(this.isSummary() ? t('对话摘要') : t('提示'))
           .fontSize(10)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_secondary'))
         if (this.isSummary()) {
-          Text('较早内容已压缩')
+          Text(t('较早内容已压缩'))
             .fontSize(10)
             .fontColor($r('app.color.text_tertiary'))
         }
@@ -270,14 +281,14 @@ export struct MessageBubble {
             .height(13)
             .color(this.accent)
         }
-        Text(this.message.streaming ? '思考中…' : this.reasoningSummary())
+        Text(this.message.streaming ? t('思考中…') : this.reasoningSummary())
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_secondary'))
           .layoutWeight(1)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.reasoningOpen ? '收起' : '展开')
+        Text(this.reasoningOpen ? t('收起') : t('展开'))
           .fontSize(11)
           .fontColor(this.accent)
       }
@@ -338,7 +349,7 @@ export struct MessageBubble {
       // still reads the complete (bounded) result once the call finishes.
       if (part.status === TOOL_RUNNING && part.resultText.length > 0) {
         Column({ space: 2 }) {
-          Text('实时输出')
+          Text(t('实时输出'))
             .fontSize(9)
             .fontColor($r('app.color.text_tertiary'))
             .width('100%')
@@ -371,7 +382,7 @@ export struct MessageBubble {
       }
 
       if (this.isToolOpen(part)) {
-        Text('参数')
+        Text(t('参数'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
@@ -384,7 +395,7 @@ export struct MessageBubble {
           .width('100%')
           .copyOption(CopyOptions.LocalDevice)
         if (part.resultText.length > 0) {
-          Text('结果')
+          Text(t('结果'))
             .fontSize(10)
             .fontColor($r('app.color.text_tertiary'))
             .width('100%')
@@ -417,7 +428,7 @@ export struct MessageBubble {
         .width(15)
         .height(15)
         .color(this.accent)
-      Text('正在思考…')
+      Text(t('正在思考…'))
         .fontSize(13)
         .fontColor($r('app.color.text_secondary'))
     }
@@ -445,14 +456,14 @@ export struct MessageBubble {
         .width('100%')
       Row({ space: 12 }) {
         if (this.canEdit) {
-          Text('编辑')
+          Text(t('编辑'))
             .fontSize(10)
             .fontColor($r('app.color.on_accent'))
             .opacity(0.82)
             .onClick(() => this.onEdit())
         }
         if (this.canRewind) {
-          Text('回到这里')
+          Text(t('回到这里'))
             .fontSize(10)
             .fontColor($r('app.color.on_accent'))
             .opacity(0.82)
@@ -494,7 +505,7 @@ export struct MessageBubble {
       }
 
       if (this.message.error) {
-        Text('生成中断')
+        Text(t('生成中断'))
           .fontSize(11)
           .fontColor($r('app.color.danger'))
       }
@@ -513,26 +524,26 @@ export struct MessageBubble {
             .margin({ right: 12, bottom: 2 })
         }
         if (this.content().length > 0 && !this.message.streaming) {
-          Text('复制')
+          Text(t('复制'))
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
             .margin({ right: 12, bottom: 2 })
             .onClick(() => this.copy())
-          Text('截图')
+          Text(t('截图'))
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
             .margin({ right: 12, bottom: 2 })
             .onClick(() => this.onSnapshot())
         }
         if (this.canRegenerate) {
-          Text(this.message.error ? '重试' : '重新生成')
+          Text(this.message.error ? t('重试') : t('重新生成'))
             .fontSize(11)
             .fontColor(this.accent)
             .margin({ right: 12, bottom: 2 })
             .onClick(() => this.onRegenerate())
         }
         if (this.canRewind) {
-          Text('回到这里')
+          Text(t('回到这里'))
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
             .margin({ right: 12, bottom: 2 })
@@ -561,7 +572,7 @@ export struct MessageBubble {
         .width('100%')
         .layoutWeight(1)
         .objectFit(ImageFit.Contain)
-      Text('点击任意处关闭')
+      Text(t('点击任意处关闭'))
         .fontSize(12)
         .fontColor('#CCFFFFFF')
     }

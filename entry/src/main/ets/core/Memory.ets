@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Persistent memory, modelled on OpenMinis: a user-maintained GLOBAL.md plus
  * one daily note per day. Pure formatting and search live here so the Node
@@ -53,7 +54,7 @@ export function oneLine(text: string): string {
   if (flat.length <= MEMORY_ENTRY_CHARS) {
     return flat;
   }
-  return flat.substring(0, MEMORY_ENTRY_CHARS) + '…';
+  return flat.substring(0, MEMORY_ENTRY_CHARS) + t('…');
 }
 
 export function memoryEntry(date: Date, content: string): string {
@@ -111,8 +112,8 @@ export function searchMemoryFiles(
   }
   if (hits.length === 0) {
     return query.trim().length > 0
-      ? '记忆中没有找到与“' + query.trim() + '”相关的内容。'
-      : '还没有记忆内容。';
+      ? t('记忆中没有找到与“') + query.trim() + t('”相关的内容。')
+      : t('还没有记忆内容。');
   }
   hits.sort((a: MemoryHit, b: MemoryHit): number => {
     if (b.score !== a.score) {
@@ -151,7 +152,7 @@ export function buildMemoryContext(files: MemoryFile[], maxChars: number): strin
   if (body.trim().length === 0) {
     return '';
   }
-  return '## 长期记忆\n' +
-    '以下内容来自本机记忆文件，仅在与当前任务相关时参考，不要逐条复述。\n\n' +
+  return t('## 长期记忆\n') +
+    t('以下内容来自本机记忆文件，仅在与当前任务相关时参考，不要逐条复述。\n\n') +
     body.trim();
 }

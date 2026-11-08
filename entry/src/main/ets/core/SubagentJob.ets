@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Pure state for delegated subagent jobs.
  *
@@ -13,6 +14,8 @@ export type SubagentState =
   'queued' | 'running' | 'done' | 'cancelled' | 'failed' | 'timeout' | 'interrupted';
 
 /** User-role messages with this prefix resume the parent's turn on open. */
+// Internal markers stay language-independent: they are matched against
+// messages restored from disk after a language switch.
 export const BACKGROUND_PREFIX: string = '[后台任务结束';
 
 export interface SubagentJobRecord {
@@ -70,37 +73,37 @@ export function isTerminalState(state: SubagentState): boolean {
 
 export function stateLabel(state: SubagentState): string {
   if (state === 'queued') {
-    return '排队中';
+    return t('排队中');
   }
   if (state === 'running') {
-    return '运行中';
+    return t('运行中');
   }
   if (state === 'done') {
-    return '已完成';
+    return t('已完成');
   }
   if (state === 'cancelled') {
-    return '已取消';
+    return t('已取消');
   }
   if (state === 'failed') {
-    return '失败';
+    return t('失败');
   }
   if (state === 'timeout') {
-    return '超时';
+    return t('超时');
   }
-  return '已中断';
+  return t('已中断');
 }
 
 export function elapsedText(ms: number): string {
   const seconds: number = Math.max(0, Math.floor(ms / 1000));
   if (seconds < 60) {
-    return seconds.toString() + ' 秒';
+    return seconds.toString() + t(' 秒');
   }
   const minutes: number = Math.floor(seconds / 60);
   if (minutes < 60) {
-    return minutes.toString() + ' 分 ' + (seconds % 60).toString() + ' 秒';
+    return minutes.toString() + t(' 分 ') + (seconds % 60).toString() + t(' 秒');
   }
   const hours: number = Math.floor(minutes / 60);
-  return hours.toString() + ' 小时 ' + (minutes % 60).toString() + ' 分';
+  return hours.toString() + t(' 小时 ') + (minutes % 60).toString() + t(' 分');
 }
 
 /**
@@ -151,27 +154,27 @@ function resultExcerpt(text: string, limit: number): string {
   if (trimmed.length <= limit) {
     return trimmed;
   }
-  return trimmed.substring(0, limit) + '…';
+  return trimmed.substring(0, limit) + t('…');
 }
 
 function jobLines(job: SubagentJobRecord, now: number): string[] {
   const lines: string[] = [];
-  const title: string = job.label.length > 0 ? job.label : '子代理';
-  lines.push('job_id=' + job.id + ' · ' + title + ' · ' + stateLabel(job.state));
+  const title: string = job.label.length > 0 ? job.label : t('子代理');
+  lines.push('job_id=' + job.id + t(' · ') + title + t(' · ') + stateLabel(job.state));
   const end: number = job.finishedAt > 0 ? job.finishedAt : now;
-  lines.push('  已运行 ' + elapsedText(Math.max(0, end - job.startedAt)) +
-    (job.finishedAt > 0 ? '（已结束）' : ''));
+  lines.push(t('  已运行 ') + elapsedText(Math.max(0, end - job.startedAt)) +
+    (job.finishedAt > 0 ? t('（已结束）') : ''));
   if (job.state === 'running' && job.currentTool.length > 0) {
-    lines.push('  当前工具：' + job.currentTool);
+    lines.push(t('  当前工具：') + job.currentTool);
   }
   if (job.modelId.length > 0) {
-    lines.push('  模型：' + job.modelId);
+    lines.push(t('  模型：') + job.modelId);
   }
   if (job.steers.length > 0) {
-    lines.push('  待读取的纠正：' + job.steers.length.toString() + ' 条');
+    lines.push(t('  待读取的纠正：') + job.steers.length.toString() + t(' 条'));
   }
   if (job.resultText.length > 0) {
-    lines.push('  结果：' + resultExcerpt(job.resultText, 400));
+    lines.push(t('  结果：') + resultExcerpt(job.resultText, 400));
   }
   return lines;
 }
@@ -188,9 +191,9 @@ export function statusReport(
   const matches: SubagentJobRecord[] = matchJobs(jobs, query);
   if (matches.length === 0) {
     if (jobs.length === 0) {
-      return '这个对话还没有启动过子代理。';
+      return t('这个对话还没有启动过子代理。');
     }
-    return '没有匹配「' + query.trim() + '」的子代理。可用 job_id：' +
+    return t('没有匹配「') + query.trim() + t('」的子代理。可用 job_id：') +
       jobs[jobs.length - 1].id;
   }
   if (matches.length > 1 && query.trim().length > 0) {
@@ -198,8 +201,8 @@ export function statusReport(
     for (let i = 0; i < matches.length; i++) {
       ids.push(matches[i].id);
     }
-    return 'job_id 前缀「' + query.trim() + '」匹配了多个子代理：' +
-      ids.join('、') + '。请提供更长的前缀。';
+    return t('job_id 前缀「') + query.trim() + t('」匹配了多个子代理：') +
+      ids.join(t('、')) + t('。请提供更长的前缀。');
   }
 
   let running: number = 0;
@@ -213,11 +216,11 @@ export function statusReport(
   }
   const lines: string[] = [];
   if (matches.length === 1) {
-    lines.push('子代理状态：');
+    lines.push(t('子代理状态：'));
   } else {
-    lines.push('共 ' + matches.length.toString() + ' 个子代理：' +
-      running.toString() + ' 运行中，' + queued.toString() + ' 排队中，' +
-      (matches.length - running - queued).toString() + ' 已结束');
+    lines.push(t('共 ') + matches.length.toString() + t(' 个子代理：') +
+      running.toString() + t(' 运行中，') + queued.toString() + t(' 排队中，') +
+      (matches.length - running - queued).toString() + t(' 已结束'));
   }
   for (let i = 0; i < matches.length; i++) {
     if (i > 0) {
@@ -233,17 +236,17 @@ export function statusReport(
 
 /** Message posted into the parent conversation when a background job ends. */
 export function backgroundMessage(job: SubagentJobRecord): string {
-  const title: string = job.label.length > 0 ? job.label : '子代理';
+  const title: string = job.label.length > 0 ? job.label : t('子代理');
   const minutes: number = Math.floor(
     Math.max(0, job.finishedAt - job.startedAt) / 60000);
-  let line: string = BACKGROUND_PREFIX + ' · ' + title + ' · job_id=' + job.id +
-    ']\n状态：' + stateLabel(job.state) + ' · 用时 ' +
+  let line: string = BACKGROUND_PREFIX + t(' · ') + title + t(' · job_id=') + job.id +
+    t(']\n状态：') + stateLabel(job.state) + t(' · 用时 ') +
     elapsedText(Math.max(0, job.finishedAt - job.startedAt));
   if (minutes >= 1) {
-    line += '（约 ' + minutes.toString() + ' 分钟）';
+    line += t('（约 ') + minutes.toString() + t(' 分钟）');
   }
   const body: string = job.resultText.trim();
-  return line + '\n\n' + (body.length > 0 ? body : '（子代理没有返回文本）');
+  return line + '\n\n' + (body.length > 0 ? body : t('（子代理没有返回文本）'));
 }
 
 /** User-role messages with this prefix are mid-run progress reports. */
@@ -295,19 +298,19 @@ export function progressMessage(
   turns: number,
   lastMessage: string
 ): string {
-  const title: string = job.label.length > 0 ? job.label : '子代理';
-  let text = PROGRESS_PREFIX + ' · ' + title + ' · job_id=' + job.id + ']\n' +
-    '状态：' + stateLabel(job.state) + ' · 已用时 ' +
-    elapsedText(Math.max(0, elapsedMs)) + ' · 已进行 ' + turns.toString() + ' 轮';
+  const title: string = job.label.length > 0 ? job.label : t('子代理');
+  let text = PROGRESS_PREFIX + t(' · ') + title + t(' · job_id=') + job.id + ']\n' +
+    t('状态：') + stateLabel(job.state) + t(' · 已用时 ') +
+    elapsedText(Math.max(0, elapsedMs)) + t(' · 已进行 ') + turns.toString() + t(' 轮');
   if (currentTool.length > 0) {
-    text += '\n当前工具：' + currentTool;
+    text += t('\n当前工具：') + currentTool;
   }
   const body: string = lastMessage.trim();
   text += '\n\n' + (body.length > 0
     ? body.length > PROGRESS_MESSAGE_MAX_CHARS
       ? body.substring(body.length - PROGRESS_MESSAGE_MAX_CHARS)
       : body
-    : '（子代理还没有输出文本）');
+    : t('（子代理还没有输出文本）'));
   return text;
 }
 

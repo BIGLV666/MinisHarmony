@@ -16,6 +16,7 @@ import {
   rpcRequest,
   toolsFromResult
 } from '../core/McpProtocol';
+import { t } from '../core/I18n';
 
 function hasHeader(headers: Record<string, string>, name: string): boolean {
   const wanted: string = name.toLowerCase();
@@ -91,7 +92,7 @@ export class McpClient {
         : '';
       if (response.responseCode < 200 || response.responseCode >= 300) {
         this.lastError = 'HTTP ' + response.responseCode.toString() +
-          (raw.length > 0 ? '：' + raw.substring(0, 200) : '');
+          (raw.length > 0 ? t('：') + raw.substring(0, 200) : '');
         return null;
       }
       if (this.sessionId.length === 0) {
@@ -109,12 +110,12 @@ export class McpClient {
       }
       const parsed: McpRpcResponse | null = parseRpcBody(raw, this.nextId - 1);
       if (parsed === null) {
-        this.lastError = '响应不是有效的 JSON-RPC：' + raw.substring(0, 200);
+        this.lastError = t('响应不是有效的 JSON-RPC：') + raw.substring(0, 200);
       }
       return parsed;
     } catch (e) {
       const error: BusinessError = e as BusinessError;
-      this.lastError = error.message !== undefined ? error.message : '网络错误';
+      this.lastError = error.message !== undefined ? error.message : t('网络错误');
       return null;
     } finally {
       request.destroy();
@@ -157,7 +158,7 @@ export class McpClient {
     try {
       args = JSON.parse(argumentsJson.length > 0 ? argumentsJson : '{}') as Object;
     } catch (e) {
-      return { ok: false, content: '工具参数不是合法 JSON：' + toolName };
+      return { ok: false, content: t('工具参数不是合法 JSON：') + toolName };
     }
     const params: string = JSON.stringify({ name: toolName, arguments: args });
     const id: number = this.nextId++;
@@ -166,13 +167,13 @@ export class McpClient {
     if (response === null) {
       return {
         ok: false,
-        content: 'MCP 服务「' + this.config.name + '」无响应：' + this.lastError
+        content: t('MCP 服务「') + this.config.name + t('」无响应：') + this.lastError
       };
     }
     if (response.error !== undefined || response.result === undefined) {
       return {
         ok: false,
-        content: 'MCP 服务「' + this.config.name + '」调用失败：' + rpcErrorMessage(response)
+        content: t('MCP 服务「') + this.config.name + t('」调用失败：') + rpcErrorMessage(response)
       };
     }
     const resultJson: string = JSON.stringify(response.result);
@@ -182,7 +183,7 @@ export class McpClient {
       ok: !failed,
       content: text.length > 0
         ? text
-        : (failed ? 'MCP 工具返回错误，但没有文本内容' : 'MCP 工具执行完成，无文本输出')
+        : (failed ? t('MCP 工具返回错误，但没有文本内容') : t('MCP 工具执行完成，无文本输出'))
     };
   }
 }

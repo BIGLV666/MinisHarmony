@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Workspace path rules. The model may only name paths relative to the app's
  * workspace directory; absolute paths, `..` traversal and symlinks are
@@ -52,5 +53,5 @@ export function truncateText(text: string, max: number): string {
   if (text.length <= max) {
     return text;
   }
-  return text.substring(0, max) + '\n…（已截断，共 ' + text.length + ' 字符）';
+  return text.substring(0, max) + t('\n…（已截断，共 ') + text.length + t(' 字符）');
 }

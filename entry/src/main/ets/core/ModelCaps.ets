@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Built-in model capability estimates. HarmonyOS cannot reach models.dev
  * offline, so this is a prefix table covering the OpenCode Go families with a
@@ -86,10 +87,10 @@ export function clampMaxTokens(requested: number, caps: ModelCaps): number {
 export function capsLabel(caps: ModelCaps): string {
   let label: string = formatWindow(caps.contextWindow);
   if (caps.vision) {
-    label += ' · 视觉';
+    label += t(' · 视觉');
   }
   if (caps.reasoning) {
-    label += ' · 推理';
+    label += t(' · 推理');
   }
   return label;
 }

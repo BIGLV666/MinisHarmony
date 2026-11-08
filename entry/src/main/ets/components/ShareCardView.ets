@@ -2,6 +2,7 @@ import { ChatMessage, MessagePart, textOf, toolCallsOf } from '../core/Types';
 import { shareCardBody, shareCardStamp, shareCardToolLines } from '../core/ShareCard';
 import { formatTokens } from '../service/Format';
 import { MarkdownView } from './MarkdownView';
+import { t } from '../core/I18n';
 
 /** Compact ✓/✕ rows, one per tool call in the turn. */
 function toolSummary(message: ChatMessage): string[] {
@@ -82,7 +83,7 @@ export function shareCardView(
       .color($r('app.color.border'))
 
     Row({ space: 8 }) {
-      Text('对话截图')
+      Text(t('对话截图'))
         .fontSize(10)
         .fontColor($r('app.color.text_tertiary'))
       Blank()

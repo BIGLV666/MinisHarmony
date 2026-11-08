@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Incremental Server-Sent Events parser plus OpenAI chat-completion chunk
  * decoding. Pure functions only, so the same file runs under Node's type
@@ -178,7 +179,7 @@ export function parseOpenAiData(data: string): DeltaResult {
     // JSON null survives a `!== undefined` test, so check the type itself.
     result.error = typeof chunk.error.message === 'string' && chunk.error.message.length > 0
       ? chunk.error.message
-      : '服务端返回错误';
+      : t('服务端返回错误');
     result.done = true;
     return result;
   }
@@ -281,7 +282,7 @@ export function parseErrorMessage(raw: string): string {
     // Not JSON: fall through to the raw body.
   }
   if (text.length > 280) {
-    return text.substring(0, 280) + '…';
+    return text.substring(0, 280) + t('…');
   }
   return text;
 }

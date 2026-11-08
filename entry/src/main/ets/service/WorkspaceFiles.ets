@@ -2,6 +2,7 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { FileEntry, joinRelative, sortFileEntries } from '../core/FileListing';
 import { normalizeRelativePath, resolveWorkspacePath } from '../core/Workspace';
+import { t } from '../core/I18n';
 
 const MAX_PREVIEW_BYTES: number = 256 * 1024;
 const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
@@ -38,7 +39,7 @@ function absoluteFor(root: string, relative: string): string | null {
 export function listWorkspace(root: string, relative: string): WorkspaceListing {
   const absolute: string | null = absoluteFor(root, relative);
   if (absolute === null) {
-    return { ok: false, error: '不支持的路径', entries: [] };
+    return { ok: false, error: t('不支持的路径'), entries: [] };
   }
   try {
     const names: string[] = fs.listFileSync(absolute);
@@ -67,7 +68,7 @@ export function listWorkspace(root: string, relative: string): WorkspaceListing 
     return { ok: true, error: '', entries: sortFileEntries(entries) };
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, error: '无法打开目录：' + error.message, entries: [] };
+    return { ok: false, error: t('无法打开目录：') + error.message, entries: [] };
   }
 }
 
@@ -84,16 +85,16 @@ export function looksLikeText(name: string): boolean {
 export function previewWorkspaceFile(root: string, relative: string): WorkspacePreview {
   const absolute: string | null = absoluteFor(root, relative);
   if (absolute === null) {
-    return { ok: false, error: '不支持的路径', text: '', truncated: false };
+    return { ok: false, error: t('不支持的路径'), text: '', truncated: false };
   }
   const name: string = relative.substring(relative.lastIndexOf('/') + 1);
   if (!looksLikeText(name)) {
-    return { ok: false, error: '这是二进制文件，无法预览', text: '', truncated: false };
+    return { ok: false, error: t('这是二进制文件，无法预览'), text: '', truncated: false };
   }
   try {
     const stat = fs.statSync(absolute);
     if (stat.isDirectory()) {
-      return { ok: false, error: '这是目录', text: '', truncated: false };
+      return { ok: false, error: t('这是目录'), text: '', truncated: false };
     }
     const size: number = Math.min(stat.size, MAX_PREVIEW_BYTES);
     const buffer: ArrayBuffer = new ArrayBuffer(size);
@@ -112,6 +113,6 @@ export function previewWorkspaceFile(root: string, relative: string): WorkspaceP
     };
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, error: '读取失败：' + error.message, text: '', truncated: false };
+    return { ok: false, error: t('读取失败：') + error.message, text: '', truncated: false };
   }
 }

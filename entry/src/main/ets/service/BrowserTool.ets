@@ -2,6 +2,7 @@ import { webview } from '@kit.ArkWeb';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { BrowserHandler, ToolResult } from '../core/ToolTypes';
 import { normalizeWebUrl } from '../core/WebUrl';
+import { t } from '../core/I18n';
 
 const PAGE_LOAD_TIMEOUT_MS: number = 20000;
 const DEFAULT_MAX_CHARS: number = 8000;
@@ -118,7 +119,7 @@ function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
     return text;
   }
-  return text.substring(0, maxChars) + '\n…（已截断，共 ' + text.length.toString() + ' 字符）';
+  return text.substring(0, maxChars) + t('\n…（已截断，共 ') + text.length.toString() + t(' 字符）');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -136,7 +137,7 @@ export class BrowserTool implements BrowserHandler {
   private async evaluate(script: string): Promise<string> {
     const controller: webview.WebviewController | null = BrowserHost.get();
     if (controller === null) {
-      throw new Error('内置浏览器尚未就绪');
+      throw new Error(t('内置浏览器尚未就绪'));
     }
     return new Promise<string>((resolve: (value: string) => void,
       reject: (reason: Error) => void) => {
@@ -152,27 +153,27 @@ export class BrowserTool implements BrowserHandler {
 
   async execute(argumentsJson: string): Promise<ToolResult> {
     if (!BrowserHost.ready()) {
-      return { ok: false, content: '内置浏览器尚未就绪，请稍后重试。' };
+      return { ok: false, content: t('内置浏览器尚未就绪，请稍后重试。') };
     }
     let args: BrowserArgs;
     try {
       args = JSON.parse(argumentsJson) as BrowserArgs;
     } catch (e) {
-      return { ok: false, content: 'browser_use 参数不是合法 JSON。' };
+      return { ok: false, content: t('browser_use 参数不是合法 JSON。') };
     }
     const action: string = args.action !== undefined ? args.action.trim().toLowerCase() : '';
     const selector: string = args.selector !== undefined ? args.selector : '';
     const maxChars: number = clampNumber(args.max_chars, DEFAULT_MAX_CHARS, 100, MAX_CHARS);
     const controller: webview.WebviewController | null = BrowserHost.get();
     if (controller === null) {
-      return { ok: false, content: '内置浏览器尚未就绪，请稍后重试。' };
+      return { ok: false, content: t('内置浏览器尚未就绪，请稍后重试。') };
     }
 
     try {
       if (action === 'open' || action === 'navigate') {
         const url: string = normalizeWebUrl(args.url !== undefined ? args.url : '');
         if (url.length === 0) {
-          return { ok: false, content: 'open 需要 url。' };
+          return { ok: false, content: t('open 需要 url。') };
         }
         const loaded: boolean = await BrowserHost.load(url);
         let title: string = '';
@@ -181,33 +182,33 @@ export class BrowserTool implements BrowserHandler {
         } catch (e) {
           title = '';
         }
-        let text: string = '已打开 ' + url;
+        let text: string = t('已打开 ') + url;
         if (title.length > 0) {
-          text += '\n标题：' + title;
+          text += t('\n标题：') + title;
         }
         if (!loaded) {
-          text += '\n（页面加载超时，内容可能仍在加载）';
+          text += t('\n（页面加载超时，内容可能仍在加载）');
         }
         return { ok: true, content: text };
       }
 
       if (action === 'click') {
         if (selector.length === 0) {
-          return { ok: false, content: 'click 需要 selector。' };
+          return { ok: false, content: t('click 需要 selector。') };
         }
         const result: string = await this.evaluate(
           '(() => { const el = document.querySelector(' + js(selector) + ');' +
           ' if (!el) return "NOT_FOUND"; el.scrollIntoView({block:"center"});' +
           ' el.click(); return "CLICKED"; })()');
         if (result === 'NOT_FOUND') {
-          return { ok: false, content: '没有找到元素：' + selector };
+          return { ok: false, content: t('没有找到元素：') + selector };
         }
-        return { ok: true, content: '已点击 ' + selector };
+        return { ok: true, content: t('已点击 ') + selector };
       }
 
       if (action === 'type') {
         if (selector.length === 0) {
-          return { ok: false, content: 'type 需要 selector。' };
+          return { ok: false, content: t('type 需要 selector。') };
         }
         const value: string = args.text !== undefined ? args.text : '';
         const result: string = await this.evaluate(
@@ -221,9 +222,9 @@ export class BrowserTool implements BrowserHandler {
           ' el.dispatchEvent(new Event("change", {bubbles:true}));' +
           ' return "TYPED"; })()');
         if (result === 'NOT_FOUND') {
-          return { ok: false, content: '没有找到元素：' + selector };
+          return { ok: false, content: t('没有找到元素：') + selector };
         }
-        return { ok: true, content: '已向 ' + selector + ' 输入 ' + value.length.toString() + ' 个字符' };
+        return { ok: true, content: t('已向 ') + selector + t(' 输入 ') + value.length.toString() + t(' 个字符') };
       }
 
       if (action === 'text' || action === 'html') {
@@ -234,11 +235,11 @@ export class BrowserTool implements BrowserHandler {
           : 'document.body ? document.body.' + property + ' : ""';
         const result: string = await this.evaluate(script);
         if (result === 'NOT_FOUND') {
-          return { ok: false, content: '没有找到元素：' + selector };
+          return { ok: false, content: t('没有找到元素：') + selector };
         }
         const body: string = result.trim();
         if (body.length === 0) {
-          return { ok: false, content: '页面或元素没有可读取的内容。' };
+          return { ok: false, content: t('页面或元素没有可读取的内容。') };
         }
         return { ok: true, content: truncate(body, maxChars) };
       }
@@ -246,7 +247,7 @@ export class BrowserTool implements BrowserHandler {
       if (action === 'eval') {
         const script: string = args.script !== undefined ? args.script : '';
         if (script.trim().length === 0) {
-          return { ok: false, content: 'eval 需要 script。' };
+          return { ok: false, content: t('eval 需要 script。') };
         }
         const result: string = await this.evaluate(script);
         return { ok: true, content: truncate(result, maxChars) };
@@ -254,7 +255,7 @@ export class BrowserTool implements BrowserHandler {
 
       if (action === 'title') {
         const title: string = await this.evaluate('document.title');
-        return { ok: true, content: title.length > 0 ? title : '（页面没有标题）' };
+        return { ok: true, content: title.length > 0 ? title : t('（页面没有标题）') };
       }
 
       if (action === 'url') {
@@ -271,24 +272,24 @@ export class BrowserTool implements BrowserHandler {
           controller.refresh();
         }
         await sleep(400);
-        return { ok: true, content: action === 'back' ? '已后退'
-          : (action === 'forward' ? '已前进' : '已刷新') };
+        return { ok: true, content: action === 'back' ? t('已后退')
+          : (action === 'forward' ? t('已前进') : t('已刷新')) };
       }
 
       if (action === 'wait') {
         const ms: number = clampNumber(args.milliseconds, 500, 50, 10000);
         await sleep(ms);
-        return { ok: true, content: '已等待 ' + ms.toString() + ' 毫秒' };
+        return { ok: true, content: t('已等待 ') + ms.toString() + t(' 毫秒') };
       }
 
       return {
         ok: false,
-        content: '未知动作：' + action +
-          '（可用 open/click/type/text/html/eval/back/forward/reload/wait/title/url）'
+        content: t('未知动作：') + action +
+          t('（可用 open/click/type/text/html/eval/back/forward/reload/wait/title/url）')
       };
     } catch (e) {
       const error: Error = e as Error;
-      return { ok: false, content: '浏览器操作失败：' + error.message };
+      return { ok: false, content: t('浏览器操作失败：') + error.message };
     }
   }
 }

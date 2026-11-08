@@ -28,6 +28,7 @@ import {
   tokenNeedsRefresh
 } from '../core/OAuth';
 import { SecureStore } from './SecureStore';
+import { t } from '../core/I18n';
 
 const encoder: util.TextEncoder = new util.TextEncoder();
 const TOKEN_TIMEOUT_MS: number = 30000;
@@ -61,15 +62,15 @@ async function postForm(url: string, body: string): Promise<McpOAuthHttpResult> 
       }
       return {
         ok: false,
-        message: 'MCP OAuth 失败：HTTP ' + response.responseCode.toString() +
-          (detail.length > 0 ? '（' + detail + '）' : ''),
+        message: t('MCP OAuth 失败：HTTP ') + response.responseCode.toString() +
+          (detail.length > 0 ? t('（') + detail + t('）') : ''),
         text: text
       };
     }
     return { ok: true, message: '', text: text };
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, message: 'MCP OAuth 失败：' + error.message, text: '' };
+    return { ok: false, message: t('MCP OAuth 失败：') + error.message, text: '' };
   } finally {
     request.destroy();
   }
@@ -251,15 +252,15 @@ export class McpOAuthService {
   ): Promise<McpOAuthOutcome> {
     const config: McpOAuthConfig = server.oauth;
     if (!isMcpOAuthConfigured(config)) {
-      return { ok: false, message: '请先填写 Client ID 和授权/令牌端点' };
+      return { ok: false, message: t('请先填写 Client ID 和授权/令牌端点') };
     }
     const parsed: RedirectCode | null = extractRedirectCode(pasted);
     if (parsed === null) {
-      return { ok: false, message: '没有识别到授权码，请粘贴浏览器地址栏中的回调地址或授权码' };
+      return { ok: false, message: t('没有识别到授权码，请粘贴浏览器地址栏中的回调地址或授权码') };
     }
     if (parsed.state.length > 0 && expectedState.length > 0 &&
       parsed.state !== expectedState) {
-      return { ok: false, message: '授权状态不匹配，请重新发起登录' };
+      return { ok: false, message: t('授权状态不匹配，请重新发起登录') };
     }
     const storedSecret: string | null =
       await SecureStore.get(McpOAuthService.secretAlias(server.id));
@@ -279,11 +280,11 @@ export class McpOAuthService {
     }
     const token: OAuthToken | null = tokenFromJson(result.text, Date.now());
     if (token === null) {
-      return { ok: false, message: '登录响应缺少 access_token' };
+      return { ok: false, message: t('登录响应缺少 access_token') };
     }
     await McpOAuthService.saveToken(server.id, token);
     const name: string = server.name.length > 0 ? server.name : server.url;
-    return { ok: true, message: '已授权 MCP 服务「' + name + '」' };
+    return { ok: true, message: t('已授权 MCP 服务「') + name + t('」') };
   }
 
   /** Forget the tokens but keep the client secret (re-auth later). */

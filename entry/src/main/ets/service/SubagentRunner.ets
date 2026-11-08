@@ -38,6 +38,7 @@ import { AgentRuntime } from './AgentRuntime';
 import { LocalToolRuntime } from './LocalToolRuntime';
 import { SettingsImageGen } from './ImageGen';
 import { LocalStore } from './LocalStore';
+import { t } from '../core/I18n';
 
 /** OpenMinis runs at most three subagents at once; the rest wait in a queue. */
 export const MAX_PARALLEL_SUBAGENTS: number = 3;
@@ -244,24 +245,24 @@ export class SubagentRunner implements SubagentHandler {
     }
     return {
       ok: false,
-      content: '未知 action：' + action + '。可用 delegate / status / steer / cancel / resume。'
+      content: t('未知 action：') + action + t('。可用 delegate / status / steer / cancel / resume。')
     };
   }
 
   private async delegate(request: SubagentRequest): Promise<ToolResult> {
     const prompt: string = request.prompt.trim();
     if (prompt.length === 0) {
-      return { ok: false, content: 'action=delegate 需要非空的 prompt。' };
+      return { ok: false, content: t('action=delegate 需要非空的 prompt。') };
     }
     if (this.depth >= MAX_SUBAGENT_DEPTH) {
-      return { ok: false, content: '子代理嵌套层级已达上限，请把任务拆给主对话。' };
+      return { ok: false, content: t('子代理嵌套层级已达上限，请把任务拆给主对话。') };
     }
     const agent: SubAgentDefinition | null =
       resolveAgent(this.settings.subAgents, request.agent);
     if (agent === null) {
       return {
         ok: false,
-        content: '未知子代理「' + request.agent.trim() + '」。可选：' +
+        content: t('未知子代理「') + request.agent.trim() + t('」。可选：') +
           agentNameList(this.settings.subAgents)
       };
     }
@@ -275,7 +276,7 @@ export class SubagentRunner implements SubagentHandler {
     const label: string = request.label.trim();
     const displayLabel: string = agent.name === BUILTIN_AGENT_NAME
       ? label
-      : (label.length > 0 ? agent.name + ' · ' + label : agent.name);
+      : (label.length > 0 ? agent.name + t(' · ') + label : agent.name);
     const id: string = shortId();
     const childSessionId: string = util.generateRandomUUID(true);
     const title: string = childSessionTitle(label, agent.name);
@@ -342,9 +343,9 @@ export class SubagentRunner implements SubagentHandler {
     const state: string = job.record.state === 'running' ? 'running' : 'queued';
     return {
       ok: true,
-      content: '已启动子代理「' + title + '」\njob_id=' + id +
+      content: t('已启动子代理「') + title + t('」\njob_id=') + id +
         '\nstatus=' + state +
-        '\n结果稍后以「' + BACKGROUND_PREFIX + ' …」消息送达；无需轮询，也不要重复委派同一任务。'
+        t('\n结果稍后以「') + BACKGROUND_PREFIX + t(' …」消息送达；无需轮询，也不要重复委派同一任务。')
     };
   }
 
@@ -556,21 +557,21 @@ export class SubagentRunner implements SubagentHandler {
     if (record.state === 'done') {
       return body.length > 0
         ? { ok: true, content: body }
-        : { ok: false, content: '子代理没有返回最终文本。' };
+        : { ok: false, content: t('子代理没有返回最终文本。') };
     }
     if (record.state === 'cancelled') {
       return {
         ok: false,
-        content: '子代理已取消。' + (body.length > 0 ? '\n\n部分结果：\n' + body : '')
+        content: t('子代理已取消。') + (body.length > 0 ? t('\n\n部分结果：\n') + body : '')
       };
     }
     if (record.state === 'timeout') {
       return {
         ok: false,
-        content: '子代理超时。' + (body.length > 0 ? '\n\n部分结果：\n' + body : '')
+        content: t('子代理超时。') + (body.length > 0 ? t('\n\n部分结果：\n') + body : '')
       };
     }
-    return { ok: false, content: '子代理失败：' + body };
+    return { ok: false, content: t('子代理失败：') + body };
   }
 
   /** Start the oldest queued job whenever a slot frees up. */
@@ -655,7 +656,7 @@ export class SubagentRunner implements SubagentHandler {
   private steer(jobId: string, message: string): ToolResult {
     const text: string = message.trim();
     if (text.length === 0) {
-      return { ok: false, content: 'action=steer 需要非空的 message。' };
+      return { ok: false, content: t('action=steer 需要非空的 message。') };
     }
     const ambiguous: string = this.ambiguity(jobId);
     if (ambiguous.length > 0) {
@@ -666,29 +667,29 @@ export class SubagentRunner implements SubagentHandler {
       return {
         ok: false,
         content: jobId.trim().length === 0
-          ? 'action=steer 需要 job_id。'
-          : '没有找到 job_id=' + jobId + ' 的子代理。'
+          ? t('action=steer 需要 job_id。')
+          : t('没有找到 job_id=') + jobId + t(' 的子代理。')
       };
     }
     if (job.record.state === 'queued') {
       job.record.steers.push(text);
       return {
         ok: true,
-        content: '子代理还在排队，纠正已记录，将在启动后的第一次请求前读取。'
+        content: t('子代理还在排队，纠正已记录，将在启动后的第一次请求前读取。')
       };
     }
     if (job.record.state !== 'running' || job.runtime === null) {
       return {
         ok: false,
-        content: '子代理「' + job.record.id + '」已' + stateLabel(job.record.state) +
-          '，steer 未送达。下次委派时请把这条纠正直接写进 prompt。'
+        content: t('子代理「') + job.record.id + t('」已') + stateLabel(job.record.state) +
+          t('，steer 未送达。下次委派时请把这条纠正直接写进 prompt。')
       };
     }
     job.runtime.injectInput(text);
     return {
       ok: true,
-      content: '已把纠正交给运行中的子代理，它会在下一次请求模型前读取；' +
-        '正在进行的工具调用不会被打断。'
+      content: t('已把纠正交给运行中的子代理，它会在下一次请求模型前读取；') +
+        t('正在进行的工具调用不会被打断。')
     };
   }
 
@@ -702,14 +703,14 @@ export class SubagentRunner implements SubagentHandler {
       return {
         ok: false,
         content: jobId.trim().length === 0
-          ? 'action=cancel 需要 job_id。'
-          : '没有找到 job_id=' + jobId + ' 的子代理。'
+          ? t('action=cancel 需要 job_id。')
+          : t('没有找到 job_id=') + jobId + t(' 的子代理。')
       };
     }
     if (job.record.state === 'queued') {
       job.cancelRequested = true;
       SubagentRunner.settleJob(job, 'cancelled', '');
-      return { ok: true, content: '已取消排队中的子代理 ' + job.record.id + '。' };
+      return { ok: true, content: t('已取消排队中的子代理 ') + job.record.id + t('。') };
     }
     if (job.record.state === 'running' && job.runtime !== null) {
       job.cancelRequested = true;
@@ -717,18 +718,18 @@ export class SubagentRunner implements SubagentHandler {
       SubagentRunner.cancelBlocking(job.record.childSessionId);
       return {
         ok: true,
-        content: '已停止子代理 ' + job.record.id + '，已完成的部分结果会随结果返回。'
+        content: t('已停止子代理 ') + job.record.id + t('，已完成的部分结果会随结果返回。')
       };
     }
     return {
       ok: false,
-      content: '子代理 ' + job.record.id + ' 已' + stateLabel(job.record.state) + '，无需取消。'
+      content: t('子代理 ') + job.record.id + t(' 已') + stateLabel(job.record.state) + t('，无需取消。')
     };
   }
 
   private async resume(jobId: string): Promise<ToolResult> {
     if (this.depth > 0) {
-      return { ok: false, content: '子代理内部不能重启任务，请让主对话执行 resume。' };
+      return { ok: false, content: t('子代理内部不能重启任务，请让主对话执行 resume。') };
     }
     const records: SubagentJobRecord[] = this.jobsOfThisParent();
     const interrupted: SubagentJobRecord[] = [];
@@ -738,7 +739,7 @@ export class SubagentRunner implements SubagentHandler {
       }
     }
     if (interrupted.length === 0) {
-      return { ok: true, content: '这个对话没有需要重启的中断子代理。' };
+      return { ok: true, content: t('这个对话没有需要重启的中断子代理。') };
     }
     let targets: SubagentJobRecord[] = [];
     if (jobId.trim().length === 0) {
@@ -746,12 +747,12 @@ export class SubagentRunner implements SubagentHandler {
     } else {
       const matches: SubagentJobRecord[] = matchJobs(interrupted, jobId);
       if (matches.length === 0) {
-        return { ok: false, content: '没有匹配「' + jobId + '」的中断子代理。' };
+        return { ok: false, content: t('没有匹配「') + jobId + t('」的中断子代理。') };
       }
       if (matches.length > 1) {
         return {
           ok: false,
-          content: 'job_id 前缀「' + jobId + '」匹配了多个子代理，请提供更长的前缀。'
+          content: t('job_id 前缀「') + jobId + t('」匹配了多个子代理，请提供更长的前缀。')
         };
       }
       targets = matches;
@@ -762,13 +763,13 @@ export class SubagentRunner implements SubagentHandler {
       const target: SubagentJobRecord = targets[i];
       const restarted: LiveJob | null = await this.restart(target);
       if (restarted === null) {
-        lines.push(target.id + '：重启失败（缺少原始任务说明）');
+        lines.push(target.id + t('：重启失败（缺少原始任务说明）'));
         continue;
       }
-      lines.push(target.id + '：已重新排队（新 job_id=' + restarted.record.id + '）');
+      lines.push(target.id + t('：已重新排队（新 job_id=') + restarted.record.id + t('）'));
     }
     SubagentRunner.pump();
-    return { ok: true, content: '已重启中断的子代理：\n' + lines.join('\n') };
+    return { ok: true, content: t('已重启中断的子代理：\n') + lines.join('\n') };
   }
 
   /**
@@ -781,7 +782,7 @@ export class SubagentRunner implements SubagentHandler {
     }
     const agentName: string = target.agent !== undefined ? target.agent : '';
     let label: string = target.label;
-    const prefix: string = agentName + ' · ';
+    const prefix: string = agentName + t(' · ');
     if (agentName.length > 0 && agentName !== BUILTIN_AGENT_NAME &&
       label.startsWith(prefix)) {
       label = label.substring(prefix.length);
@@ -835,8 +836,8 @@ export class SubagentRunner implements SubagentHandler {
     for (let i = 0; i < matches.length; i++) {
       ids.push(matches[i].id);
     }
-    return 'job_id 前缀「' + jobId.trim() + '」匹配了多个子代理：' +
-      ids.join('、') + '。请提供更长的前缀。';
+    return t('job_id 前缀「') + jobId.trim() + t('」匹配了多个子代理：') +
+      ids.join(t('、')) + t('。请提供更长的前缀。');
   }
 
   private findJob(jobId: string): LiveJob | null {

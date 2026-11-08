@@ -1,6 +1,7 @@
 import { childProcessManager, common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { t } from '../core/I18n';
 
 /**
  * Runs the native child process probe and returns its plain-text report.
@@ -20,7 +21,7 @@ export class SandboxProbe {
       );
     } catch (e) {
       const error: BusinessError = e as BusinessError;
-      return '原生子进程启动失败：' + error.code.toString() + ' ' + error.message;
+      return t('原生子进程启动失败：') + error.code.toString() + ' ' + error.message;
     }
     const deadline: number = Date.now() + 15000;
     while (Date.now() < deadline) {
@@ -32,9 +33,9 @@ export class SandboxProbe {
     }
     const partial: string = SandboxProbe.read(reportPath);
     if (partial.length > 0) {
-      return '探针未在 15 秒内结束，已收到的部分结果：\n' + partial;
+      return t('探针未在 15 秒内结束，已收到的部分结果：\n') + partial;
     }
-    return '探针没有生成报告，可能是原生子进程被系统拒绝或立即退出。';
+    return t('探针没有生成报告，可能是原生子进程被系统拒绝或立即退出。');
   }
 
   private static read(path: string): string {

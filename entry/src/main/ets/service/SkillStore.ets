@@ -8,6 +8,7 @@ import {
   skillCatalogue,
   skillIdFromFile
 } from '../core/SkillDoc';
+import { t } from '../core/I18n';
 
 const MAX_SKILL_BYTES: number = 512 * 1024;
 const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
@@ -153,14 +154,14 @@ export class SkillStore {
         new picker.DocumentViewPicker(context);
       const uris: string[] = await documentPicker.select(options);
       if (uris.length === 0) {
-        return '已取消导入';
+        return t('已取消导入');
       }
       const stat = fs.statSync(uris[0]);
       if (stat.size <= 0) {
-        return '技能文件是空的';
+        return t('技能文件是空的');
       }
       if (stat.size > MAX_SKILL_BYTES) {
-        return '技能文件超过 512 KB，拒绝导入';
+        return t('技能文件超过 512 KB，拒绝导入');
       }
       const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
       const file = fs.openSync(uris[0], fs.OpenMode.READ_ONLY);
@@ -171,9 +172,9 @@ export class SkillStore {
       }
       const text: string = decoder.decodeToString(new Uint8Array(buffer));
       const doc: SkillDoc | null = SkillStore.importText(uris[0], text);
-      return doc === null ? '导入失败：无法写入应用目录' : '已导入技能：' + doc.name;
+      return doc === null ? t('导入失败：无法写入应用目录') : t('已导入技能：') + doc.name;
     } catch (e) {
-      return '导入失败，请确认文件是 SKILL.md';
+      return t('导入失败，请确认文件是 SKILL.md');
     }
   }
 

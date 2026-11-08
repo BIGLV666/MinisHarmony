@@ -5,6 +5,7 @@
  */
 
 import { exportStamp, safeFileBase } from './MarkdownExport';
+import { t } from './I18n';
 
 /** One offscreen card should stay well below the renderer's texture limit. */
 export const MAX_SHARE_BODY_CHARS: number = 12000;
@@ -32,7 +33,7 @@ export function shareCardBody(text: string): string {
   if (trimmed.length <= MAX_SHARE_BODY_CHARS) {
     return trimmed;
   }
-  return trimmed.substring(0, MAX_SHARE_BODY_CHARS) + '\n\n…（内容过长，已截断）';
+  return trimmed.substring(0, MAX_SHARE_BODY_CHARS) + t('\n\n…（内容过长，已截断）');
 }
 
 /** Tool rows on the card are a compact summary, not the full result text. */
@@ -41,7 +42,7 @@ export function shareCardToolLines(lines: string[]): string[] {
     return lines.slice(0);
   }
   const out: string[] = lines.slice(0, MAX_SHARE_TOOL_LINES);
-  out.push('…还有 ' + (lines.length - MAX_SHARE_TOOL_LINES).toString() +
-    ' 个工具调用');
+  out.push(t('…还有 ') + (lines.length - MAX_SHARE_TOOL_LINES).toString() +
+    t(' 个工具调用'));
   return out;
 }

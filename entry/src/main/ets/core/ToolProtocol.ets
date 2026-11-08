@@ -15,6 +15,7 @@ import {
   TOOL_ERROR,
   textOf
 } from './Types';
+import { t } from './I18n';
 
 export interface ApiToolFunction {
   name: string;
@@ -51,7 +52,9 @@ export interface ApiMessage {
  */
 export type ImageResolver = (uri: string, mimeType: string) => string;
 
-const INTERRUPTED_RESULT: string = '工具调用在上一轮被中断，未执行。';
+function interruptedResult(): string {
+  return t('工具调用在上一轮被中断，未执行。');
+}
 
 function callId(partId: string, fallback: string): string {
   return partId.length > 0 ? partId : fallback;
@@ -110,7 +113,7 @@ export function toApiMessages(
       let result: string = part.resultText;
       if (result.length === 0 &&
         part.status !== TOOL_DONE && part.status !== TOOL_ERROR) {
-        result = INTERRUPTED_RESULT;
+        result = interruptedResult();
       }
       results.push({
         role: 'tool',
@@ -139,7 +142,7 @@ export function toApiMessages(
           // The Chat Completions schema does not allow image parts inside a
           // role:"tool" message, so the pixels follow as a synthetic user turn.
           const parts: ApiContentPart[] = [
-            { type: 'text', text: '以下是工具返回的图片：' },
+            { type: 'text', text: t('以下是工具返回的图片：') },
             { type: 'image_url', image_url: { url: images[k] } }
           ];
           out.push({ role: 'user', content: parts });

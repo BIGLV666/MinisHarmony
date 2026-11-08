@@ -4,6 +4,7 @@ import { BusinessError, zlib } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { MAX_COMMAND_BYTES, SandboxMarker, commandPayload, commandTooLong, findSandboxMarker,
   sandboxRequestPayload } from '../core/SandboxProtocol';
+import { t } from '../core/I18n';
 
 /**
  * Drives the iSH-based on-device Linux sandbox as a persistent daemon.
@@ -186,7 +187,7 @@ export class SandboxIsh {
     const copy: ArrayBuffer = archive.buffer.slice(archive.byteOffset,
       archive.byteOffset + archive.byteLength);
     if (!SandboxIsh.writeBuffer(archivePath, copy)) {
-      throw new Error('无法写入 rootfs 压缩包');
+      throw new Error(t('无法写入 rootfs 压缩包'));
     }
     // Extract to a fresh staging directory so a failed or interrupted unzip
     // never leaves a half-valid rootfs behind. decompressFile requires the
@@ -197,7 +198,7 @@ export class SandboxIsh {
     SandboxIsh.remove(archivePath);
     if (!SandboxIsh.hasMetaDb(staging)) {
       SandboxIsh.removeTree(staging);
-      throw new Error('解压后缺少 meta.db');
+      throw new Error(t('解压后缺少 meta.db'));
     }
     // The marker lives beside data/ and meta.db; fakefs never sees it.
     SandboxIsh.writeText(staging + '/.minis-version', SandboxIsh.ROOTFS_VERSION);
@@ -222,7 +223,7 @@ export class SandboxIsh {
         // Diagnostic fallback for a rootfs pushed with hdc while developing.
         rootfs = SandboxIsh.LEGACY_ROOTFS;
       } else {
-        return SandboxIsh.failed('沙箱根文件系统准备失败：' + error.message);
+        return SandboxIsh.failed(t('沙箱根文件系统准备失败：') + error.message);
       }
     }
 
@@ -233,7 +234,7 @@ export class SandboxIsh {
     // The user may have stopped while the kernel was booting.
     if (SandboxIsh.cancelToken !== token) {
       SandboxIsh.stopDaemon();
-      return { output: '', exitCode: -1, timedOut: false, error: '命令已取消' };
+      return { output: '', exitCode: -1, timedOut: false, error: t('命令已取消') };
     }
 
     const id: number = ++SandboxIsh.sequence;
@@ -250,7 +251,7 @@ export class SandboxIsh {
     let lastProgress: number = 0;
     while (Date.now() < deadline) {
       if (SandboxIsh.cancelToken !== token) {
-        return { output: '', exitCode: -1, timedOut: false, error: '命令已取消' };
+        return { output: '', exitCode: -1, timedOut: false, error: t('命令已取消') };
       }
       const size: number = SandboxIsh.fileSize(SandboxIsh.outputPath);
       if (size > SandboxIsh.MAX_OUTPUT_BYTES) {
@@ -260,7 +261,7 @@ export class SandboxIsh {
           output: head,
           exitCode: -1,
           timedOut: false,
-          error: '命令输出超过 64 MB，沙箱已停止；上面是开头部分'
+          error: t('命令输出超过 64 MB，沙箱已停止；上面是开头部分')
         };
       }
       if (size !== lastSize) {
@@ -307,7 +308,7 @@ export class SandboxIsh {
     const timeoutSize: number = SandboxIsh.fileSize(SandboxIsh.outputPath);
     let partial: string = '';
     if (timeoutSize > SandboxIsh.TIMEOUT_TAIL_BYTES) {
-      partial = '（输出过长，仅保留末尾部分）\n' +
+      partial = t('（输出过长，仅保留末尾部分）\n') +
         SandboxIsh.readTail(SandboxIsh.outputPath, timeoutSize, SandboxIsh.TIMEOUT_TAIL_BYTES);
     } else {
       const text: string = SandboxIsh.read(SandboxIsh.outputPath);
@@ -318,7 +319,7 @@ export class SandboxIsh {
       output: partial,
       exitCode: -1,
       timedOut: true,
-      error: '命令超过 ' + Math.round(timeoutMs / 1000).toString() + ' 秒未结束，沙箱已重启'
+      error: t('命令超过 ') + Math.round(timeoutMs / 1000).toString() + t(' 秒未结束，沙箱已重启')
     };
   }
 
@@ -357,7 +358,7 @@ export class SandboxIsh {
       SandboxIsh.commandPath, SandboxIsh.options.workspace, SandboxIsh.options.memory,
       SandboxIsh.options.attachments, SandboxIsh.options.skills);
     if (!SandboxIsh.writeText(SandboxIsh.requestPath, request)) {
-      return '无法写入沙箱请求文件：' + SandboxIsh.requestPath;
+      return t('无法写入沙箱请求文件：') + SandboxIsh.requestPath;
     }
 
     try {
@@ -367,12 +368,12 @@ export class SandboxIsh {
         'libishsandbox.so:Main',
         { entryParams: SandboxIsh.requestPath }
       ).catch((error: BusinessError) => {
-        SandboxIsh.startError = '沙箱子进程启动失败：' + error.code.toString() +
+        SandboxIsh.startError = t('沙箱子进程启动失败：') + error.code.toString() +
           ' ' + error.message;
       });
     } catch (e) {
       const error: BusinessError = e as BusinessError;
-      return '沙箱子进程启动失败：' + error.message;
+      return t('沙箱子进程启动失败：') + error.message;
     }
 
     const deadline: number = Date.now() + 90000;
@@ -381,7 +382,7 @@ export class SandboxIsh {
         // The user stopped while the kernel was booting; make sure the child
         // that may have started anyway is told to exit.
         SandboxIsh.stopDaemon();
-        return '命令已取消';
+        return t('命令已取消');
       }
       const text: string = SandboxIsh.read(SandboxIsh.outputPath);
       const ready: number = text.indexOf(SandboxIsh.READY);
@@ -401,7 +402,7 @@ export class SandboxIsh {
       }
       await SandboxIsh.sleep(200);
     }
-    return '沙箱在 90 秒内没有启动完成';
+    return t('沙箱在 90 秒内没有启动完成');
   }
 
   /** Write `id=<n>\n<command>` atomically so the harness never reads half. */
@@ -411,17 +412,17 @@ export class SandboxIsh {
     // The harness reads at most MAX_COMMAND_BYTES; a longer command would be
     // silently ignored and the caller would wait until the timeout.
     if (commandTooLong(body)) {
-      return '命令过长（上限 ' + MAX_COMMAND_BYTES.toString() + ' 字节）';
+      return t('命令过长（上限 ') + MAX_COMMAND_BYTES.toString() + t(' 字节）');
     }
     if (!SandboxIsh.writeText(temporary, body)) {
-      return '无法写入沙箱命令文件';
+      return t('无法写入沙箱命令文件');
     }
     try {
       fileIo.renameSync(temporary, SandboxIsh.commandPath);
       return '';
     } catch (e) {
       const error: Error = e as Error;
-      return '无法提交沙箱命令：' + error.message;
+      return t('无法提交沙箱命令：') + error.message;
     }
   }
 

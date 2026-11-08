@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { ShellHandler, ToolResult } from '../core/ToolTypes';
 import { sanitizeTerminal, truncateMiddle } from '../core/Terminal';
 import { SandboxIsh, SandboxOptions, SandboxRunResult } from './SandboxIsh';
+import { t } from '../core/I18n';
 
 /** Matches OpenMinis: one shell call may return at most this much text. */
 const MAX_SHELL_CHARS: number = 20000;
@@ -50,11 +51,11 @@ export class ShellTool implements ShellHandler {
     try {
       args = JSON.parse(argumentsJson) as ShellArgs;
     } catch (e) {
-      return { ok: false, content: '参数不是合法 JSON。' };
+      return { ok: false, content: t('参数不是合法 JSON。') };
     }
     const command: string = args.command !== undefined ? args.command : '';
     if (command.trim().length === 0) {
-      return { ok: false, content: 'command 不能为空。' };
+      return { ok: false, content: t('command 不能为空。') };
     }
     const requested: number = args.timeout === undefined || Number.isNaN(args.timeout)
       ? DEFAULT_TIMEOUT_SECONDS

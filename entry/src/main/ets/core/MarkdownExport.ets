@@ -14,6 +14,7 @@ import {
   modelName,
   textOf
 } from './Types';
+import { t } from './I18n';
 
 const MAX_TOOL_EXPORT_CHARS: number = 20000;
 
@@ -30,7 +31,7 @@ export function exportStamp(now: Date): string {
 export function safeFileBase(title: string): string {
   const source: string = title.trim();
   if (source.length === 0) {
-    return '对话';
+    return t('对话');
   }
   const forbidden: string = '\\/:*?"<>|';
   let out: string = '';
@@ -42,7 +43,7 @@ export function safeFileBase(title: string): string {
   if (out.length > 60) {
     out = out.substring(0, 60);
   }
-  return out.length > 0 ? out : '对话';
+  return out.length > 0 ? out : t('对话');
 }
 
 export function exportFileName(title: string, now: Date): string {
@@ -51,19 +52,19 @@ export function exportFileName(title: string, now: Date): string {
 
 function fence(content: string, language: string): string {
   const body: string = content.length > MAX_TOOL_EXPORT_CHARS
-    ? content.substring(0, MAX_TOOL_EXPORT_CHARS) + '\n…（已截断）'
+    ? content.substring(0, MAX_TOOL_EXPORT_CHARS) + t('\n…（已截断）')
     : content;
   return '````' + language + '\n' + body + '\n````';
 }
 
 function messageRole(role: string): string {
   if (role === 'user') {
-    return '## 用户';
+    return t('## 用户');
   }
   if (role === 'assistant') {
-    return '## 助手';
+    return t('## 助手');
   }
-  return '## 系统';
+  return t('## 系统');
 }
 
 function renderMessage(message: ChatMessage): string {
@@ -72,10 +73,10 @@ function renderMessage(message: ChatMessage): string {
     const part: MessagePart = message.parts[i];
     if (part.kind === PART_REASONING) {
       if (part.text.trim().length > 0) {
-        out += '> 思考过程\n\n' + quote(part.text) + '\n\n';
+        out += t('> 思考过程\n\n') + quote(part.text) + '\n\n';
       }
     } else if (part.kind === PART_TOOL_CALL) {
-      out += '**工具：' + part.toolName + '**\n\n';
+      out += t('**工具：') + part.toolName + '**\n\n';
       if (part.argumentsText.length > 0) {
         out += fence(part.argumentsText, 'json') + '\n\n';
       }
@@ -103,7 +104,7 @@ function quote(value: string): string {
 export function exportMarkdown(session: StoredSession, now: Date): string {
   const meta = session.meta;
   let out: string = '# ' + meta.title + '\n\n';
-  out += '> 模型：' + modelName(meta.modelId) + ' · 导出时间：' +
+  out += t('> 模型：') + modelName(meta.modelId) + t(' · 导出时间：') +
     exportStamp(now) + '\n\n';
 
   let wrote: boolean = false;
@@ -117,7 +118,7 @@ export function exportMarkdown(session: StoredSession, now: Date): string {
     wrote = true;
   }
   if (!wrote) {
-    out += '（空对话）\n';
+    out += t('（空对话）\n');
   }
   return out;
 }

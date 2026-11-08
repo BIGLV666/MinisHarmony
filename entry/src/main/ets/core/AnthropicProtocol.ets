@@ -23,12 +23,15 @@ import {
 import { ImageResolver } from './ToolProtocol';
 import { ToolDefinition } from './ToolTypes';
 import { DeltaResult, ToolCallDelta, emptyDelta } from './SseParser';
+import { t } from './I18n';
 
 export const ANTHROPIC_VERSION: string = '2023-06-01';
 export const ANTHROPIC_DEFAULT_BASE: string = 'https://api.anthropic.com/v1';
 export const ANTHROPIC_DEFAULT_MODEL: string = 'claude-sonnet-5-5';
 
-const INTERRUPTED_RESULT: string = '工具调用在上一轮被中断，未执行。';
+function interruptedResult(): string {
+  return t('工具调用在上一轮被中断，未执行。');
+}
 
 export interface AnthropicImageSource {
   type: string;
@@ -194,7 +197,7 @@ export function buildAnthropicMessages(
       let isError: boolean = part.isError || part.status === TOOL_ERROR;
       if (result.length === 0 &&
         part.status !== TOOL_DONE && part.status !== TOOL_ERROR) {
-        result = INTERRUPTED_RESULT;
+        result = interruptedResult();
         isError = true;
       }
       const contentBlocks: AnthropicBlock[] = [{ type: 'text', text: result }];
@@ -225,7 +228,7 @@ export function buildAnthropicMessages(
       }
       // Messages API conversations must start with a user turn.
       if (out.length === 0) {
-        pushBlocks(out, 'user', [{ type: 'text', text: '以下是此前的对话：' }]);
+        pushBlocks(out, 'user', [{ type: 'text', text: t('以下是此前的对话：') }]);
       }
       pushBlocks(out, 'assistant', blocks);
       pushBlocks(out, 'user', toolResults);
@@ -423,7 +426,7 @@ export function parseAnthropicData(
   try {
     payload = JSON.parse(raw) as AnthropicEventPayload;
   } catch (e) {
-    result.error = '无法解析流式响应';
+    result.error = t('无法解析流式响应');
     return result;
   }
   const kind: string = typeof payload.type === 'string' ? payload.type : '';
@@ -432,7 +435,7 @@ export function parseAnthropicData(
     const detail: AnthropicErrorPayload | undefined = payload.error;
     const message: string = detail !== undefined && detail !== null &&
       typeof detail.message === 'string' ? detail.message : '';
-    result.error = message.length > 0 ? message : '模型返回了错误事件';
+    result.error = message.length > 0 ? message : t('模型返回了错误事件');
     return result;
   }
 

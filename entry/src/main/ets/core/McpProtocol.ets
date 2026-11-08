@@ -11,6 +11,7 @@
  */
 
 import { McpOAuthConfig, emptyMcpOAuth, normalizeMcpOAuth } from './McpOAuth';
+import { t } from './I18n';
 
 export const MCP_PROTOCOL_VERSION: string = '2024-11-05';
 
@@ -234,8 +235,8 @@ export function rpcErrorMessage(response: McpRpcResponse): string {
     : '';
   const message: string = response.error.message !== undefined
     ? response.error.message
-    : '未知错误';
-  return 'MCP 错误' + code + '：' + message;
+    : t('未知错误');
+  return t('MCP 错误') + code + t('：') + message;
 }
 
 export function toolsFromResult(
@@ -309,7 +310,7 @@ export function callResultText(resultJson: string): string {
       continue;
     }
     if (item.type !== undefined && item.type.length > 0) {
-      parts.push('[' + item.type + ' 内容未展开]');
+      parts.push('[' + item.type + t(' 内容未展开]'));
     }
   }
   return parts.join('\n');

@@ -29,6 +29,8 @@ import {
   fontScaleLabel
 } from '../core/Appearance';
 import { SkillDoc } from '../core/SkillDoc';
+import { I18N_LANGUAGES, I18nLanguage } from '../core/I18n';
+import { I18nService } from '../service/I18n';
 import { SkillStore } from '../service/SkillStore';
 import { isOpenCodeBase, normalizeBaseUrl } from '../core/OpenCodeRules';
 import {
@@ -43,7 +45,7 @@ import { formatCrashRecord } from '../core/Diagnostics';
 import { CrashLog } from '../service/CrashLog';
 import { formatDateTime } from '../core/Device';
 import { MemoryFile } from '../core/Memory';
-import { SOUL_PRESETS, SoulPreset } from '../core/Soul';
+import { SoulPreset, soulPresets } from '../core/Soul';
 import {
   MAX_SUB_AGENTS,
   SubAgentDefinition,
@@ -91,6 +93,7 @@ import {
   GEMINI_DEFAULT_MODEL
 } from '../core/GeminiProtocol';
 import { CODEX_API_BASE } from '../core/ResponsesProtocol';
+import { t } from '../core/I18n';
 
 const COPILOT_DEFAULT_MODEL: string = 'gpt-4o';
 const CODEX_DEFAULT_MODEL: string = 'gpt-5.5';
@@ -111,6 +114,8 @@ interface LogRow {
   parsed: ParsedEventLine;
 }
 
+// Labels stay as source keys and are translated at render time, because
+// module-level constants are evaluated before the catalog is loaded.
 const THINKING_CHOICES: ThinkingChoice[] = [
   { value: 'off', label: '关闭' },
   { value: 'low', label: '低' },
@@ -136,6 +141,7 @@ const TOOL_CHOICES: ToolChoice[] = [
 
 @Component
 export struct SettingsSheet {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop settings: AppSettings = defaultSettings();
   onCancel: () => void = () => {
   };
@@ -185,7 +191,8 @@ export struct SettingsSheet {
   @State probeReport: string = '';
   @State ishRunning: boolean = false;
   @State ishReport: string = '';
-  @State sandboxStatus: string = '正在读取…';
+  @State language: string = 'zh-Hans';
+  @State sandboxStatus: string = t('正在读取…');
   @State sandboxBytes: string = '';
   @State sandboxResetting: boolean = false;
   @State resetArmed: boolean = false;
@@ -292,6 +299,7 @@ export struct SettingsSheet {
     // UIContext is not attached yet during aboutToAppear; read status on the
     // first idle frame instead.
     setTimeout(() => this.refreshSandboxStatus(), 0);
+    this.language = I18nService.current();
     const copy: AppSettings = cloneSettings(this.settings);
     this.preset = copy.preset;
     this.baseUrl = copy.baseUrl;
@@ -358,13 +366,13 @@ export struct SettingsSheet {
     const start: ClaudeLoginStart | null = await OAuthService.beginClaudeLogin(context);
     this.oauthBusy = false;
     if (start === null) {
-      this.onToast('无法打开浏览器，请稍后重试');
+      this.onToast(t('无法打开浏览器，请稍后重试'));
       return;
     }
     this.oauthVerifier = start.verifier;
     this.oauthState = start.state;
     this.oauthExpanded = true;
-    this.onToast('已打开浏览器，完成授权后复制回调地址');
+    this.onToast(t('已打开浏览器，完成授权后复制回调地址'));
   }
 
   private async completeClaudeLogin(): Promise<void> {
@@ -373,7 +381,7 @@ export struct SettingsSheet {
     }
     const pasted: string = this.oauthPaste.trim();
     if (pasted.length === 0) {
-      this.onToast('请先粘贴回调地址或授权码');
+      this.onToast(t('请先粘贴回调地址或授权码'));
       return;
     }
     this.oauthBusy = true;
@@ -398,7 +406,7 @@ export struct SettingsSheet {
     this.claudeMask = '';
     this.oauthExpanded = false;
     this.oauthPaste = '';
-    this.onToast('已退出 Claude 账号');
+    this.onToast(t('已退出 Claude 账号'));
   }
 
   private async startCodexLogin(): Promise<void> {
@@ -410,13 +418,13 @@ export struct SettingsSheet {
     const start: CodexLoginStart | null = await OAuthService.beginCodexLogin(context);
     this.oauthBusy = false;
     if (start === null) {
-      this.onToast('无法打开浏览器，请稍后重试');
+      this.onToast(t('无法打开浏览器，请稍后重试'));
       return;
     }
     this.codexVerifier = start.verifier;
     this.codexState = start.state;
     this.oauthExpanded = true;
-    this.onToast('已打开浏览器，完成授权后复制回调地址');
+    this.onToast(t('已打开浏览器，完成授权后复制回调地址'));
   }
 
   private async completeCodexLogin(): Promise<void> {
@@ -425,7 +433,7 @@ export struct SettingsSheet {
     }
     const pasted: string = this.oauthPaste.trim();
     if (pasted.length === 0) {
-      this.onToast('请先粘贴回调地址或授权码');
+      this.onToast(t('请先粘贴回调地址或授权码'));
       return;
     }
     this.oauthBusy = true;
@@ -457,7 +465,7 @@ export struct SettingsSheet {
     this.codexState = '';
     this.oauthExpanded = false;
     this.oauthPaste = '';
-    this.onToast('已退出 ChatGPT 账号');
+    this.onToast(t('已退出 ChatGPT 账号'));
   }
 
   private async startCopilotLogin(): Promise<void> {
@@ -469,13 +477,13 @@ export struct SettingsSheet {
     const start: CopilotLoginStart | null = await OAuthService.beginCopilotLogin(context);
     this.copilotBusy = false;
     if (start === null) {
-      this.onToast('无法获取 GitHub 设备码，请稍后重试');
+      this.onToast(t('无法获取 GitHub 设备码，请稍后重试'));
       return;
     }
     this.copilotDevice = start.device;
     this.copilotUserCode = start.device.userCode;
     this.copilotVerifyUri = start.device.verificationUri;
-    this.onToast('在浏览器中输入设备码完成授权');
+    this.onToast(t('在浏览器中输入设备码完成授权'));
   }
 
   private async waitCopilotLogin(): Promise<void> {
@@ -484,7 +492,7 @@ export struct SettingsSheet {
     }
     const device: DeviceAuthorization | null = this.copilotDevice;
     if (device === null) {
-      this.onToast('请先获取设备码');
+      this.onToast(t('请先获取设备码'));
       return;
     }
     this.copilotBusy = true;
@@ -507,7 +515,7 @@ export struct SettingsSheet {
     this.copilotUserCode = '';
     this.copilotVerifyUri = '';
     this.copilotDevice = null;
-    this.onToast('已退出 GitHub Copilot');
+    this.onToast(t('已退出 GitHub Copilot'));
   }
 
   private toolEnabled(name: string): boolean {
@@ -540,7 +548,7 @@ export struct SettingsSheet {
 
   private removeSkill(id: string): void {
     if (!SkillStore.remove(id)) {
-      this.onToast('删除失败');
+      this.onToast(t('删除失败'));
       return;
     }
     const next: string[] = [];
@@ -551,7 +559,7 @@ export struct SettingsSheet {
     }
     this.enabledSkills = next;
     this.skills = SkillStore.list();
-    this.onToast('已删除技能');
+    this.onToast(t('已删除技能'));
   }
 
   private setToolEnabled(name: string, enabled: boolean): void {
@@ -698,12 +706,12 @@ export struct SettingsSheet {
   private saveAgent(): void {
     const name: string = normalizeAgentName(this.agentName);
     if (name.length === 0) {
-      this.onToast('名字只能包含小写字母、数字、- 和 _');
+      this.onToast(t('名字只能包含小写字母、数字、- 和 _'));
       return;
     }
     for (let i = 0; i < this.subAgents.length; i++) {
       if (i !== this.agentIndex && this.subAgents[i].name === name) {
-        this.onToast('已经有同名子代理：' + name);
+        this.onToast(t('已经有同名子代理：') + name);
         return;
       }
     }
@@ -785,30 +793,30 @@ export struct SettingsSheet {
   private saveOverride(): void {
     const id: string = this.ovModelId.trim();
     if (id.length === 0) {
-      this.onToast('请填写模型 ID');
+      this.onToast(t('请填写模型 ID'));
       return;
     }
     if (!isValidExtraHeaders(this.ovHeadersText)) {
-      this.onToast('请求头需为 JSON 对象，且每个值都是字符串');
+      this.onToast(t('请求头需为 JSON 对象，且每个值都是字符串'));
       return;
     }
     if (!isValidExtraBody(this.ovBodyText)) {
-      this.onToast('附加请求体需为 JSON 对象');
+      this.onToast(t('附加请求体需为 JSON 对象'));
       return;
     }
     const temperature: number = this.parseOptionalNumber(this.ovTemperatureText, 0, 2);
     if (Number.isNaN(temperature)) {
-      this.onToast('温度需在 0–2 之间，留空表示继承');
+      this.onToast(t('温度需在 0–2 之间，留空表示继承'));
       return;
     }
     const topP: number = this.parseOptionalNumber(this.ovTopPText, 0, 1);
     if (Number.isNaN(topP)) {
-      this.onToast('top_p 需在 0–1 之间，留空表示不发送');
+      this.onToast(t('top_p 需在 0–1 之间，留空表示不发送'));
       return;
     }
     const maxTokens: number = this.parseOptionalNumber(this.ovMaxTokensText, 1, 1000000);
     if (Number.isNaN(maxTokens)) {
-      this.onToast('最大输出需为正整数，留空表示继承');
+      this.onToast(t('最大输出需为正整数，留空表示继承'));
       return;
     }
     const item: ModelOverride = {
@@ -913,11 +921,11 @@ export struct SettingsSheet {
   private saveMcp(): void {
     const url: string = this.mcpUrl.trim();
     if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) {
-      this.onToast('MCP 地址需以 http:// 或 https:// 开头');
+      this.onToast(t('MCP 地址需以 http:// 或 https:// 开头'));
       return;
     }
     if (!isValidExtraHeaders(this.mcpHeadersText)) {
-      this.onToast('MCP 请求头需为 JSON 对象，且每个值都是字符串');
+      this.onToast(t('MCP 请求头需为 JSON 对象，且每个值都是字符串'));
       return;
     }
     const id: string = this.mcpIndex >= 0
@@ -954,7 +962,7 @@ export struct SettingsSheet {
     this.mcpServers = next;
     this.editingMcp = false;
     this.mcpOAuthIndex = -1;
-    this.mcpStatusText = '已保存，点「刷新」发现工具';
+    this.mcpStatusText = t('已保存，点「刷新」发现工具');
   }
 
   private removeMcp(index: number): void {
@@ -1024,7 +1032,7 @@ export struct SettingsSheet {
     }
     const server: McpServerConfig = this.mcpServers[this.mcpOAuthIndex];
     if (!isMcpOAuthConfigured(server.oauth)) {
-      this.onToast('请先在编辑页填写 Client ID 与授权/令牌端点');
+      this.onToast(t('请先在编辑页填写 Client ID 与授权/令牌端点'));
       return;
     }
     this.mcpOAuthBusy = true;
@@ -1033,12 +1041,12 @@ export struct SettingsSheet {
       await McpOAuthService.beginLogin(context, server);
     this.mcpOAuthBusy = false;
     if (start === null) {
-      this.onToast('无法打开浏览器，请稍后重试');
+      this.onToast(t('无法打开浏览器，请稍后重试'));
       return;
     }
     this.mcpOAuthVerifier = start.verifier;
     this.mcpOAuthState = start.state;
-    this.mcpOAuthStatus = '已在浏览器打开授权页，完成后把回调地址粘贴到下方';
+    this.mcpOAuthStatus = t('已在浏览器打开授权页，完成后把回调地址粘贴到下方');
   }
 
   private async completeMcpOAuthLogin(): Promise<void> {
@@ -1048,7 +1056,7 @@ export struct SettingsSheet {
     }
     const pasted: string = this.mcpOAuthPaste.trim();
     if (pasted.length === 0) {
-      this.onToast('请先粘贴回调地址或授权码');
+      this.onToast(t('请先粘贴回调地址或授权码'));
       return;
     }
     const server: McpServerConfig = this.mcpServers[this.mcpOAuthIndex];
@@ -1079,7 +1087,7 @@ export struct SettingsSheet {
     this.mcpOAuthVerifier = '';
     this.mcpOAuthState = '';
     this.mcpOAuthPaste = '';
-    this.mcpOAuthStatus = '已退出 MCP OAuth';
+    this.mcpOAuthStatus = t('已退出 MCP OAuth');
     this.refreshMcp();
   }
 
@@ -1092,15 +1100,15 @@ export struct SettingsSheet {
       const statuses: McpServerStatus[] = await McpRegistry.refresh(
         normalizeMcpServers(this.mcpServers), true);
       if (statuses.length === 0) {
-        this.mcpStatusText = '没有启用的 MCP 服务';
+        this.mcpStatusText = t('没有启用的 MCP 服务');
       } else {
         const parts: string[] = [];
         for (let i = 0; i < statuses.length; i++) {
           const status: McpServerStatus = statuses[i];
           if (status.error.length > 0) {
-            parts.push(status.serverName + '：' + status.error);
+            parts.push(status.serverName + t('：') + status.error);
           } else {
-            parts.push(status.serverName + '：' + status.toolCount.toString() + ' 个工具');
+            parts.push(status.serverName + t('：') + status.toolCount.toString() + t(' 个工具'));
           }
         }
         this.mcpStatusText = parts.join('\n');
@@ -1116,7 +1124,7 @@ export struct SettingsSheet {
     this.showLogs = false;
     this.crashRows = [];
     this.showCrashes = false;
-    this.onToast(removed > 0 ? '已删除 ' + removed.toString() + ' 个日志文件' : '没有可删除的日志文件');
+    this.onToast(removed > 0 ? t('已删除 ') + removed.toString() + t(' 个日志文件') : t('没有可删除的日志文件'));
   }
 
   private loadMemory(): void {
@@ -1145,7 +1153,7 @@ export struct SettingsSheet {
     const name: string = this.memoryFiles[this.memoryIndex].name;
     const result: string = MemoryStore.saveText(name, this.memoryText);
     this.onToast(result);
-    if (!result.startsWith('已保存')) {
+    if (!result.startsWith(t('已保存'))) {
       return;
     }
     const reloaded: MemoryFile[] = MemoryStore.editable();
@@ -1178,15 +1186,15 @@ export struct SettingsSheet {
 
   private logLevelLabel(value: string): string {
     if (value === LOG_INFO) {
-      return '信息';
+      return t('信息');
     }
     if (value === LOG_WARN) {
-      return '警告';
+      return t('警告');
     }
     if (value === LOG_ERROR) {
-      return '错误';
+      return t('错误');
     }
-    return '全部';
+    return t('全部');
   }
 
   /** `all` plus every event name present in the current page of logs. */
@@ -1222,7 +1230,7 @@ export struct SettingsSheet {
 
   private copyText(text: string, toast: string): void {
     if (text.length === 0) {
-      this.onToast('没有可复制的内容');
+      this.onToast(t('没有可复制的内容'));
       return;
     }
     const data: pasteboard.PasteData = pasteboard.createData(
@@ -1232,7 +1240,7 @@ export struct SettingsSheet {
     pasteboard.getSystemPasteboard().setData(data).then(() => {
       this.onToast(toast);
     }).catch((error: Error) => {
-      this.onToast('复制失败');
+      this.onToast(t('复制失败'));
     });
   }
 
@@ -1242,7 +1250,7 @@ export struct SettingsSheet {
     for (let i = 0; i < rows.length; i++) {
       lines.push(rows[i].line);
     }
-    this.copyText(lines.join('\n'), '已复制 ' + lines.length.toString() + ' 条日志');
+    this.copyText(lines.join('\n'), t('已复制 ') + lines.length.toString() + t(' 条日志'));
   }
 
   private toggleCrashes(): void {
@@ -1260,12 +1268,12 @@ export struct SettingsSheet {
   }
 
   private copyCrashes(): void {
-    this.copyText(this.crashRows.join('\n\n'), '已复制崩溃记录');
+    this.copyText(this.crashRows.join('\n\n'), t('已复制崩溃记录'));
   }
 
   private clearMemory(): void {
     const removed: number = MemoryStore.clearDaily();
-    this.onToast(removed > 0 ? '已清空 ' + removed.toString() + ' 个记忆文件' : '没有可清空的记忆');
+    this.onToast(removed > 0 ? t('已清空 ') + removed.toString() + t(' 个记忆文件') : t('没有可清空的记忆'));
   }
 
   private async runSandboxProbe(): Promise<void> {
@@ -1273,13 +1281,13 @@ export struct SettingsSheet {
       return;
     }
     this.probeRunning = true;
-    this.probeReport = '正在启动原生子进程…';
+    this.probeReport = t('正在启动原生子进程…');
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       this.probeReport = await SandboxProbe.run(context);
     } catch (e) {
       const error: Error = e as Error;
-      this.probeReport = '自检失败：' + error.message;
+      this.probeReport = t('自检失败：') + error.message;
     }
     this.probeRunning = false;
   }
@@ -1290,9 +1298,9 @@ export struct SettingsSheet {
       this.probeReport
     );
     pasteboard.getSystemPasteboard().setData(data).then(() => {
-      this.onToast('已复制自检结果');
+      this.onToast(t('已复制自检结果'));
     }).catch((error: Error) => {
-      this.onToast('复制失败');
+      this.onToast(t('复制失败'));
     });
   }
 
@@ -1303,16 +1311,16 @@ export struct SettingsSheet {
       const status: SandboxStatus = SandboxIsh.status(context);
       if (status.ready) {
         this.sandboxStatus = status.running
-          ? '已启动，内核常驻'
-          : '已就绪，用到时启动内核';
+          ? t('已启动，内核常驻')
+          : t('已就绪，用到时启动内核');
       } else if (status.version.length > 0) {
-        this.sandboxStatus = '需要重新解压（旧版本 ' + status.version + '）';
+        this.sandboxStatus = t('需要重新解压（旧版本 ') + status.version + t('）');
       } else {
-        this.sandboxStatus = '尚未解压，首次使用约需十几秒';
+        this.sandboxStatus = t('尚未解压，首次使用约需十几秒');
       }
       this.sandboxBytes = status.bytes > 0 ? SandboxIsh.formatBytes(status.bytes) : '';
     } catch (e) {
-      this.sandboxStatus = '无法读取沙箱目录';
+      this.sandboxStatus = t('无法读取沙箱目录');
       this.sandboxBytes = '';
     }
   }
@@ -1323,7 +1331,7 @@ export struct SettingsSheet {
     }
     if (!this.resetArmed) {
       this.resetArmed = true;
-      this.onToast('再点一次确认删除已解压的 rootfs');
+      this.onToast(t('再点一次确认删除已解压的 rootfs'));
       setTimeout(() => {
         this.resetArmed = false;
       }, 4000);
@@ -1335,10 +1343,10 @@ export struct SettingsSheet {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const ok: boolean = await SandboxIsh.reset(context);
       this.ishReport = '';
-      this.onToast(ok ? '已重置，下次使用沙箱时重新解压' : '沙箱正在执行命令，稍后再试');
+      this.onToast(ok ? t('已重置，下次使用沙箱时重新解压') : t('沙箱正在执行命令，稍后再试'));
     } catch (e) {
       const error: Error = e as Error;
-      this.onToast('重置失败：' + error.message);
+      this.onToast(t('重置失败：') + error.message);
     }
     this.sandboxResetting = false;
     this.refreshSandboxStatus();
@@ -1355,8 +1363,8 @@ export struct SettingsSheet {
       // decompressFile has no progress callback; at least tell the user when
       // the wait is the one-time extraction rather than the kernel boot.
       this.ishReport = status.ready
-        ? '正在启动 iSH 内核…'
-        : '首次使用：正在解压 rootfs（约 15 MB），可能需要十几秒…';
+        ? t('正在启动 iSH 内核…')
+        : t('首次使用：正在解压 rootfs（约 15 MB），可能需要十几秒…');
       const options: SandboxOptions = {
         workspace: context.filesDir + '/workspace',
         memory: context.filesDir + '/memory',
@@ -1371,7 +1379,7 @@ export struct SettingsSheet {
         : result.output + '\n' + exit;
     } catch (e) {
       const error: Error = e as Error;
-      this.ishReport = '沙箱启动失败：' + error.message;
+      this.ishReport = t('沙箱启动失败：') + error.message;
     }
     this.ishRunning = false;
     this.refreshSandboxStatus();
@@ -1383,9 +1391,9 @@ export struct SettingsSheet {
       this.ishReport
     );
     pasteboard.getSystemPasteboard().setData(data).then(() => {
-      this.onToast('已复制沙箱输出');
+      this.onToast(t('已复制沙箱输出'));
     }).catch((error: Error) => {
-      this.onToast('复制失败');
+      this.onToast(t('复制失败'));
     });
   }
 
@@ -1394,7 +1402,7 @@ export struct SettingsSheet {
       return;
     }
     this.probing = true;
-    this.probeMessage = '正在连接…';
+    this.probeMessage = t('正在连接…');
     const draft: AppSettings = this.draftSettings();
     if (draft.preset === 'anthropic') {
       draft.oauthToken = await OAuthService.validClaudeToken();
@@ -1416,21 +1424,21 @@ export struct SettingsSheet {
   private save(): void {
     const next: AppSettings = this.draftSettings();
     if (next.baseUrl.length === 0) {
-      this.probeMessage = 'API 地址不能为空';
+      this.probeMessage = t('API 地址不能为空');
       return;
     }
     if (next.modelId.length === 0) {
-      this.probeMessage = '模型 ID 不能为空';
+      this.probeMessage = t('模型 ID 不能为空');
       return;
     }
     if (next.toolsEnabled && next.sandboxMode === 'remote') {
       if (next.sandboxUrl.length === 0) {
-        this.probeMessage = '远程沙箱地址不能为空';
+        this.probeMessage = t('远程沙箱地址不能为空');
         return;
       }
       if (!next.sandboxUrl.startsWith('http://') &&
         !next.sandboxUrl.startsWith('https://')) {
-        this.probeMessage = '远程沙箱地址必须以 http:// 或 https:// 开头';
+        this.probeMessage = t('远程沙箱地址必须以 http:// 或 https:// 开头');
         return;
       }
     }
@@ -1441,13 +1449,13 @@ export struct SettingsSheet {
   claudeOAuthCard() {
     Column({ space: 8 }) {
       Row({ space: 6 }) {
-        Text(this.claudeLoggedIn ? '已登录 Claude 账号' : 'Claude 账号登录（Pro / Max）')
+        Text(this.claudeLoggedIn ? t('已登录 Claude 账号') : t('Claude 账号登录（Pro / Max）'))
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .layoutWeight(1)
         if (this.claudeLoggedIn) {
-          Text('退出')
+          Text(t('退出'))
             .fontSize(11)
             .fontColor($r('app.color.danger'))
             .padding({ left: 6, right: 2 })
@@ -1459,21 +1467,21 @@ export struct SettingsSheet {
       .width('100%')
 
       if (this.claudeLoggedIn) {
-        Text('令牌 ' + this.claudeMask)
+        Text(t('令牌 ') + this.claudeMask)
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
-        Text('登录态保存在系统 Asset Store；API Key 保持清空即可使用该账号。')
+        Text(t('登录态保存在系统 Asset Store；API Key 保持清空即可使用该账号。'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
       } else {
-        Text('浏览器完成授权后，回调会停在 localhost:54545，复制地址栏里的完整地址粘贴回来。')
+        Text(t('浏览器完成授权后，回调会停在 localhost:54545，复制地址栏里的完整地址粘贴回来。'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
         if (this.oauthExpanded) {
-          TextInput({ text: this.oauthPaste, placeholder: 'http://localhost:54545/callback?code=…' })
+          TextInput({ text: this.oauthPaste, placeholder: t('http://localhost:54545/callback?code=…') })
             .width('100%')
             .height(42)
             .fontSize(12)
@@ -1483,7 +1491,7 @@ export struct SettingsSheet {
               this.oauthPaste = value;
             })
           Row({ space: 8 }) {
-            Button(this.oauthBusy ? '登录中…' : '完成登录')
+            Button(this.oauthBusy ? t('登录中…') : t('完成登录'))
               .layoutWeight(1)
               .height(38)
               .fontSize(12)
@@ -1494,7 +1502,7 @@ export struct SettingsSheet {
               .onClick(() => {
                 this.completeClaudeLogin();
               })
-            Button('重新打开')
+            Button(t('重新打开'))
               .height(38)
               .fontSize(12)
               .fontColor($r('app.color.accent'))
@@ -1507,7 +1515,7 @@ export struct SettingsSheet {
           }
           .width('100%')
         } else {
-          Button(this.oauthBusy ? '正在打开…' : '打开浏览器登录')
+          Button(this.oauthBusy ? t('正在打开…') : t('打开浏览器登录'))
             .width('100%')
             .height(38)
             .fontSize(12)
@@ -1532,13 +1540,13 @@ export struct SettingsSheet {
   copilotOAuthCard() {
     Column({ space: 8 }) {
       Row({ space: 6 }) {
-        Text(this.copilotLoggedIn ? '已登录 GitHub Copilot' : 'GitHub Copilot 登录')
+        Text(this.copilotLoggedIn ? t('已登录 GitHub Copilot') : t('GitHub Copilot 登录'))
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .layoutWeight(1)
         if (this.copilotLoggedIn) {
-          Text('退出')
+          Text(t('退出'))
             .fontSize(11)
             .fontColor($r('app.color.danger'))
             .padding({ left: 6, right: 2 })
@@ -1549,28 +1557,28 @@ export struct SettingsSheet {
       }
       .width('100%')
 
-      Text('非官方接入：GitHub 未公开该接口，账号风控风险由使用者自行承担。')
+      Text(t('非官方接入：GitHub 未公开该接口，账号风控风险由使用者自行承担。'))
         .fontSize(10)
         .fontColor($r('app.color.danger'))
         .width('100%')
 
       if (this.copilotLoggedIn) {
-        Text('GitHub 令牌 ' + this.copilotMask)
+        Text(t('GitHub 令牌 ') + this.copilotMask)
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
       } else if (this.copilotUserCode.length > 0) {
-        Text('设备码：' + this.copilotUserCode)
+        Text(t('设备码：') + this.copilotUserCode)
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
           .width('100%')
-        Text('在浏览器打开 ' + this.copilotVerifyUri + ' 并输入上面的设备码，然后点下方按钮。')
+        Text(t('在浏览器打开 ') + this.copilotVerifyUri + t(' 并输入上面的设备码，然后点下方按钮。'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
         Row({ space: 8 }) {
-          Button(this.copilotBusy ? '等待授权…' : '我已授权，继续')
+          Button(this.copilotBusy ? t('等待授权…') : t('我已授权，继续'))
             .layoutWeight(1)
             .height(38)
             .fontSize(12)
@@ -1581,7 +1589,7 @@ export struct SettingsSheet {
             .onClick(() => {
               this.waitCopilotLogin();
             })
-          Button('重新获取')
+          Button(t('重新获取'))
             .height(38)
             .fontSize(12)
             .fontColor($r('app.color.accent'))
@@ -1594,7 +1602,7 @@ export struct SettingsSheet {
         }
         .width('100%')
       } else {
-        Button(this.copilotBusy ? '正在获取…' : '使用 GitHub 登录')
+        Button(this.copilotBusy ? t('正在获取…') : t('使用 GitHub 登录'))
           .width('100%')
           .height(38)
           .fontSize(12)
@@ -1618,13 +1626,13 @@ export struct SettingsSheet {
   codexOAuthCard() {
     Column({ space: 8 }) {
       Row({ space: 6 }) {
-        Text(this.codexLoggedIn ? '已登录 ChatGPT 账号' : 'ChatGPT 账号登录（Plus / Pro）')
+        Text(this.codexLoggedIn ? t('已登录 ChatGPT 账号') : t('ChatGPT 账号登录（Plus / Pro）'))
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .layoutWeight(1)
         if (this.codexLoggedIn) {
-          Text('退出')
+          Text(t('退出'))
             .fontSize(11)
             .fontColor($r('app.color.danger'))
             .padding({ left: 6, right: 2 })
@@ -1636,27 +1644,27 @@ export struct SettingsSheet {
       .width('100%')
 
       if (this.codexLoggedIn) {
-        Text('令牌 ' + this.codexMask)
+        Text(t('令牌 ') + this.codexMask)
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
         if (this.codexPlan.length > 0) {
-          Text('订阅：' + this.codexPlan)
+          Text(t('订阅：') + this.codexPlan)
             .fontSize(10)
             .fontColor($r('app.color.text_tertiary'))
             .width('100%')
         }
-        Text('走 Codex Responses API；登录态保存在系统 Asset Store，API Key 保持清空即可。')
+        Text(t('走 Codex Responses API；登录态保存在系统 Asset Store，API Key 保持清空即可。'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
       } else {
-        Text('浏览器完成授权后，回调会停在 localhost:1455，复制地址栏里的完整地址粘贴回来。')
+        Text(t('浏览器完成授权后，回调会停在 localhost:1455，复制地址栏里的完整地址粘贴回来。'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
         if (this.oauthExpanded) {
-          TextInput({ text: this.oauthPaste, placeholder: 'http://localhost:1455/auth/callback?code=…' })
+          TextInput({ text: this.oauthPaste, placeholder: t('http://localhost:1455/auth/callback?code=…') })
             .width('100%')
             .height(42)
             .fontSize(12)
@@ -1666,7 +1674,7 @@ export struct SettingsSheet {
               this.oauthPaste = value;
             })
           Row({ space: 8 }) {
-            Button(this.oauthBusy ? '登录中…' : '完成登录')
+            Button(this.oauthBusy ? t('登录中…') : t('完成登录'))
               .layoutWeight(1)
               .height(38)
               .fontSize(12)
@@ -1677,7 +1685,7 @@ export struct SettingsSheet {
               .onClick(() => {
                 this.completeCodexLogin();
               })
-            Button('重新打开')
+            Button(t('重新打开'))
               .height(38)
               .fontSize(12)
               .fontColor($r('app.color.accent'))
@@ -1690,7 +1698,7 @@ export struct SettingsSheet {
           }
           .width('100%')
         } else {
-          Button(this.oauthBusy ? '正在打开…' : '打开浏览器登录')
+          Button(this.oauthBusy ? t('正在打开…') : t('打开浏览器登录'))
             .width('100%')
             .height(38)
             .fontSize(12)
@@ -1809,13 +1817,13 @@ export struct SettingsSheet {
         .fontColor($r('app.color.accent'))
         .backgroundColor($r('app.color.surface'))
       Column({ space: 3 }) {
-        Text(isOpenCodeBase(this.baseUrl) ? '会话头已自动启用' : '当前地址不发送会话头')
+        Text(isOpenCodeBase(this.baseUrl) ? t('会话头已自动启用') : t('当前地址不发送会话头'))
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
         Text(isOpenCodeBase(this.baseUrl)
-          ? '每个对话使用固定 UUID，作为 x-opencode-session 随请求发送，用于上游路由与缓存。'
-          : '只有 opencode.ai 域名会附加 x-opencode-session，避免把会话标识泄露给自定义中转。')
+          ? t('每个对话使用固定 UUID，作为 x-opencode-session 随请求发送，用于上游路由与缓存。')
+          : t('只有 opencode.ai 域名会附加 x-opencode-session，避免把会话标识泄露给自定义中转。'))
           .fontSize(10)
           .fontColor($r('app.color.text_secondary'))
           .lineHeight(16)
@@ -1850,7 +1858,7 @@ export struct SettingsSheet {
           .selectedColor($r('app.color.accent'))
           .onChange((next: boolean) => apply(next))
       } else {
-        Text('暂不可用')
+        Text(t('暂不可用'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
       }
@@ -1872,11 +1880,11 @@ export struct SettingsSheet {
       Column() {
         Row({ space: 10 }) {
           Column({ space: 2 }) {
-            Text('设置')
+            Text(t('设置'))
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
               .fontColor($r('app.color.text_primary'))
-            Text('OpenAI 兼容接口 · OpenCode Go 预设')
+            Text(t('OpenAI 兼容接口 · OpenCode Go 预设'))
               .fontSize(11)
               .fontColor($r('app.color.text_tertiary'))
           }
@@ -1893,28 +1901,53 @@ export struct SettingsSheet {
 
         Scroll() {
           Column({ space: 16 }) {
-            this.sectionTitle('服务商', 'OpenCode Go 用订阅 Key；Anthropic / Gemini 走原生协议；自定义接任意 OpenAI 兼容服务')
+            this.sectionTitle(t('语言'), t('界面文案立即切换；已保存的会话内容保持原文'))
+            Flex({ wrap: FlexWrap.Wrap }) {
+              ForEach(I18N_LANGUAGES, (language: I18nLanguage) => {
+                Text(language.label)
+                  .fontSize(10)
+                  .fontColor(this.language === language.code
+                    ? $r('app.color.accent')
+                    : $r('app.color.text_secondary'))
+                  .padding({ left: 9, right: 9, top: 6, bottom: 6 })
+                  .margin(3)
+                  .backgroundColor(this.language === language.code
+                    ? $r('app.color.accent_soft')
+                    : $r('app.color.surface_alt'))
+                  .borderRadius(7)
+                  .onClick(() => {
+                    const context: common.UIAbilityContext =
+                      getContext(this) as common.UIAbilityContext;
+                    I18nService.setLanguage(context, language.code);
+                    this.language = language.code;
+                    this.onToast(t('语言已切换'));
+                  })
+              }, (language: I18nLanguage) => language.code)
+            }
+            .width('100%')
+
+            this.sectionTitle(t('服务商'), t('OpenCode Go 用订阅 Key；Anthropic / Gemini 走原生协议；自定义接任意 OpenAI 兼容服务'))
             Column({ space: 10 }) {
               Row({ space: 10 }) {
-                this.presetCard('OpenCode Go', '自动填写当前基址，注入会话头', 'opencode')
-                this.presetCard('Anthropic', '原生 Messages API 与工具调用', 'anthropic')
+                this.presetCard('OpenCode Go', t('自动填写当前基址，注入会话头'), 'opencode')
+                this.presetCard('Anthropic', t('原生 Messages API 与工具调用'), 'anthropic')
               }
               .width('100%')
               Row({ space: 10 }) {
-                this.presetCard('Gemini', '原生 generateContent 与函数调用', 'gemini')
-                this.presetCard('自定义', '自建中转 / 其他兼容服务', 'custom')
+                this.presetCard('Gemini', t('原生 generateContent 与函数调用'), 'gemini')
+                this.presetCard(t('自定义'), t('自建中转 / 其他兼容服务'), 'custom')
               }
               .width('100%')
               Row({ space: 10 }) {
-                this.presetCard('GitHub Copilot', '设备码登录 · 非官方接入', 'copilot')
-                this.presetCard('ChatGPT Codex', '账号登录 · Responses API', 'codex')
+                this.presetCard('GitHub Copilot', t('设备码登录 · 非官方接入'), 'copilot')
+                this.presetCard('ChatGPT Codex', t('账号登录 · Responses API'), 'codex')
               }
               .width('100%')
             }
             .width('100%')
 
             Column() {
-              this.fieldLabel('API 地址')
+              this.fieldLabel(t('API 地址'))
               TextInput({ text: this.baseUrl, placeholder: OPENCODE_GO_BASE })
                 .width('100%')
                 .height(42)
@@ -1924,7 +1957,7 @@ export struct SettingsSheet {
                 .onChange((value: string) => {
                   this.baseUrl = value;
                 })
-              Text('推理：' + normalizeBaseUrl(this.baseUrl) + '/chat/completions')
+              Text(t('推理：') + normalizeBaseUrl(this.baseUrl) + '/chat/completions')
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .margin({ top: 4 })
@@ -1937,7 +1970,7 @@ export struct SettingsSheet {
             Column() {
               this.fieldLabel('API Key')
               Row({ space: 8 }) {
-                TextInput({ text: this.apiKey, placeholder: '在 OpenCode Console 的 Go 订阅页复制' })
+                TextInput({ text: this.apiKey, placeholder: t('在 OpenCode Console 的 Go 订阅页复制') })
                   .layoutWeight(1)
                   .height(42)
                   .fontSize(13)
@@ -1947,7 +1980,7 @@ export struct SettingsSheet {
                   .onChange((value: string) => {
                     this.apiKey = value;
                   })
-                Text(this.showKey ? '隐藏' : '显示')
+                Text(this.showKey ? t('隐藏') : t('显示'))
                   .fontSize(11)
                   .fontColor($r('app.color.accent'))
                   .padding({ left: 4, right: 4 })
@@ -1971,7 +2004,7 @@ export struct SettingsSheet {
             }
 
             Column() {
-              this.fieldLabel('模型 ID')
+              this.fieldLabel(t('模型 ID'))
               Row({ space: 8 }) {
                 TextInput({ text: this.modelId, placeholder: 'kimi-k3' })
                   .layoutWeight(1)
@@ -1982,7 +2015,7 @@ export struct SettingsSheet {
                   .onChange((value: string) => {
                     this.modelId = value;
                   })
-                Button(this.probing ? '…' : '获取')
+                Button(this.probing ? t('…') : t('获取'))
                   .height(42)
                   .fontSize(12)
                   .fontColor($r('app.color.accent'))
@@ -2026,8 +2059,8 @@ export struct SettingsSheet {
             .alignItems(HorizontalAlign.Start)
 
             Column() {
-              this.fieldLabel('备用模型（按顺序重试）')
-              TextInput({ text: this.fallbackText, placeholder: '如 kimi-k3, glm-4.6（可留空）' })
+              this.fieldLabel(t('备用模型（按顺序重试）'))
+              TextInput({ text: this.fallbackText, placeholder: t('如 kimi-k3, glm-4.6（可留空）') })
                 .width('100%')
                 .height(42)
                 .fontSize(13)
@@ -2036,7 +2069,7 @@ export struct SettingsSheet {
                 .onChange((value: string) => {
                   this.fallbackText = value;
                 })
-              Text('仅当本次请求尚未产生任何文本、推理或工具调用时才会切换。')
+              Text(t('仅当本次请求尚未产生任何文本、推理或工具调用时才会切换。'))
                 .fontSize(10)
                 .fontColor($r('app.color.text_tertiary'))
                 .margin({ top: 4 })
@@ -2045,10 +2078,10 @@ export struct SettingsSheet {
             .width('100%')
             .alignItems(HorizontalAlign.Start)
 
-            this.sectionTitle('生成参数', '按模型能力调整；不确定时保持默认')
+            this.sectionTitle(t('生成参数'), t('按模型能力调整；不确定时保持默认'))
             Column() {
               Row({ space: 10 }) {
-                Text('温度')
+                Text(t('温度'))
                   .fontSize(11)
                   .fontColor($r('app.color.text_secondary'))
                   .width(44)
@@ -2067,7 +2100,7 @@ export struct SettingsSheet {
               .width('100%')
 
               Row({ space: 10 }) {
-                Text('最大输出')
+                Text(t('最大输出'))
                   .fontSize(11)
                   .fontColor($r('app.color.text_secondary'))
                   .width(64)
@@ -2093,17 +2126,17 @@ export struct SettingsSheet {
             Column({ space: 8 }) {
               Row({ space: 8 }) {
                 Column({ space: 3 }) {
-                  Text('逐模型参数')
+                  Text(t('逐模型参数'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
-                  Text('按模型 ID 精确匹配，覆盖温度、top_p、最大输出，并追加请求头与请求体字段。')
+                  Text(t('按模型 ID 精确匹配，覆盖温度、top_p、最大输出，并追加请求头与请求体字段。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
                 }
                 .layoutWeight(1)
                 .alignItems(HorizontalAlign.Start)
-                Text(this.editingOverride ? '取消' : '添加')
+                Text(this.editingOverride ? t('取消') : t('添加'))
                   .fontSize(11)
                   .fontColor($r('app.color.accent'))
                   .padding({ left: 10, right: 10, top: 6, bottom: 6 })
@@ -2114,7 +2147,7 @@ export struct SettingsSheet {
               .width('100%')
 
               if (this.modelOverrides.length === 0 && !this.editingOverride) {
-                Text('还没有覆盖项；不添加时所有模型使用上方的全局参数。')
+                Text(t('还没有覆盖项；不添加时所有模型使用上方的全局参数。'))
                   .fontSize(10)
                   .fontColor($r('app.color.text_tertiary'))
                   .width('100%')
@@ -2134,11 +2167,11 @@ export struct SettingsSheet {
                   }
                   .layoutWeight(1)
                   .alignItems(HorizontalAlign.Start)
-                  Text('编辑')
+                  Text(t('编辑'))
                     .fontSize(10)
                     .fontColor($r('app.color.accent'))
                     .onClick(() => this.beginOverride(this.modelOverrides.indexOf(item)))
-                  Text('删除')
+                  Text(t('删除'))
                     .fontSize(10)
                     .fontColor($r('app.color.danger'))
                     .onClick(() => this.removeOverride(this.modelOverrides.indexOf(item)))
@@ -2151,8 +2184,8 @@ export struct SettingsSheet {
 
               if (this.editingOverride) {
                 Column({ space: 8 }) {
-                  this.fieldLabel('模型 ID（与请求里的 model 完全一致）')
-                  TextInput({ text: this.ovModelId, placeholder: '例如 kimi-k3' })
+                  this.fieldLabel(t('模型 ID（与请求里的 model 完全一致）'))
+                  TextInput({ text: this.ovModelId, placeholder: t('例如 kimi-k3') })
                     .height(38)
                     .fontSize(12)
                     .backgroundColor($r('app.color.surface'))
@@ -2163,8 +2196,8 @@ export struct SettingsSheet {
 
                   Row({ space: 8 }) {
                     Column({ space: 4 }) {
-                      this.fieldLabel('温度')
-                      TextInput({ text: this.ovTemperatureText, placeholder: '继承' })
+                      this.fieldLabel(t('温度'))
+                      TextInput({ text: this.ovTemperatureText, placeholder: t('继承') })
                         .height(36)
                         .fontSize(12)
                         .type(InputType.Number)
@@ -2179,7 +2212,7 @@ export struct SettingsSheet {
 
                     Column({ space: 4 }) {
                       this.fieldLabel('top_p')
-                      TextInput({ text: this.ovTopPText, placeholder: '不发送' })
+                      TextInput({ text: this.ovTopPText, placeholder: t('不发送') })
                         .height(36)
                         .fontSize(12)
                         .type(InputType.Number)
@@ -2193,8 +2226,8 @@ export struct SettingsSheet {
                     .alignItems(HorizontalAlign.Start)
 
                     Column({ space: 4 }) {
-                      this.fieldLabel('最大输出')
-                      TextInput({ text: this.ovMaxTokensText, placeholder: '继承' })
+                      this.fieldLabel(t('最大输出'))
+                      TextInput({ text: this.ovMaxTokensText, placeholder: t('继承') })
                         .height(36)
                         .fontSize(12)
                         .type(InputType.Number)
@@ -2209,7 +2242,7 @@ export struct SettingsSheet {
                   }
                   .width('100%')
 
-                  this.fieldLabel('附加请求头（JSON 对象，值必须是字符串）')
+                  this.fieldLabel(t('附加请求头（JSON 对象，值必须是字符串）'))
                   TextArea({ text: this.ovHeadersText, placeholder: '{"X-Title":"MinisHarmony"}' })
                     .height(64)
                     .fontSize(11)
@@ -2220,7 +2253,7 @@ export struct SettingsSheet {
                       this.ovHeadersText = value;
                     })
 
-                  this.fieldLabel('附加请求体（JSON 对象，与基础字段同名时覆盖）')
+                  this.fieldLabel(t('附加请求体（JSON 对象，与基础字段同名时覆盖）'))
                   TextArea({ text: this.ovBodyText, placeholder: '{"provider":{"order":["moonshot"]}}' })
                     .height(64)
                     .fontSize(11)
@@ -2232,7 +2265,7 @@ export struct SettingsSheet {
                     })
 
                   Row({ space: 8 }) {
-                    Button('取消', { type: ButtonType.Normal })
+                    Button(t('取消'), { type: ButtonType.Normal })
                       .layoutWeight(1)
                       .height(34)
                       .fontSize(12)
@@ -2242,7 +2275,7 @@ export struct SettingsSheet {
                       .onClick(() => {
                         this.editingOverride = false;
                       })
-                    Button('保存覆盖项', { type: ButtonType.Normal })
+                    Button(t('保存覆盖项'), { type: ButtonType.Normal })
                       .layoutWeight(1)
                       .height(34)
                       .fontSize(12)
@@ -2265,8 +2298,8 @@ export struct SettingsSheet {
             .backgroundColor($r('app.color.surface_alt'))
             .borderRadius(11)
 
-            this.sectionTitle('子代理名册', '给 subagent_task 起名字；说明会进入系统提示，最多 ' +
-              MAX_SUB_AGENTS.toString() + ' 个（含内置）')
+            this.sectionTitle(t('子代理名册'), t('给 subagent_task 起名字；说明会进入系统提示，最多 ') +
+              MAX_SUB_AGENTS.toString() + t(' 个（含内置）'))
             Column({ space: 8 }) {
               ForEach(this.subAgents, (agent: SubAgentDefinition, index: number) => {
                 Row({ space: 8 }) {
@@ -2277,7 +2310,7 @@ export struct SettingsSheet {
                         .fontWeight(FontWeight.Medium)
                         .fontColor($r('app.color.text_primary'))
                       if (agent.builtIn) {
-                        Text('内置')
+                        Text(t('内置'))
                           .fontSize(9)
                           .fontColor($r('app.color.text_tertiary'))
                           .padding({ left: 5, right: 5, top: 1, bottom: 1 })
@@ -2285,7 +2318,7 @@ export struct SettingsSheet {
                           .borderRadius(6)
                       }
                     }
-                    Text(agent.description.length > 0 ? agent.description : '（没有说明）')
+                    Text(agent.description.length > 0 ? agent.description : t('（没有说明）'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .maxLines(2)
@@ -2295,13 +2328,13 @@ export struct SettingsSheet {
                   .alignItems(HorizontalAlign.Start)
 
                   if (!agent.builtIn) {
-                    Text('编辑')
+                    Text(t('编辑'))
                       .fontSize(11)
                       .fontColor($r('app.color.accent'))
                       .onClick(() => {
                         this.beginAgent(index);
                       })
-                    Text('删除')
+                    Text(t('删除'))
                       .fontSize(11)
                       .fontColor($r('app.color.danger'))
                       .onClick(() => {
@@ -2317,7 +2350,7 @@ export struct SettingsSheet {
 
               if (this.agentEditing) {
                 Column({ space: 8 }) {
-                  TextInput({ text: this.agentName, placeholder: '名字，例如 research' })
+                  TextInput({ text: this.agentName, placeholder: t('名字，例如 research') })
                     .width('100%')
                     .height(38)
                     .fontSize(12)
@@ -2326,7 +2359,7 @@ export struct SettingsSheet {
                     .onChange((value: string) => {
                       this.agentName = value;
                     })
-                  TextInput({ text: this.agentDescription, placeholder: '一句话说明它擅长什么' })
+                  TextInput({ text: this.agentDescription, placeholder: t('一句话说明它擅长什么') })
                     .width('100%')
                     .height(38)
                     .fontSize(12)
@@ -2335,14 +2368,14 @@ export struct SettingsSheet {
                     .onChange((value: string) => {
                       this.agentDescription = value;
                     })
-                  Text('说明最多 ' + SUB_AGENT_DESCRIPTION_MAX.toString() +
-                    ' 字符，会进入主对话的系统提示')
+                  Text(t('说明最多 ') + SUB_AGENT_DESCRIPTION_MAX.toString() +
+                    t(' 字符，会进入主对话的系统提示'))
                     .fontSize(9)
                     .fontColor($r('app.color.text_tertiary'))
                     .width('100%')
                   TextArea({
                     text: this.agentInstructions,
-                    placeholder: '附加给这个子代理的系统提示（可选）'
+                    placeholder: t('附加给这个子代理的系统提示（可选）')
                   })
                     .width('100%')
                     .height(90)
@@ -2353,7 +2386,7 @@ export struct SettingsSheet {
                       this.agentInstructions = value;
                     })
                   Row({ space: 8 }) {
-                    Button('保存')
+                    Button(t('保存'))
                       .layoutWeight(1)
                       .height(36)
                       .fontSize(12)
@@ -2363,7 +2396,7 @@ export struct SettingsSheet {
                       .onClick(() => {
                         this.saveAgent();
                       })
-                    Button('取消')
+                    Button(t('取消'))
                       .height(36)
                       .fontSize(12)
                       .fontColor($r('app.color.text_secondary'))
@@ -2382,7 +2415,7 @@ export struct SettingsSheet {
                 .borderRadius(10)
                 .alignItems(HorizontalAlign.Start)
               } else {
-                Button('添加子代理')
+                Button(t('添加子代理'))
                   .width('100%')
                   .height(36)
                   .fontSize(12)
@@ -2395,8 +2428,8 @@ export struct SettingsSheet {
                   })
               }
 
-              Text('模型用 subagent_task 的 agent 参数选择名字；不写则使用内置 helper。' +
-                '说明会占用每轮系统提示，名字最多 40 字符。')
+              Text(t('模型用 subagent_task 的 agent 参数选择名字；不写则使用内置 helper。') +
+                t('说明会占用每轮系统提示，名字最多 40 字符。'))
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)
@@ -2404,10 +2437,10 @@ export struct SettingsSheet {
             }
             .width('100%')
 
-            this.sectionTitle('Agent 与日志', '工具往返上限与 OpenMinis 一致；日志只记录元数据')
+            this.sectionTitle(t('Agent 与日志'), t('工具往返上限与 OpenMinis 一致；日志只记录元数据'))
             Column({ space: 8 }) {
               Row({ space: 10 }) {
-                Text('每轮最多往返')
+                Text(t('每轮最多往返'))
                   .fontSize(11)
                   .fontColor($r('app.color.text_secondary'))
                   .width(84)
@@ -2421,20 +2454,20 @@ export struct SettingsSheet {
                   .onChange((value: string) => {
                     this.maxTurnsText = value;
                   })
-                Text('轮')
+                Text(t('轮'))
                   .fontSize(10)
                   .fontColor($r('app.color.text_tertiary'))
               }
               .width('100%')
 
-              Text('默认 200。达到上限后本轮结束，已完成的上下文与工具结果会保留，继续发送消息即可接着执行。')
+              Text(t('默认 200。达到上限后本轮结束，已完成的上下文与工具结果会保留，继续发送消息即可接着执行。'))
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)
                 .width('100%')
 
               Row({ space: 10 }) {
-                Text('上下文预算')
+                Text(t('上下文预算'))
                   .fontSize(11)
                   .fontColor($r('app.color.text_secondary'))
                   .width(84)
@@ -2448,13 +2481,13 @@ export struct SettingsSheet {
                   .onChange((value: string) => {
                     this.contextBudgetText = value;
                   })
-                Text('字符')
+                Text(t('字符'))
                   .fontSize(10)
                   .fontColor($r('app.color.text_tertiary'))
               }
               .width('100%')
 
-              Text('默认 60000。估算请求超过预算时，较早的工具结果会在发送前被截断；界面与已保存的记录不受影响。可用 /compact 让模型生成摘要。')
+              Text(t('默认 60000。估算请求超过预算时，较早的工具结果会在发送前被截断；界面与已保存的记录不受影响。可用 /compact 让模型生成摘要。'))
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)
@@ -2462,10 +2495,10 @@ export struct SettingsSheet {
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {
-                  Text('上下文接近上限时自动压缩')
+                  Text(t('上下文接近上限时自动压缩'))
                     .fontSize(11)
                     .fontColor($r('app.color.text_secondary'))
-                  Text('发送前按最近一次用量判断，先生成摘要再发请求；失败时保留原对话。')
+                  Text(t('发送前按最近一次用量判断，先生成摘要再发请求；失败时保留原对话。'))
                     .fontSize(9)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(13)
@@ -2482,7 +2515,7 @@ export struct SettingsSheet {
 
               if (this.autoCompact) {
                 Row({ space: 10 }) {
-                  Text('触发阈值')
+                  Text(t('触发阈值'))
                     .fontSize(11)
                     .fontColor($r('app.color.text_secondary'))
                     .width(84)
@@ -2504,13 +2537,13 @@ export struct SettingsSheet {
               }
 
               Column({ space: 6 }) {
-                Text('思考档位')
+                Text(t('思考档位'))
                   .fontSize(11)
                   .fontColor($r('app.color.text_secondary'))
                   .width('100%')
                 Row({ space: 6 }) {
                   ForEach(THINKING_CHOICES, (choice: ThinkingChoice) => {
-                    Text(choice.label)
+                    Text(t(choice.label))
                       .layoutWeight(1)
                       .height(32)
                       .fontSize(11)
@@ -2529,7 +2562,7 @@ export struct SettingsSheet {
                     (this.thinkingLevel === choice.value ? '1' : '0'))
                 }
                 .width('100%')
-                Text('非「关闭」时，请求体带 reasoning_effort。不是所有模型都支持；不支持时会由服务端忽略或报错，可随时改回关闭。')
+                Text(t('非「关闭」时，请求体带 reasoning_effort。不是所有模型都支持；不支持时会由服务端忽略或报错，可随时改回关闭。'))
                   .fontSize(9)
                   .fontColor($r('app.color.text_tertiary'))
                   .lineHeight(14)
@@ -2541,7 +2574,7 @@ export struct SettingsSheet {
               .borderRadius(11)
 
               Column({ space: 10 }) {
-                Text('主题色')
+                Text(t('主题色'))
                   .fontSize(11)
                   .fontColor($r('app.color.text_secondary'))
                   .width('100%')
@@ -2557,7 +2590,7 @@ export struct SettingsSheet {
                           width: this.accentColor === preset.value ? 2 : 0,
                           color: $r('app.color.text_primary')
                         })
-                      Text(preset.name)
+                      Text(t(preset.name))
                         .fontSize(9)
                         .fontColor(this.accentColor === preset.value
                           ? $r('app.color.text_primary')
@@ -2571,7 +2604,7 @@ export struct SettingsSheet {
                 }
                 .width('100%')
 
-                Text('正文字号')
+                Text(t('正文字号'))
                   .fontSize(11)
                   .fontColor($r('app.color.text_secondary'))
                   .width('100%')
@@ -2595,7 +2628,7 @@ export struct SettingsSheet {
                   }, (scale: number) => scale.toString())
                 }
                 .width('100%')
-                Text('只影响消息正文与代码的阅读字号；设置页与界面控件保持系统大小。')
+                Text(t('只影响消息正文与代码的阅读字号；设置页与界面控件保持系统大小。'))
                   .fontSize(9)
                   .fontColor($r('app.color.text_tertiary'))
                   .lineHeight(14)
@@ -2608,10 +2641,10 @@ export struct SettingsSheet {
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {
-                  Text('记录本地事件日志')
+                  Text(t('记录本地事件日志'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
-                  Text('记录请求耗时、模型、工具状态与错误；不记录对话内容、API Key 或沙箱 Token。按天轮转，保留 14 天。')
+                  Text(t('记录请求耗时、模型、工具状态与错误；不记录对话内容、API Key 或沙箱 Token。按天轮转，保留 14 天。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -2631,10 +2664,10 @@ export struct SettingsSheet {
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {
-                  Text('切到后台继续生成')
+                  Text(t('切到后台继续生成'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
-                  Text('生成期间启动长时任务，切换到其他应用时保持连接；系统会显示一条持续通知。不可用时自动退回前台生成。')
+                  Text(t('生成期间启动长时任务，切换到其他应用时保持连接；系统会显示一条持续通知。不可用时自动退回前台生成。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -2654,10 +2687,10 @@ export struct SettingsSheet {
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {
-                  Text('Enter 键发送')
+                  Text(t('Enter 键发送'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
-                  Text('开启后按 Enter 直接发送，适合外接键盘；关闭时 Enter 换行，点箭头发送。')
+                  Text(t('开启后按 Enter 直接发送，适合外接键盘；关闭时 Enter 换行，点箭头发送。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -2677,10 +2710,10 @@ export struct SettingsSheet {
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {
-                  Text('启动时验证系统锁屏')
+                  Text(t('启动时验证系统锁屏'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
-                  Text('打开应用时先通过系统密码 / 人脸 / 指纹；设备没有可用认证时自动放行，避免把自己锁在外面。')
+                  Text(t('打开应用时先通过系统密码 / 人脸 / 指纹；设备没有可用认证时自动放行，避免把自己锁在外面。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -2699,7 +2732,7 @@ export struct SettingsSheet {
               .borderRadius(11)
 
               Row({ space: 8 }) {
-                Button(this.showLogs ? '收起日志' : '查看事件日志')
+                Button(this.showLogs ? t('收起日志') : t('查看事件日志'))
                   .layoutWeight(1)
                   .height(34)
                   .fontSize(11)
@@ -2707,7 +2740,7 @@ export struct SettingsSheet {
                   .backgroundColor($r('app.color.surface_alt'))
                   .borderRadius(9)
                   .onClick(() => this.loadLogs())
-                Button(this.showCrashes ? '收起崩溃' : '崩溃记录')
+                Button(this.showCrashes ? t('收起崩溃') : t('崩溃记录'))
                   .layoutWeight(1)
                   .height(34)
                   .fontSize(11)
@@ -2715,7 +2748,7 @@ export struct SettingsSheet {
                   .backgroundColor($r('app.color.surface_alt'))
                   .borderRadius(9)
                   .onClick(() => this.toggleCrashes())
-                Button('清空事件日志')
+                Button(t('清空事件日志'))
                   .layoutWeight(1)
                   .height(34)
                   .fontSize(11)
@@ -2727,7 +2760,7 @@ export struct SettingsSheet {
               .width('100%')
 
               Column({ space: 3 }) {
-                Button('导出诊断包')
+                Button(t('导出诊断包'))
                   .height(34)
                   .width('100%')
                   .fontSize(11)
@@ -2735,7 +2768,7 @@ export struct SettingsSheet {
                   .backgroundColor($r('app.color.surface_alt'))
                   .borderRadius(9)
                   .onClick(() => this.onExportDiagnostics())
-                Text('含设备/版本信息、非密钥设置摘要、会话数量、崩溃记录与事件日志；不含提示词、消息正文、API Key 或沙箱 Token。')
+                Text(t('含设备/版本信息、非密钥设置摘要、会话数量、崩溃记录与事件日志；不含提示词、消息正文、API Key 或沙箱 Token。'))
                   .fontSize(10)
                   .fontColor($r('app.color.text_tertiary'))
                   .lineHeight(14)
@@ -2762,11 +2795,11 @@ export struct SettingsSheet {
                         })
                     }, (value: string) => value)
                     Blank()
-                    Text('复制可见')
+                    Text(t('复制可见'))
                       .fontSize(10)
                       .fontColor(this.accentColor)
                       .onClick(() => this.copyVisibleLogs())
-                    Text(this.logTall ? '还原高度' : '放大')
+                    Text(this.logTall ? t('还原高度') : t('放大'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_secondary'))
                       .onClick(() => {
@@ -2778,7 +2811,7 @@ export struct SettingsSheet {
                   Scroll() {
                     Row({ space: 6 }) {
                       ForEach(this.logEventChoices(), (value: string) => {
-                        Text(value === 'all' ? '全部事件' : value)
+                        Text(value === 'all' ? t('全部事件') : value)
                           .fontSize(10)
                           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
                           .borderRadius(7)
@@ -2806,7 +2839,7 @@ export struct SettingsSheet {
 
                   TextInput({
                     text: this.logQuery,
-                    placeholder: '按关键词或时间筛选，例如 14:32 或 model_done'
+                    placeholder: t('按关键词或时间筛选，例如 14:32 或 model_done')
                   })
                     .height(32)
                     .fontSize(11)
@@ -2819,12 +2852,12 @@ export struct SettingsSheet {
                     })
 
                   if (this.logRows.length === 0) {
-                    Text('没有日志。需要先打开「记录本地事件日志」，之后产生的事件才会写入。')
+                    Text(t('没有日志。需要先打开「记录本地事件日志」，之后产生的事件才会写入。'))
                       .fontSize(11)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(16)
                   } else if (this.filteredLogRows().length === 0) {
-                    Text('没有匹配的日志。')
+                    Text(t('没有匹配的日志。'))
                       .fontSize(11)
                       .fontColor($r('app.color.text_tertiary'))
                   } else {
@@ -2840,15 +2873,15 @@ export struct SettingsSheet {
                               .layoutWeight(1)
                               .textAlign(TextAlign.Start)
                               .copyOption(CopyOptions.LocalDevice)
-                            Text('复制')
+                            Text(t('复制'))
                               .fontSize(9)
                               .fontColor($r('app.color.text_tertiary'))
-                              .onClick(() => this.copyText(row.line, '已复制该行'))
+                              .onClick(() => this.copyText(row.line, t('已复制该行')))
                           }
                           .width('100%')
                           .alignItems(VerticalAlign.Top)
                           .gesture(LongPressGesture().onAction(() => {
-                            this.copyText(row.line, '已复制该行');
+                            this.copyText(row.line, t('已复制该行'));
                           }))
                         }, (row: LogRow, index: number) =>
                           index.toString() + ':' + row.parsed.raw)
@@ -2869,11 +2902,11 @@ export struct SettingsSheet {
               if (this.showCrashes) {
                 Column({ space: 6 }) {
                   Row() {
-                    Text('崩溃记录')
+                    Text(t('崩溃记录'))
                       .fontSize(11)
                       .fontColor($r('app.color.text_secondary'))
                     Blank()
-                    Text('复制全部')
+                    Text(t('复制全部'))
                       .fontSize(10)
                       .fontColor(this.accentColor)
                       .onClick(() => this.copyCrashes())
@@ -2881,7 +2914,7 @@ export struct SettingsSheet {
                   .width('100%')
 
                   if (this.crashRows.length === 0) {
-                    Text('没有崩溃记录。系统崩溃/冻结事件会在这里显示完整堆栈。')
+                    Text(t('没有崩溃记录。系统崩溃/冻结事件会在这里显示完整堆栈。'))
                       .fontSize(11)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(16)
@@ -2912,9 +2945,9 @@ export struct SettingsSheet {
             }
             .width('100%')
 
-            this.sectionTitle('远程备份（WebDAV）', '上传加密备份到你自己的 WebDAV；换机或多端恢复时不用电脑')
+            this.sectionTitle(t('远程备份（WebDAV）'), t('上传加密备份到你自己的 WebDAV；换机或多端恢复时不用电脑'))
             Column() {
-              this.fieldLabel('WebDAV 地址')
+              this.fieldLabel(t('WebDAV 地址'))
               TextInput({ text: this.webDavUrl, placeholder: 'https://dav.example.com/minis' })
                 .height(42)
                 .fontSize(13)
@@ -2923,7 +2956,7 @@ export struct SettingsSheet {
                 .onChange((value: string) => {
                   this.webDavUrl = value;
                 })
-              Text('填写文件夹地址；上传会写入「minis-backup-日期-enc.json」并覆盖「minis-backup-latest-enc.json」。')
+              Text(t('填写文件夹地址；上传会写入「minis-backup-日期-enc.json」并覆盖「minis-backup-latest-enc.json」。'))
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .margin({ top: 4 })
@@ -2933,8 +2966,8 @@ export struct SettingsSheet {
             .alignItems(HorizontalAlign.Start)
 
             Column() {
-              this.fieldLabel('用户名')
-              TextInput({ text: this.webDavUser, placeholder: 'WebDAV 账号' })
+              this.fieldLabel(t('用户名'))
+              TextInput({ text: this.webDavUser, placeholder: t('WebDAV 账号') })
                 .height(42)
                 .fontSize(13)
                 .backgroundColor($r('app.color.surface_alt'))
@@ -2947,11 +2980,11 @@ export struct SettingsSheet {
             .alignItems(HorizontalAlign.Start)
 
             Column() {
-              this.fieldLabel('密码')
+              this.fieldLabel(t('密码'))
               Row({ space: 8 }) {
                 TextInput({
                   text: this.webDavPassword,
-                  placeholder: '同时用于认证和加密备份'
+                  placeholder: t('同时用于认证和加密备份')
                 })
                   .layoutWeight(1)
                   .height(42)
@@ -2962,7 +2995,7 @@ export struct SettingsSheet {
                   .onChange((value: string) => {
                     this.webDavPassword = value;
                   })
-                Text(this.showWebDavPassword ? '隐藏' : '显示')
+                Text(this.showWebDavPassword ? t('隐藏') : t('显示'))
                   .fontSize(11)
                   .fontColor($r('app.color.accent'))
                   .padding({ left: 4, right: 4 })
@@ -2971,7 +3004,7 @@ export struct SettingsSheet {
                   })
               }
               .width('100%')
-              Text('密码只保存在系统安全存储；远端文件始终用该密码经 PBKDF2 + AES-256-GCM 加密，不会上传明文。')
+              Text(t('密码只保存在系统安全存储；远端文件始终用该密码经 PBKDF2 + AES-256-GCM 加密，不会上传明文。'))
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .margin({ top: 4 })
@@ -2982,10 +3015,10 @@ export struct SettingsSheet {
 
             Row({ space: 10 }) {
               Column({ space: 3 }) {
-                Text('自动同步')
+                Text(t('自动同步'))
                   .fontSize(12)
                   .fontColor($r('app.color.text_primary'))
-                Text('启动与对话结束后先拉取远端再合并上传；同一会话以更新时间新的一份为准，本机独有会话保留。')
+                Text(t('启动与对话结束后先拉取远端再合并上传；同一会话以更新时间新的一份为准，本机独有会话保留。'))
                   .fontSize(10)
                   .fontColor($r('app.color.text_tertiary'))
                   .lineHeight(14)
@@ -3004,13 +3037,13 @@ export struct SettingsSheet {
             .borderRadius(11)
 
             if (this.webDavLastSyncAt > 0) {
-              Text('上次同步：' + formatDateTime(this.webDavLastSyncAt))
+              Text(t('上次同步：') + formatDateTime(this.webDavLastSyncAt))
                 .fontSize(10)
                 .fontColor($r('app.color.text_tertiary'))
                 .width('100%')
             }
 
-            Button('立即同步（合并远端）')
+            Button(t('立即同步（合并远端）'))
               .width('100%')
               .height(38)
               .fontSize(12)
@@ -3021,7 +3054,7 @@ export struct SettingsSheet {
                 this.webDavUrl.trim(), this.webDavUser.trim(), this.webDavPassword))
 
             Row({ space: 8 }) {
-              Button('上传加密备份')
+              Button(t('上传加密备份'))
                 .layoutWeight(1)
                 .height(38)
                 .fontSize(12)
@@ -3030,7 +3063,7 @@ export struct SettingsSheet {
                 .borderRadius(10)
                 .onClick(() => this.onUploadRemoteBackup(
                   this.webDavUrl.trim(), this.webDavUser.trim(), this.webDavPassword))
-              Button('从 WebDAV 恢复')
+              Button(t('从 WebDAV 恢复'))
                 .layoutWeight(1)
                 .height(38)
                 .fontSize(12)
@@ -3042,9 +3075,9 @@ export struct SettingsSheet {
             }
             .width('100%')
 
-            this.sectionTitle('工具与沙箱', '工具默认在应用私有工作区执行，也可以转发到电脑上的兼容服务')
+            this.sectionTitle(t('工具与沙箱'), t('工具默认在应用私有工作区执行，也可以转发到电脑上的兼容服务'))
             Row({ space: 10 }) {
-              Text('允许模型调用工具')
+              Text(t('允许模型调用工具'))
                 .fontSize(12)
                 .fontColor($r('app.color.text_primary'))
                 .layoutWeight(1)
@@ -3061,19 +3094,19 @@ export struct SettingsSheet {
 
             if (this.toolsEnabled) {
               Row({ space: 10 }) {
-                this.sandboxCard('本机', '应用私有目录，离线可用', 'local')
-                this.sandboxCard('远程', '转发到 PC / NAS 的工具服务', 'remote')
+                this.sandboxCard(t('本机'), t('应用私有目录，离线可用'), 'local')
+                this.sandboxCard(t('远程'), t('转发到 PC / NAS 的工具服务'), 'remote')
               }
               .width('100%')
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {
-                  Text('允许写入工作区文件')
+                  Text(t('允许写入工作区文件'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
                   Text(this.sandboxMode === 'local'
-                    ? '关闭时只读；开启后模型可创建和覆盖文件，并可在 Linux 沙箱里执行命令'
-                    : '关闭时远程端只读；开启后允许远程写入')
+                    ? t('关闭时只读；开启后模型可创建和覆盖文件，并可在 Linux 沙箱里执行命令')
+                    : t('关闭时远程端只读；开启后允许远程写入'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                 }
@@ -3093,10 +3126,10 @@ export struct SettingsSheet {
               if (this.allowWriteTools) {
                 Row({ space: 10 }) {
                   Column({ space: 3 }) {
-                    Text('写入前逐次确认')
+                    Text(t('写入前逐次确认'))
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text('每次 write_file / file_edit / shell_execute 执行前弹窗，可选择允许或拒绝；拒绝会作为错误结果返回给模型。')
+                    Text(t('每次 write_file / file_edit / shell_execute 执行前弹窗，可选择允许或拒绝；拒绝会作为错误结果返回给模型。'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)
@@ -3118,10 +3151,10 @@ export struct SettingsSheet {
               if (this.sandboxMode === 'local') {
                 Row({ space: 10 }) {
                   Column({ space: 3 }) {
-                    Text('允许读取图片')
+                    Text(t('允许读取图片'))
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text('开启后模型可调用 read_image 查看工作区图片；仅对支持视觉的模型有效，纯文本模型会报错。')
+                    Text(t('开启后模型可调用 read_image 查看工作区图片；仅对支持视觉的模型有效，纯文本模型会报错。'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)
@@ -3141,10 +3174,10 @@ export struct SettingsSheet {
 
                 Row({ space: 10 }) {
                   Column({ space: 3 }) {
-                    Text('允许生成图片')
+                    Text(t('允许生成图片'))
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text('开启后模型可调用 generate_image，请求 OpenAI 兼容的 /images/generations；Anthropic / Gemini 原生协议不可用。')
+                    Text(t('开启后模型可调用 generate_image，请求 OpenAI 兼容的 /images/generations；Anthropic / Gemini 原生协议不可用。'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)
@@ -3164,10 +3197,10 @@ export struct SettingsSheet {
 
                 Row({ space: 10 }) {
                   Column({ space: 3 }) {
-                    Text('允许访问剪贴板')
+                    Text(t('允许访问剪贴板'))
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text('开启后模型可调用 clipboard_read / clipboard_write；剪贴板内容会发送给模型，请谨慎开启。')
+                    Text(t('开启后模型可调用 clipboard_read / clipboard_write；剪贴板内容会发送给模型，请谨慎开启。'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)
@@ -3185,23 +3218,23 @@ export struct SettingsSheet {
                 .backgroundColor($r('app.color.surface_alt'))
                 .borderRadius(11)
 
-                this.deviceToggleRow('允许读取日历',
-                  '开启后模型可调用 calendar 查看事件或新建事件；首次使用会请求系统日历权限。',
+                this.deviceToggleRow(t('允许读取日历'),
+                  t('开启后模型可调用 calendar 查看事件或新建事件；首次使用会请求系统日历权限。'),
                   this.calendarToolsEnabled, (next: boolean) => {
                     this.calendarToolsEnabled = next;
                   }, true)
-                this.deviceToggleRow('允许搜索通讯录',
-                  '通讯录需要受限 ACL 权限，正在申请中；获批并重新签名前暂不可用。',
+                this.deviceToggleRow(t('允许搜索通讯录'),
+                  t('通讯录需要受限 ACL 权限，正在申请中；获批并重新签名前暂不可用。'),
                   this.contactsToolsEnabled, (next: boolean) => {
                     this.contactsToolsEnabled = next;
                   }, false)
-                this.deviceToggleRow('允许获取定位',
-                  '开启后模型可调用 location 读取当前经纬度；坐标会发送给模型与服务商。',
+                this.deviceToggleRow(t('允许获取定位'),
+                  t('开启后模型可调用 location 读取当前经纬度；坐标会发送给模型与服务商。'),
                   this.locationToolsEnabled, (next: boolean) => {
                     this.locationToolsEnabled = next;
                   }, true)
-                this.deviceToggleRow('允许查询天气',
-                  '开启后模型可调用 weather；未指定城市时使用设备定位（同样需要定位权限）。',
+                this.deviceToggleRow(t('允许查询天气'),
+                  t('开启后模型可调用 weather；未指定城市时使用设备定位（同样需要定位权限）。'),
                   this.weatherToolsEnabled, (next: boolean) => {
                     this.weatherToolsEnabled = next;
                   }, true)
@@ -3209,10 +3242,10 @@ export struct SettingsSheet {
 
               Column({ space: 6 }) {
                 Column({ space: 3 }) {
-                  Text('逐工具开关')
+                  Text(t('逐工具开关'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
-                  Text('关闭的工具不会出现在模型可见的工具列表里；写入、记忆与读图片仍由上面的总开关控制。')
+                  Text(t('关闭的工具不会出现在模型可见的工具列表里；写入、记忆与读图片仍由上面的总开关控制。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -3222,7 +3255,7 @@ export struct SettingsSheet {
 
                 ForEach(TOOL_CHOICES, (tool: ToolChoice) => {
                   Row({ space: 8 }) {
-                    Text(tool.label + '  ·  ' + tool.name)
+                    Text(t(tool.label) + t('  ·  ') + tool.name)
                       .fontSize(11)
                       .fontColor($r('app.color.text_secondary'))
                       .layoutWeight(1)
@@ -3247,17 +3280,17 @@ export struct SettingsSheet {
               Column({ space: 6 }) {
                 Row({ space: 8 }) {
                   Column({ space: 3 }) {
-                    Text('技能（Skills）')
+                    Text(t('技能（Skills）'))
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text('导入 SKILL.md；启用的技能只把名称与简介放进系统提示，模型需要时用 read_skill 读取正文。')
+                    Text(t('导入 SKILL.md；启用的技能只把名称与简介放进系统提示，模型需要时用 read_skill 读取正文。'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)
                   }
                   .layoutWeight(1)
                   .alignItems(HorizontalAlign.Start)
-                  Text('导入')
+                  Text(t('导入'))
                     .fontSize(11)
                     .fontColor($r('app.color.accent'))
                     .padding({ left: 10, right: 10, top: 6, bottom: 6 })
@@ -3270,7 +3303,7 @@ export struct SettingsSheet {
                 .width('100%')
 
                 if (this.skills.length === 0) {
-                  Text('还没有导入技能。')
+                  Text(t('还没有导入技能。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .width('100%')
@@ -3295,7 +3328,7 @@ export struct SettingsSheet {
                       .onChange((on: boolean) => {
                         this.setSkillEnabled(skill.id, on);
                       })
-                    Text('删除')
+                    Text(t('删除'))
                       .fontSize(10)
                       .fontColor($r('app.color.danger'))
                       .onClick(() => this.removeSkill(skill.id))
@@ -3315,17 +3348,17 @@ export struct SettingsSheet {
               Column({ space: 6 }) {
                 Row({ space: 8 }) {
                   Column({ space: 3 }) {
-                    Text('MCP 工具')
+                    Text(t('MCP 工具'))
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text('连接支持 Streamable HTTP 的 MCP 服务，工具以 mcp_服务_工具 命名，与本机/远程工具一起提供给模型。')
+                    Text(t('连接支持 Streamable HTTP 的 MCP 服务，工具以 mcp_服务_工具 命名，与本机/远程工具一起提供给模型。'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)
                   }
                   .layoutWeight(1)
                   .alignItems(HorizontalAlign.Start)
-                  Text(this.mcpRefreshing ? '刷新中…' : '刷新')
+                  Text(this.mcpRefreshing ? t('刷新中…') : t('刷新'))
                     .fontSize(11)
                     .fontColor($r('app.color.accent'))
                     .padding({ left: 10, right: 10, top: 6, bottom: 6 })
@@ -3334,7 +3367,7 @@ export struct SettingsSheet {
                     .onClick(() => {
                       this.refreshMcp();
                     })
-                  Text(this.editingMcp ? '取消' : '添加')
+                  Text(this.editingMcp ? t('取消') : t('添加'))
                     .fontSize(11)
                     .fontColor($r('app.color.accent'))
                     .padding({ left: 10, right: 10, top: 6, bottom: 6 })
@@ -3345,7 +3378,7 @@ export struct SettingsSheet {
                 .width('100%')
 
                 if (this.mcpServers.length === 0 && !this.editingMcp) {
-                  Text('还没有 MCP 服务。')
+                  Text(t('还没有 MCP 服务。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .width('100%')
@@ -3378,11 +3411,11 @@ export struct SettingsSheet {
                         .fontColor($r('app.color.accent'))
                         .onClick(() => this.openMcpOAuth(this.mcpServers.indexOf(server)))
                     }
-                    Text('编辑')
+                    Text(t('编辑'))
                       .fontSize(10)
                       .fontColor($r('app.color.accent'))
                       .onClick(() => this.beginMcp(this.mcpServers.indexOf(server)))
-                    Text('删除')
+                    Text(t('删除'))
                       .fontSize(10)
                       .fontColor($r('app.color.danger'))
                       .onClick(() => this.removeMcp(this.mcpServers.indexOf(server)))
@@ -3398,13 +3431,13 @@ export struct SettingsSheet {
                 if (this.mcpOAuthIndex >= 0 && this.mcpOAuthIndex < this.mcpServers.length) {
                   Column({ space: 8 }) {
                     Row({ space: 8 }) {
-                      Text('OAuth · ' + this.mcpServers[this.mcpOAuthIndex].name)
+                      Text(t('OAuth · ') + this.mcpServers[this.mcpOAuthIndex].name)
                         .fontSize(11)
                         .fontColor($r('app.color.text_primary'))
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
                         .layoutWeight(1)
-                      Text('关闭')
+                      Text(t('关闭'))
                         .fontSize(10)
                         .fontColor($r('app.color.text_secondary'))
                         .onClick(() => {
@@ -3414,23 +3447,23 @@ export struct SettingsSheet {
                     .width('100%')
 
                     Text(this.mcpOAuthLoggedIn
-                      ? '状态：已授权 ' + this.mcpOAuthMask
-                      : '状态：未授权')
+                      ? t('状态：已授权 ') + this.mcpOAuthMask
+                      : t('状态：未授权'))
                       .fontSize(10)
                       .fontColor(this.mcpOAuthLoggedIn
                         ? $r('app.color.accent')
                         : $r('app.color.text_tertiary'))
                       .width('100%')
 
-                    Text('回调地址需与 OAuth 应用登记的一致（默认 http://localhost:54546/callback）。' +
-                      '授权后从浏览器地址栏复制完整回调地址，粘贴到下方完成登录。')
+                    Text(t('回调地址需与 OAuth 应用登记的一致（默认 http://localhost:54546/callback）。') +
+                      t('授权后从浏览器地址栏复制完整回调地址，粘贴到下方完成登录。'))
                       .fontSize(9)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)
                       .width('100%')
 
                     Row({ space: 8 }) {
-                      Button(this.mcpOAuthBusy ? '请稍候…' : '开始登录', { type: ButtonType.Normal })
+                      Button(this.mcpOAuthBusy ? t('请稍候…') : t('开始登录'), { type: ButtonType.Normal })
                         .layoutWeight(1)
                         .height(32)
                         .fontSize(11)
@@ -3440,7 +3473,7 @@ export struct SettingsSheet {
                         .enabled(!this.mcpOAuthBusy)
                         .onClick(() => this.startMcpOAuthLogin())
                       if (this.mcpOAuthLoggedIn) {
-                        Button('退出登录', { type: ButtonType.Normal })
+                        Button(t('退出登录'), { type: ButtonType.Normal })
                           .layoutWeight(1)
                           .height(32)
                           .fontSize(11)
@@ -3455,7 +3488,7 @@ export struct SettingsSheet {
 
                     TextInput({
                       text: this.mcpOAuthPaste,
-                      placeholder: '粘贴回调地址或授权码'
+                      placeholder: t('粘贴回调地址或授权码')
                     })
                       .height(36)
                       .fontSize(11)
@@ -3465,7 +3498,7 @@ export struct SettingsSheet {
                         this.mcpOAuthPaste = value;
                       })
 
-                    Button(this.mcpOAuthBusy ? '请稍候…' : '完成登录', { type: ButtonType.Normal })
+                    Button(this.mcpOAuthBusy ? t('请稍候…') : t('完成登录'), { type: ButtonType.Normal })
                       .width('100%')
                       .height(32)
                       .fontSize(11)
@@ -3500,8 +3533,8 @@ export struct SettingsSheet {
 
                 if (this.editingMcp) {
                   Column({ space: 8 }) {
-                    this.fieldLabel('名称')
-                    TextInput({ text: this.mcpName, placeholder: '例如 搜索服务' })
+                    this.fieldLabel(t('名称'))
+                    TextInput({ text: this.mcpName, placeholder: t('例如 搜索服务') })
                       .height(36)
                       .fontSize(12)
                       .backgroundColor($r('app.color.surface'))
@@ -3510,7 +3543,7 @@ export struct SettingsSheet {
                         this.mcpName = value;
                       })
 
-                    this.fieldLabel('地址（JSON-RPC 端点）')
+                    this.fieldLabel(t('地址（JSON-RPC 端点）'))
                     TextInput({ text: this.mcpUrl, placeholder: 'https://example.com/mcp' })
                       .height(36)
                       .fontSize(12)
@@ -3520,8 +3553,8 @@ export struct SettingsSheet {
                         this.mcpUrl = value;
                       })
 
-                    this.fieldLabel('请求头（JSON 对象，可用于鉴权）')
-                    TextArea({ text: this.mcpHeadersText, placeholder: '{"Authorization":"Bearer …"}' })
+                    this.fieldLabel(t('请求头（JSON 对象，可用于鉴权）'))
+                    TextArea({ text: this.mcpHeadersText, placeholder: t('{"Authorization":"Bearer …"}') })
                       .height(56)
                       .fontSize(11)
                       .fontColor($r('app.color.text_primary'))
@@ -3533,10 +3566,10 @@ export struct SettingsSheet {
 
                     Row({ space: 8 }) {
                       Column({ space: 2 }) {
-                        Text('OAuth 登录（静态客户端）')
+                        Text(t('OAuth 登录（静态客户端）'))
                           .fontSize(11)
                           .fontColor($r('app.color.text_primary'))
-                        Text('填写 OAuth 应用的客户端信息，保存后在服务列表点 OAuth 完成授权。')
+                        Text(t('填写 OAuth 应用的客户端信息，保存后在服务列表点 OAuth 完成授权。'))
                           .fontSize(9)
                           .fontColor($r('app.color.text_tertiary'))
                       }
@@ -3552,7 +3585,7 @@ export struct SettingsSheet {
 
                     if (this.mcpOAuthExpanded) {
                       this.fieldLabel('Client ID')
-                      TextInput({ text: this.mcpOAuthClientId, placeholder: 'OAuth 应用的 client_id' })
+                      TextInput({ text: this.mcpOAuthClientId, placeholder: t('OAuth 应用的 client_id') })
                         .height(36)
                         .fontSize(11)
                         .backgroundColor($r('app.color.surface'))
@@ -3561,7 +3594,7 @@ export struct SettingsSheet {
                           this.mcpOAuthClientId = value;
                         })
 
-                      this.fieldLabel('授权端点')
+                      this.fieldLabel(t('授权端点'))
                       TextInput({ text: this.mcpOAuthAuthorizeUrl, placeholder: 'https://auth.example.com/authorize' })
                         .height(36)
                         .fontSize(11)
@@ -3571,7 +3604,7 @@ export struct SettingsSheet {
                           this.mcpOAuthAuthorizeUrl = value;
                         })
 
-                      this.fieldLabel('令牌端点')
+                      this.fieldLabel(t('令牌端点'))
                       TextInput({ text: this.mcpOAuthTokenUrl, placeholder: 'https://auth.example.com/token' })
                         .height(36)
                         .fontSize(11)
@@ -3581,7 +3614,7 @@ export struct SettingsSheet {
                           this.mcpOAuthTokenUrl = value;
                         })
 
-                      this.fieldLabel('作用域（可选，空格分隔）')
+                      this.fieldLabel(t('作用域（可选，空格分隔）'))
                       TextInput({ text: this.mcpOAuthScopes, placeholder: 'openid email' })
                         .height(36)
                         .fontSize(11)
@@ -3591,7 +3624,7 @@ export struct SettingsSheet {
                           this.mcpOAuthScopes = value;
                         })
 
-                      this.fieldLabel('回调地址（可选）')
+                      this.fieldLabel(t('回调地址（可选）'))
                       TextInput({ text: this.mcpOAuthRedirect, placeholder: 'http://localhost:54546/callback' })
                         .height(36)
                         .fontSize(11)
@@ -3601,8 +3634,8 @@ export struct SettingsSheet {
                           this.mcpOAuthRedirect = value;
                         })
 
-                      this.fieldLabel('资源标识（可选，RFC 8707）')
-                      TextInput({ text: this.mcpOAuthResource, placeholder: '留空则使用服务地址' })
+                      this.fieldLabel(t('资源标识（可选，RFC 8707）'))
+                      TextInput({ text: this.mcpOAuthResource, placeholder: t('留空则使用服务地址') })
                         .height(36)
                         .fontSize(11)
                         .backgroundColor($r('app.color.surface'))
@@ -3611,14 +3644,14 @@ export struct SettingsSheet {
                           this.mcpOAuthResource = value;
                         })
 
-                      this.fieldLabel('Client Secret（可选，保存在安全存储）')
+                      this.fieldLabel(t('Client Secret（可选，保存在安全存储）'))
                       TextInput({
                         text: this.mcpOAuthSecret,
                         placeholder: this.mcpIndex >= 0 &&
                           this.mcpIndex < this.mcpServers.length &&
                           this.mcpServers[this.mcpIndex].oauth.clientSecretSet
-                          ? '已保存，留空保持不变'
-                          : '公共客户端可留空'
+                          ? t('已保存，留空保持不变')
+                          : t('公共客户端可留空')
                       })
                         .height(36)
                         .fontSize(11)
@@ -3631,7 +3664,7 @@ export struct SettingsSheet {
                     }
 
                     Row({ space: 8 }) {
-                      Text('启用')
+                      Text(t('启用'))
                         .fontSize(11)
                         .fontColor($r('app.color.text_secondary'))
                         .layoutWeight(1)
@@ -3644,7 +3677,7 @@ export struct SettingsSheet {
                     .width('100%')
 
                     Row({ space: 8 }) {
-                      Button('取消', { type: ButtonType.Normal })
+                      Button(t('取消'), { type: ButtonType.Normal })
                         .layoutWeight(1)
                         .height(34)
                         .fontSize(12)
@@ -3654,7 +3687,7 @@ export struct SettingsSheet {
                         .onClick(() => {
                           this.editingMcp = false;
                         })
-                      Button('保存服务', { type: ButtonType.Normal })
+                      Button(t('保存服务'), { type: ButtonType.Normal })
                         .layoutWeight(1)
                         .height(34)
                         .fontSize(12)
@@ -3680,17 +3713,17 @@ export struct SettingsSheet {
               if (this.sandboxMode === 'local') {
                 Row({ space: 8 }) {
                   Column({ space: 3 }) {
-                    Text('工作区文件')
+                    Text(t('工作区文件'))
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text('浏览应用私有工作区；只能查看，不能在这里修改。')
+                    Text(t('浏览应用私有工作区；只能查看，不能在这里修改。'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)
                   }
                   .layoutWeight(1)
                   .alignItems(HorizontalAlign.Start)
-                  Button('浏览', { type: ButtonType.Normal })
+                  Button(t('浏览'), { type: ButtonType.Normal })
                     .height(30)
                     .fontSize(11)
                     .fontColor($r('app.color.accent'))
@@ -3706,12 +3739,12 @@ export struct SettingsSheet {
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {
-                  Text('持久记忆')
+                  Text(t('持久记忆'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
                   Text(this.sandboxMode === 'local'
-                    ? '开启后模型可写入本机记忆，并在每轮请求前作为背景注入'
-                    : '持久记忆只在本机模式下可用，远程沙箱不转发记忆工具')
+                    ? t('开启后模型可写入本机记忆，并在每轮请求前作为背景注入')
+                    : t('持久记忆只在本机模式下可用，远程沙箱不转发记忆工具'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                 }
@@ -3730,11 +3763,11 @@ export struct SettingsSheet {
 
               if (this.memoryEnabled && this.sandboxMode === 'local') {
                 Row() {
-                  Text('清空每日记忆（保留 GLOBAL.md）')
+                  Text(t('清空每日记忆（保留 GLOBAL.md）'))
                     .fontSize(11)
                     .fontColor($r('app.color.text_secondary'))
                   Blank()
-                  Text('清空')
+                  Text(t('清空'))
                     .fontSize(11)
                     .fontColor($r('app.color.danger'))
                     .onClick(() => this.clearMemory())
@@ -3745,11 +3778,11 @@ export struct SettingsSheet {
                 .borderRadius(11)
 
                 Row() {
-                  Text(this.showMemory ? '收起记忆编辑' : '查看 / 编辑记忆')
+                  Text(this.showMemory ? t('收起记忆编辑') : t('查看 / 编辑记忆'))
                     .fontSize(11)
                     .fontColor($r('app.color.text_secondary'))
                   Blank()
-                  Text(this.showMemory ? '收起' : '打开')
+                  Text(this.showMemory ? t('收起') : t('打开'))
                     .fontSize(11)
                     .fontColor($r('app.color.accent'))
                     .onClick(() => this.loadMemory())
@@ -3784,7 +3817,7 @@ export struct SettingsSheet {
 
                     TextArea({
                       text: this.memoryText,
-                      placeholder: '这个文件是空的，可以直接输入内容'
+                      placeholder: t('这个文件是空的，可以直接输入内容')
                     })
                       .width('100%')
                       .height(180)
@@ -3797,7 +3830,7 @@ export struct SettingsSheet {
                         this.memoryText = value;
                       })
 
-                    Button('保存记忆文件')
+                    Button(t('保存记忆文件'))
                       .width('100%')
                       .height(34)
                       .fontSize(11)
@@ -3814,14 +3847,14 @@ export struct SettingsSheet {
               }
 
               if (this.sandboxMode === 'local') {
-                Text('本机工作区位于应用沙箱的 workspace/ 目录。路径必须是相对路径，不能包含 .. 或符号链接。')
+                Text(t('本机工作区位于应用沙箱的 workspace/ 目录。路径必须是相对路径，不能包含 .. 或符号链接。'))
                   .fontSize(9)
                   .fontColor($r('app.color.text_tertiary'))
                   .lineHeight(14)
                   .width('100%')
               } else {
                 Column() {
-                  this.fieldLabel('远程工具服务地址')
+                  this.fieldLabel(t('远程工具服务地址'))
                   TextInput({
                     text: this.sandboxUrl,
                     placeholder: 'https://pc.example.com:8787/tool'
@@ -3834,7 +3867,7 @@ export struct SettingsSheet {
                     .onChange((value: string) => {
                       this.sandboxUrl = value;
                     })
-                  Text('协议：POST {name, arguments} → {ok, content}；接受与原工具相同的工具名。')
+                  Text(t('协议：POST {name, arguments} → {ok, content}；接受与原工具相同的工具名。'))
                     .fontSize(9)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -3845,7 +3878,7 @@ export struct SettingsSheet {
                 .alignItems(HorizontalAlign.Start)
 
                 Column() {
-                  this.fieldLabel('远程访问令牌（可选）')
+                  this.fieldLabel(t('远程访问令牌（可选）'))
                   TextInput({
                     text: this.sandboxToken,
                     placeholder: 'Bearer token'
@@ -3866,7 +3899,7 @@ export struct SettingsSheet {
 
               Column({ space: 6 }) {
                 Row({ space: 8 }) {
-                  Button(this.probeRunning ? '自检中…' : '运行内核自检')
+                  Button(this.probeRunning ? t('自检中…') : t('运行内核自检'))
                     .height(34)
                     .layoutWeight(1)
                     .fontSize(11)
@@ -3877,7 +3910,7 @@ export struct SettingsSheet {
                       this.runSandboxProbe();
                     })
                   if (this.probeReport.length > 0) {
-                    Button('复制结果')
+                    Button(t('复制结果'))
                       .height(34)
                       .width(88)
                       .fontSize(11)
@@ -3906,7 +3939,7 @@ export struct SettingsSheet {
                   .backgroundColor($r('app.color.surface_alt'))
                   .borderRadius(9)
                 } else {
-                  Text('检查当前设备是否允许原生子进程、exec、ptrace、可执行内存与命名空间；结果只保存在本机。')
+                  Text(t('检查当前设备是否允许原生子进程、exec、ptrace、可执行内存与命名空间；结果只保存在本机。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -3917,11 +3950,11 @@ export struct SettingsSheet {
 
               Row({ space: 10 }) {
                 Column({ space: 3 }) {
-                  Text('沙箱状态')
+                  Text(t('沙箱状态'))
                     .fontSize(12)
                     .fontColor($r('app.color.text_primary'))
                   Text(this.sandboxStatus +
-                    (this.sandboxBytes.length > 0 ? ' · 占用 ' + this.sandboxBytes : ''))
+                    (this.sandboxBytes.length > 0 ? t(' · 占用 ') + this.sandboxBytes : ''))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -3929,8 +3962,8 @@ export struct SettingsSheet {
                 .layoutWeight(1)
                 .alignItems(HorizontalAlign.Start)
                 Text(this.sandboxResetting
-                  ? '重置中…'
-                  : (this.resetArmed ? '确认重置' : '重置'))
+                  ? t('重置中…')
+                  : (this.resetArmed ? t('确认重置') : t('重置')))
                   .fontSize(11)
                   .fontColor(this.resetArmed
                     ? $r('app.color.danger')
@@ -3946,7 +3979,7 @@ export struct SettingsSheet {
 
               Column({ space: 6 }) {
                 Row({ space: 8 }) {
-                  Button(this.ishRunning ? '沙箱启动中…' : '启动 Linux 沙箱')
+                  Button(this.ishRunning ? t('沙箱启动中…') : t('启动 Linux 沙箱'))
                     .height(34)
                     .layoutWeight(1)
                     .fontSize(11)
@@ -3957,7 +3990,7 @@ export struct SettingsSheet {
                       this.runIshSmoke();
                     })
                   if (this.ishReport.length > 0) {
-                    Button('复制输出')
+                    Button(t('复制输出'))
                       .height(34)
                       .width(88)
                       .fontSize(11)
@@ -3986,7 +4019,7 @@ export struct SettingsSheet {
                   .backgroundColor($r('app.color.surface_alt'))
                   .borderRadius(9)
                 } else {
-                  Text('在原生子进程里启动 iSH ARM64 内核并执行一条冒烟命令；rootfs 随应用分发（含 Python 3），首次使用解压到应用私有目录。')
+                  Text(t('在原生子进程里启动 iSH ARM64 内核并执行一条冒烟命令；rootfs 随应用分发（含 Python 3），首次使用解压到应用私有目录。'))
                     .fontSize(10)
                     .fontColor($r('app.color.text_tertiary'))
                     .lineHeight(14)
@@ -3997,13 +4030,13 @@ export struct SettingsSheet {
             }
 
             Column() {
-              Text('人格 / Soul')
+              Text(t('人格 / Soul'))
                 .fontSize(11)
                 .fontColor($r('app.color.text_secondary'))
                 .width('100%')
               Row({ space: 5 }) {
-                ForEach(SOUL_PRESETS, (preset: SoulPreset) => {
-                  Text(preset.name)
+                ForEach(soulPresets(), (preset: SoulPreset) => {
+                  Text(t(preset.name))
                     .layoutWeight(1)
                     .height(30)
                     .fontSize(10)
@@ -4021,14 +4054,14 @@ export struct SettingsSheet {
                 }, (preset: SoulPreset) => preset.id)
               }
               .width('100%')
-              Text('人格提示词排在系统提示词之前；会话里的「追加系统提示词」仍可进一步覆盖。')
+              Text(t('人格提示词排在系统提示词之前；会话里的「追加系统提示词」仍可进一步覆盖。'))
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)
                 .width('100%')
 
-              this.fieldLabel('系统提示词（可选）')
-              TextArea({ text: this.systemPrompt, placeholder: '例如：你是一名资深鸿蒙应用开发工程师…' })
+              this.fieldLabel(t('系统提示词（可选）'))
+              TextArea({ text: this.systemPrompt, placeholder: t('例如：你是一名资深鸿蒙应用开发工程师…') })
                 .width('100%')
                 .constraintSize({ minHeight: 80, maxHeight: 140 })
                 .fontSize(12)
@@ -4043,7 +4076,7 @@ export struct SettingsSheet {
 
             this.infoCard()
 
-            Text('API Key 保存在本机应用数据中，仅发送到你填写的服务地址。卸载应用会清除全部对话与密钥。')
+            Text(t('API Key 保存在本机应用数据中，仅发送到你填写的服务地址。卸载应用会清除全部对话与密钥。'))
               .fontSize(9)
               .fontColor($r('app.color.text_tertiary'))
               .lineHeight(14)
@@ -4057,7 +4090,7 @@ export struct SettingsSheet {
         .scrollBar(BarState.Auto)
 
         Row({ space: 10 }) {
-          Button('取消', { type: ButtonType.Normal })
+          Button(t('取消'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(42)
             .fontSize(14)
@@ -4065,7 +4098,7 @@ export struct SettingsSheet {
             .backgroundColor($r('app.color.surface_alt'))
             .borderRadius(12)
             .onClick(() => this.onCancel())
-          Button('保存', { type: ButtonType.Normal })
+          Button(t('保存'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(42)
             .fontSize(14)

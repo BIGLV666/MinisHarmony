@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { UIContext } from '@kit.ArkUI';
+import { t } from '../core/I18n';
 
 export interface ScreenshotOutcome {
   ok: boolean;
@@ -26,7 +27,7 @@ async function savePng(
       new picker.DocumentViewPicker(context);
     const uris: string[] = await documentPicker.save(options);
     if (uris.length === 0) {
-      return { ok: false, message: '已取消保存截图' };
+      return { ok: false, message: t('已取消保存截图') };
     }
     const file = fs.openSync(
       uris[0],
@@ -37,10 +38,10 @@ async function savePng(
     } finally {
       fs.closeSync(file);
     }
-    return { ok: true, message: '已保存截图' };
+    return { ok: true, message: t('已保存截图') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return { ok: false, message: '保存截图失败：' + error.message };
+    return { ok: false, message: t('保存截图失败：') + error.message };
   }
 }
 
@@ -60,7 +61,7 @@ export async function saveShareCard(
     pixelMap = await ui.getComponentSnapshot().createFromBuilder(builder, 250, false);
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return { ok: false, message: '截图失败：' + error.message };
+    return { ok: false, message: t('截图失败：') + error.message };
   }
   const packer: image.ImagePacker = image.createImagePacker();
   try {
@@ -69,7 +70,7 @@ export async function saveShareCard(
     return await savePng(context, fileName, data);
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return { ok: false, message: '编码截图失败：' + error.message };
+    return { ok: false, message: t('编码截图失败：') + error.message };
   } finally {
     pixelMap.release();
     packer.release().catch(() => {

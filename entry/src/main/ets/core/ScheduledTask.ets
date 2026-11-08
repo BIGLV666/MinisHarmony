@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Scheduled task model and pure formatting/validation helpers.
  *
@@ -60,29 +61,29 @@ export function taskTitle(prompt: string): string {
   }
   line = singleLine(line).replace(/^[#>*\-+\s]+/, '');
   if (line.length === 0) {
-    return '定时任务';
+    return t('定时任务');
   }
-  return line.length > 20 ? line.substring(0, 20) + '…' : line;
+  return line.length > 20 ? line.substring(0, 20) + t('…') : line;
 }
 
 export function taskNotificationContent(prompt: string): string {
   const line: string = singleLine(prompt);
   if (line.length === 0) {
-    return '点击填入提示词';
+    return t('点击填入提示词');
   }
-  return line.length > 80 ? line.substring(0, 80) + '…' : line;
+  return line.length > 80 ? line.substring(0, 80) + t('…') : line;
 }
 
 /** '' when the time is usable, otherwise a user-facing reason. */
 export function validateTaskAt(at: number, now: number): string {
   if (!Number.isFinite(at) || at <= 0) {
-    return '请选择提醒时间';
+    return t('请选择提醒时间');
   }
   if (at < now + MIN_TASK_LEAD_MS) {
-    return '提醒时间至少要在 1 分钟之后';
+    return t('提醒时间至少要在 1 分钟之后');
   }
   if (at > now + MAX_TASK_LEAD_MS) {
-    return '提醒时间不能超过一年';
+    return t('提醒时间不能超过一年');
   }
   return '';
 }
@@ -125,10 +126,10 @@ export function formatTaskTime(at: number, now: number): string {
   const today: number = dayStart(now);
   const target: number = dayStart(at);
   if (target === today) {
-    return '今天 ' + time;
+    return t('今天 ') + time;
   }
   if (target === today + 24 * 60 * 60 * 1000) {
-    return '明天 ' + time;
+    return t('明天 ') + time;
   }
   const monthDay: string = pad2(date.getMonth() + 1) + '-' + pad2(date.getDate());
   if (date.getFullYear() === new Date(now).getFullYear()) {
@@ -198,7 +199,7 @@ interface RawRun {
 
 function summarize(text: string): string {
   const line: string = singleLine(text);
-  return line.length > 120 ? line.substring(0, 120) + '…' : line;
+  return line.length > 120 ? line.substring(0, 120) + t('…') : line;
 }
 
 export function makeRun(
@@ -210,7 +211,7 @@ export function makeRun(
   finishedAt: number
 ): TaskRun {
   const ok: boolean = errorText.length === 0 && replyText.trim().length > 0;
-  const source: string = ok ? replyText : (errorText.length > 0 ? errorText : '没有返回内容');
+  const source: string = ok ? replyText : (errorText.length > 0 ? errorText : t('没有返回内容'));
   return {
     id: id,
     taskId: task.id,
@@ -255,7 +256,7 @@ export function parseRuns(text: string): TaskRun[] {
     out.push({
       id: id,
       taskId: typeof item.taskId === 'string' ? item.taskId : '',
-      title: typeof item.title === 'string' ? item.title : '定时任务',
+      title: typeof item.title === 'string' ? item.title : t('定时任务'),
       startedAt: typeof item.startedAt === 'number' ? item.startedAt : 0,
       finishedAt: typeof item.finishedAt === 'number' ? item.finishedAt : 0,
       ok: item.ok === true,

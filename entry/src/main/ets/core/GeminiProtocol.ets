@@ -21,11 +21,14 @@ import {
 import { ImageResolver } from './ToolProtocol';
 import { ToolDefinition } from './ToolTypes';
 import { DeltaResult, ToolCallDelta, emptyDelta } from './SseParser';
+import { t } from './I18n';
 
 export const GEMINI_DEFAULT_BASE: string = 'https://generativelanguage.googleapis.com/v1beta';
 export const GEMINI_DEFAULT_MODEL: string = 'gemini-2.5-pro';
 
-const INTERRUPTED_RESULT: string = '工具调用在上一轮被中断，未执行。';
+function interruptedResult(): string {
+  return t('工具调用在上一轮被中断，未执行。');
+}
 
 export interface GeminiInlineData {
   mimeType: string;
@@ -181,7 +184,7 @@ export function buildGeminiContents(
       let isError: boolean = part.isError || part.status === TOOL_ERROR;
       if (result.length === 0 &&
         part.status !== TOOL_DONE && part.status !== TOOL_ERROR) {
-        result = INTERRUPTED_RESULT;
+        result = interruptedResult();
         isError = true;
       }
       results.push({
@@ -204,7 +207,7 @@ export function buildGeminiContents(
         continue;
       }
       if (out.length === 0) {
-        pushParts(out, 'user', [{ text: '以下是此前的对话：' }]);
+        pushParts(out, 'user', [{ text: t('以下是此前的对话：') }]);
       }
       pushParts(out, 'model', parts);
       pushParts(out, 'user', results);
@@ -442,19 +445,19 @@ export function parseGeminiData(
   try {
     envelope = JSON.parse(raw) as GeminiStreamEnvelope;
   } catch (e) {
-    result.error = '无法解析流式响应';
+    result.error = t('无法解析流式响应');
     return result;
   }
   if (envelope.error !== undefined && envelope.error !== null) {
     const message: string = typeof envelope.error.message === 'string'
       ? envelope.error.message : '';
-    result.error = message.length > 0 ? message : '模型返回了错误';
+    result.error = message.length > 0 ? message : t('模型返回了错误');
     return result;
   }
   if (envelope.promptFeedback !== undefined && envelope.promptFeedback !== null &&
     typeof envelope.promptFeedback.blockReason === 'string' &&
     envelope.promptFeedback.blockReason.length > 0) {
-    result.error = '请求被安全策略拦截（' + envelope.promptFeedback.blockReason + '）';
+    result.error = t('请求被安全策略拦截（') + envelope.promptFeedback.blockReason + t('）');
     return result;
   }
 

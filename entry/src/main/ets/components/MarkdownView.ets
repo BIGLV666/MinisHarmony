@@ -20,9 +20,11 @@ import {
   TOKEN_STRING,
   highlightCode
 } from '../core/CodeHighlight';
+import { t } from '../core/I18n';
 
 @Component
 export struct MarkdownView {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop @Watch('onTextChanged') text: string = '';
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
@@ -78,16 +80,16 @@ export struct MarkdownView {
   private copy(text: string): void {
     const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
     pasteboard.getSystemPasteboard().setData(data).then(() => {
-      this.getUIContext().getPromptAction().showToast({ message: '已复制' });
+      this.getUIContext().getPromptAction().showToast({ message: t('已复制') });
     }).catch((error: Error) => {
-      this.getUIContext().getPromptAction().showToast({ message: '复制失败' });
+      this.getUIContext().getPromptAction().showToast({ message: t('复制失败') });
     });
   }
 
   /** In-app browser when the host provides a handler, system browser otherwise. */
   private openLink(url: string): void {
     if (!isOpenableUrl(url)) {
-      this.getUIContext().getPromptAction().showToast({ message: '不支持的链接类型' });
+      this.getUIContext().getPromptAction().showToast({ message: t('不支持的链接类型') });
       return;
     }
     const lower: string = url.toLowerCase();
@@ -103,7 +105,7 @@ export struct MarkdownView {
       uri: url
     };
     context.startAbility(want).catch((error: Error) => {
-      this.getUIContext().getPromptAction().showToast({ message: '没有可打开该链接的应用' });
+      this.getUIContext().getPromptAction().showToast({ message: t('没有可打开该链接的应用') });
     });
   }
 
@@ -193,7 +195,7 @@ export struct MarkdownView {
           .fontSize(scaleFont(11, this.fontScale))
           .fontColor($r('app.color.text_secondary'))
         Blank()
-        Text('复制')
+        Text(t('复制'))
           .fontSize(scaleFont(11, this.fontScale))
           .fontColor($r('app.color.text_secondary'))
           .onClick(() => this.copy(block.text))

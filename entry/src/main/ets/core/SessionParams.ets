@@ -1,5 +1,6 @@
 import { AppSettings, SessionMeta, ThinkingLevel } from './Types';
 import { cloneSettings } from './Types';
+import { t } from './I18n';
 
 /**
  * Per-session overrides. OpenMinis lets a conversation pick its own model,
@@ -72,10 +73,10 @@ export function sessionParamSummary(meta: SessionMeta | null): string {
     parts.push(meta.modelOverride);
   }
   if (meta.thinkingOverride !== undefined && isThinkingOverride(meta.thinkingOverride)) {
-    parts.push('思考 ' + meta.thinkingOverride);
+    parts.push(t('思考 ') + meta.thinkingOverride);
   }
   if (meta.promptOverride !== undefined && meta.promptOverride.length > 0) {
-    parts.push('追加指令');
+    parts.push(t('追加指令'));
   }
-  return parts.join(' · ');
+  return parts.join(t(' · '));
 }

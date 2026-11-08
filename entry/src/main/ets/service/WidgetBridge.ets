@@ -7,6 +7,7 @@ import {
   parseWidgetSnapshot,
   widgetSnapshotJson
 } from '../core/WidgetData';
+import { t } from '../core/I18n';
 
 const STORE_NAME: string = 'minis_widget_store_v1';
 const KEY_STATE: string = 'snapshot';
@@ -141,7 +142,7 @@ export class WidgetBridge {
     WidgetBridge.lastSignature = signature;
     const snapshot: WidgetSnapshot = {
       title: trimmedTitle.length > 0 ? trimmedTitle : 'Minis',
-      body: trimmedBody.length > 0 ? trimmedBody : '打开应用开始新对话',
+      body: trimmedBody.length > 0 ? trimmedBody : t('打开应用开始新对话'),
       hint: trimmedHint,
       updatedAt: Date.now()
     };

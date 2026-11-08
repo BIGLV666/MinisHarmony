@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Structured event log ("埋点") records.
  *
@@ -73,7 +74,7 @@ export function sanitizeDetail(text: string): string {
   let value: string = redactSecrets(text);
   value = value.replace(/[\r\n\t]+/g, ' ');
   if (value.length > 300) {
-    value = value.substring(0, 300) + '…';
+    value = value.substring(0, 300) + t('…');
   }
   return value;
 }
@@ -163,7 +164,7 @@ export function formatEventLine(line: string): string {
       (typeof raw.event === 'string' ? raw.event : '?');
     const tool: string = typeof raw.tool === 'string' ? raw.tool : '';
     if (tool.length > 0) {
-      text += ' · ' + tool;
+      text += t(' · ') + tool;
     }
     text += raw.ok === false ? ' ✗' : ' ✓';
     const duration: number = typeof raw.durationMs === 'number' ? raw.durationMs : 0;
@@ -172,11 +173,11 @@ export function formatEventLine(line: string): string {
     }
     const req: string = typeof raw.req === 'string' ? raw.req : '';
     if (req.length > 0) {
-      text += ' · req=' + req;
+      text += t(' · req=') + req;
     }
     const detail: string = typeof raw.detail === 'string' ? raw.detail : '';
     if (detail.length > 0) {
-      text += ' · ' + detail;
+      text += t(' · ') + detail;
     }
     return text;
   } catch (e) {

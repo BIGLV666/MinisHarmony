@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { reminderAgentManager } from '@kit.BackgroundTasksKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { ScheduledTask, taskNotificationContent, taskTitle } from '../core/ScheduledTask';
+import { t } from '../core/I18n';
 
 export interface ReminderOutcome {
   ok: boolean;
@@ -32,9 +33,9 @@ export async function scheduleTaskReminder(
         minute: date.getMinutes(),
         second: 0
       },
-      title: 'MinisHarmony · ' + taskTitle(task.prompt),
+      title: t('MinisHarmony · ') + taskTitle(task.prompt),
       content: taskNotificationContent(task.prompt),
-      expiredContent: '定时任务时间已到',
+      expiredContent: t('定时任务时间已到'),
       snoozeTimes: 0,
       ringDuration: 2,
       wantAgent: {
@@ -49,7 +50,7 @@ export async function scheduleTaskReminder(
     const error: BusinessError = e as BusinessError;
     return {
       ok: false,
-      message: '创建提醒失败：' + error.message,
+      message: t('创建提醒失败：') + error.message,
       reminderId: 0
     };
   }

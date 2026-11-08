@@ -9,6 +9,7 @@ import {
   buildEncryptedEnvelope,
   parseEncryptedBackup
 } from '../core/BackupCrypto';
+import { t } from '../core/I18n';
 
 const CIPHER_TRANSFORMATION: string = 'AES256|GCM|NoPadding';
 const KDF_ALGORITHM: string = 'PBKDF2|SHA256';
@@ -90,7 +91,7 @@ export async function encryptBackupText(
   const body: Uint8Array = sealed === null ? new Uint8Array(0) : sealed.data;
   const tag: Uint8Array = tagBlob === null ? new Uint8Array(0) : tagBlob.data;
   if (tag.length !== BACKUP_TAG_BYTES) {
-    throw new Error('无法获取 GCM 认证标签');
+    throw new Error(t('无法获取 GCM 认证标签'));
   }
   // Store ciphertext followed by the tag so the envelope has one payload field.
   const joined: Uint8Array = new Uint8Array(body.length + tag.length);
@@ -114,14 +115,14 @@ export async function decryptBackupText(
 ): Promise<DecryptOutcome> {
   const envelope: EncryptedBackupEnvelope | null = parseEncryptedBackup(raw);
   if (envelope === null) {
-    return { ok: false, message: '不是有效的加密备份文件', text: '' };
+    return { ok: false, message: t('不是有效的加密备份文件'), text: '' };
   }
   try {
     const salt: Uint8Array = base64.decodeSync(envelope.salt);
     const iv: Uint8Array = base64.decodeSync(envelope.iv);
     const sealed: Uint8Array = base64.decodeSync(envelope.payload);
     if (sealed.length <= BACKUP_TAG_BYTES) {
-      return { ok: false, message: '加密数据不完整', text: '' };
+      return { ok: false, message: t('加密数据不完整'), text: '' };
     }
     const body: Uint8Array = sealed.slice(0, sealed.length - BACKUP_TAG_BYTES);
     const tag: Uint8Array = sealed.slice(sealed.length - BACKUP_TAG_BYTES);
@@ -138,10 +139,10 @@ export async function decryptBackupText(
     plainBytes.set(second, first.length);
     return {
       ok: true,
-      message: '已解密',
+      message: t('已解密'),
       text: decoder.decodeToString(plainBytes)
     };
   } catch (e) {
-    return { ok: false, message: '密码错误或文件已损坏', text: '' };
+    return { ok: false, message: t('密码错误或文件已损坏'), text: '' };
   }
 }

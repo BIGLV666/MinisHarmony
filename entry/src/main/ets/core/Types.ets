@@ -13,6 +13,7 @@
 import { ModelOverride, normalizeModelOverrides } from './ModelOverride';
 import { McpServerConfig, normalizeMcpServers } from './McpProtocol';
 import { SubAgentDefinition, defaultAgents, normalizeAgents } from './SubAgentRoster';
+import { t } from './I18n';
 
 export const OPENCODE_GO_BASE: string = 'https://opencode.ai/zen/go/v1';
 export const OPENCODE_DEFAULT_MODEL: string = 'kimi-k3';
@@ -338,19 +339,19 @@ export function groupSessionMetas(metas: SessionMeta[], now: number): SessionGro
   }
   const groups: SessionGroup[] = [];
   if (pinned.length > 0) {
-    groups.push({ label: '置顶', sessions: pinned });
+    groups.push({ label: t('置顶'), sessions: pinned });
   }
   if (today.length > 0) {
-    groups.push({ label: '今天', sessions: today });
+    groups.push({ label: t('今天'), sessions: today });
   }
   if (yesterday.length > 0) {
-    groups.push({ label: '昨天', sessions: yesterday });
+    groups.push({ label: t('昨天'), sessions: yesterday });
   }
   if (week.length > 0) {
-    groups.push({ label: '最近 7 天', sessions: week });
+    groups.push({ label: t('最近 7 天'), sessions: week });
   }
   if (older.length > 0) {
-    groups.push({ label: '更早', sessions: older });
+    groups.push({ label: t('更早'), sessions: older });
   }
   return groups;
 }

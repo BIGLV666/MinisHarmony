@@ -1,4 +1,5 @@
 import { OPENCODE_GO_BASE } from '../core/Types';
+import { t } from '../core/I18n';
 
 /**
  * First-run guide. It only collects the API key; every other option stays at
@@ -7,6 +8,7 @@ import { OPENCODE_GO_BASE } from '../core/Types';
  */
 @Component
 export struct OnboardingView {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop initialKey: string = '';
   onFinish: (apiKey: string) => void = (apiKey: string) => {
   };
@@ -44,17 +46,17 @@ export struct OnboardingView {
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
-      Text('为鸿蒙平板打造的 OpenCode Go 客户端')
+      Text(t('为鸿蒙平板打造的 OpenCode Go 客户端'))
         .fontSize(13)
         .fontColor($r('app.color.text_secondary'))
       Column({ space: 8 }) {
-        Text('· 流式对话、思考过程与工具调用循环')
+        Text(t('· 流式对话、思考过程与工具调用循环'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
-        Text('· 会话、工作区与密钥都保存在本机')
+        Text(t('· 会话、工作区与密钥都保存在本机'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
-        Text('· 工具默认只读，写入与记忆需手动开启')
+        Text(t('· 工具默认只读，写入与记忆需手动开启'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
       }
@@ -68,11 +70,11 @@ export struct OnboardingView {
   @Builder
   connect() {
     Column({ space: 10 }) {
-      Text('连接服务')
+      Text(t('连接服务'))
         .fontSize(18)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
-      Text('当前预设：OpenCode Go')
+      Text(t('当前预设：OpenCode Go'))
         .fontSize(11)
         .fontColor($r('app.color.text_tertiary'))
       Text(OPENCODE_GO_BASE)
@@ -85,7 +87,7 @@ export struct OnboardingView {
       Row({ space: 6 }) {
         TextInput({
           text: this.apiKey,
-          placeholder: '粘贴 API Key'
+          placeholder: t('粘贴 API Key')
         })
           .layoutWeight(1)
           .height(40)
@@ -97,7 +99,7 @@ export struct OnboardingView {
           .onChange((value: string) => {
             this.apiKey = value;
           })
-        Button(this.showKey ? '隐藏' : '显示', { type: ButtonType.Normal })
+        Button(this.showKey ? t('隐藏') : t('显示'), { type: ButtonType.Normal })
           .height(40)
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
@@ -109,7 +111,7 @@ export struct OnboardingView {
       }
       .width('100%')
 
-      Text('Key 存放在系统 Asset Store（不可用时回退为本地偏好），不会上传到其他服务。也可以先跳过，稍后在设置里填写。')
+      Text(t('Key 存放在系统 Asset Store（不可用时回退为本地偏好），不会上传到其他服务。也可以先跳过，稍后在设置里填写。'))
         .fontSize(10)
         .fontColor($r('app.color.text_tertiary'))
         .lineHeight(14)
@@ -121,24 +123,24 @@ export struct OnboardingView {
   @Builder
   ready() {
     Column({ space: 12 }) {
-      Text('可以开始了')
+      Text(t('可以开始了'))
         .fontSize(18)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
       Text(this.apiKey.trim().length > 0
-        ? 'API Key 会随「开始使用」一起保存。'
-        : '还没有填写 API Key，可以稍后在设置里补充。')
+        ? t('API Key 会随「开始使用」一起保存。')
+        : t('还没有填写 API Key，可以稍后在设置里补充。'))
         .fontSize(12)
         .fontColor($r('app.color.text_secondary'))
         .lineHeight(18)
       Column({ space: 7 }) {
-        Text('· 设置 → 工具与沙箱：开启写入、记忆或远程工具服务')
+        Text(t('· 设置 → 工具与沙箱：开启写入、记忆或远程工具服务'))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
-        Text('· 长按会话：置顶、归档、导出 Markdown / JSON')
+        Text(t('· 长按会话：置顶、归档、导出 Markdown / JSON'))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
-        Text('· 输入 /help 查看全部斜杠命令')
+        Text(t('· 输入 /help 查看全部斜杠命令'))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
       }
@@ -159,7 +161,7 @@ export struct OnboardingView {
         Row() {
           this.stepDots()
           Blank()
-          Text('跳过')
+          Text(t('跳过'))
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
             .onClick(() => this.onSkip())
@@ -176,7 +178,7 @@ export struct OnboardingView {
 
         Row({ space: 10 }) {
           if (this.step > 0) {
-            Button('上一步', { type: ButtonType.Normal })
+            Button(t('上一步'), { type: ButtonType.Normal })
               .layoutWeight(1)
               .height(40)
               .fontSize(13)
@@ -187,7 +189,7 @@ export struct OnboardingView {
                 this.step--;
               })
           }
-          Button(this.step < 2 ? '下一步' : '开始使用', { type: ButtonType.Normal })
+          Button(this.step < 2 ? t('下一步') : t('开始使用'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)

@@ -12,6 +12,7 @@ import {
 } from '../core/ImageGen';
 import { AttachmentInfo, AttachmentStore } from './AttachmentStore';
 import { ImageGenHandler, ImageGenRequest, ToolResult } from '../core/ToolTypes';
+import { t } from '../core/I18n';
 
 const base64: util.Base64Helper = new util.Base64Helper();
 
@@ -81,16 +82,16 @@ export async function generateImage(
   if (settings.preset === 'anthropic' || settings.preset === 'gemini') {
     return {
       ok: false,
-      message: '图像生成仅支持 OpenAI 兼容协议，请切换预设或使用自定义端点',
+      message: t('图像生成仅支持 OpenAI 兼容协议，请切换预设或使用自定义端点'),
       attachment: null
     };
   }
   const endpoint: string = imageGenEndpoint(settings.baseUrl);
   if (endpoint.length === 0) {
-    return { ok: false, message: '请先在设置中填写 API 地址', attachment: null };
+    return { ok: false, message: t('请先在设置中填写 API 地址'), attachment: null };
   }
   if (settings.apiKey.trim().length === 0) {
-    return { ok: false, message: '请先在设置中填写 API Key', attachment: null };
+    return { ok: false, message: t('请先在设置中填写 API Key'), attachment: null };
   }
   const imageModel: string = model.trim().length > 0 ? model.trim() : settings.modelId;
   const options: http.HttpRequestOptions = {
@@ -111,7 +112,7 @@ export async function generateImage(
       return {
         ok: false,
         message: 'HTTP ' + response.responseCode.toString() +
-          (detail.length > 0 ? '：' + detail : ''),
+          (detail.length > 0 ? t('：') + detail : ''),
         attachment: null
       };
     }
@@ -135,20 +136,20 @@ export async function generateImage(
       bytes = await download(payload.url);
     }
     if (bytes === null) {
-      return { ok: false, message: '图片数据无效或超过 10 MB', attachment: null };
+      return { ok: false, message: t('图片数据无效或超过 10 MB'), attachment: null };
     }
     const ext: string = detectImageExtension(bytes);
     if (ext.length === 0) {
-      return { ok: false, message: '无法识别的图片格式', attachment: null };
+      return { ok: false, message: t('无法识别的图片格式'), attachment: null };
     }
     const saved: AttachmentInfo | null = AttachmentStore.saveBytes(bytes, ext);
     if (saved === null) {
-      return { ok: false, message: '图片保存失败', attachment: null };
+      return { ok: false, message: t('图片保存失败'), attachment: null };
     }
-    return { ok: true, message: '已生成图片', attachment: saved };
+    return { ok: true, message: t('已生成图片'), attachment: saved };
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, message: '请求失败：' + error.message, attachment: null };
+    return { ok: false, message: t('请求失败：') + error.message, attachment: null };
   } finally {
     request.destroy();
   }
@@ -174,8 +175,8 @@ export class SettingsImageGen implements ImageGenHandler {
     const uri: string = AttachmentStore.uriFor(result.attachment.name);
     return {
       ok: true,
-      content: '已生成图片并保存到本机：' + result.attachment.name +
-        '（可点开工具卡片查看）',
+      content: t('已生成图片并保存到本机：') + result.attachment.name +
+        t('（可点开工具卡片查看）'),
       imageUri: uri,
       imageMimeType: result.attachment.mimeType
     };

@@ -9,6 +9,7 @@ import {
   oneLine,
   searchMemoryFiles
 } from '../core/Memory';
+import { t } from '../core/I18n';
 
 const GLOBAL_FILE: string = 'GLOBAL.md';
 const DEFAULT_DAYS: number = 7;
@@ -121,10 +122,10 @@ export class MemoryStore {
   /** Overwrite one editable memory file; rejects any other name. */
   static saveText(name: string, text: string): string {
     if (!MemoryStore.isReady()) {
-      return '记忆目录未初始化。';
+      return t('记忆目录未初始化。');
     }
     if (!isEditableMemoryFile(name)) {
-      return '只能编辑 GLOBAL.md 或 YYYY-MM-DD.md。';
+      return t('只能编辑 GLOBAL.md 或 YYYY-MM-DD.md。');
     }
     try {
       const file = fs.openSync(
@@ -137,10 +138,10 @@ export class MemoryStore {
         fs.closeSync(file);
       }
       MemoryStore.cacheAt = 0;
-      return '已保存 ' + name;
+      return t('已保存 ') + name;
     } catch (e) {
       const error: Error = e as Error;
-      return '保存失败：' + error.message;
+      return t('保存失败：') + error.message;
     }
   }
 
@@ -159,11 +160,11 @@ export class MemoryStore {
 
   static write(content: string): string {
     if (!MemoryStore.isReady()) {
-      return '记忆目录未初始化。';
+      return t('记忆目录未初始化。');
     }
     const clean: string = oneLine(content);
     if (clean.length === 0) {
-      return '内容为空，没有写入记忆。';
+      return t('内容为空，没有写入记忆。');
     }
     const now: Date = new Date();
     const name: string = dayKey(now) + '.md';
@@ -179,16 +180,16 @@ export class MemoryStore {
         fs.closeSync(file);
       }
       MemoryStore.cacheAt = 0;
-      return '已写入记忆（' + name + '）：' + clean;
+      return t('已写入记忆（') + name + t('）：') + clean;
     } catch (e) {
       const error: Error = e as Error;
-      return '写入记忆失败：' + error.message;
+      return t('写入记忆失败：') + error.message;
     }
   }
 
   static search(query: string, days: number, limit: number): string {
     if (!MemoryStore.isReady()) {
-      return '记忆目录未初始化。';
+      return t('记忆目录未初始化。');
     }
     const window: number = days > 0 ? days : DEFAULT_DAYS;
     return searchMemoryFiles(MemoryStore.files(window), query, limit);

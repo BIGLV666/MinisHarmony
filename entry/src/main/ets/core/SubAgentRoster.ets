@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Named subagent roster, following OpenMinis `SubAgentDefinition`.
  *
@@ -29,18 +30,21 @@ export const SUB_AGENT_DESCRIPTION_MAX: number = 200;
 export const SUB_AGENT_INSTRUCTIONS_MAX: number = 4000;
 export const BUILTIN_AGENT_ID: string = 'builtin-helper';
 export const BUILTIN_AGENT_NAME: string = 'helper';
-const BUILTIN_DESCRIPTION: string =
-  '通用子代理：独立上下文和工具循环，适合调研、批量修改等多步任务。';
-const GENERIC_BRIEF: string =
-  '你是一个独立的子代理。专注完成用户交代的任务，' +
-  '完成后用简洁的最终结论回答；不要询问用户，也不要等待确认。';
+function builtinDescription(): string {
+  return t('通用子代理：独立上下文和工具循环，适合调研、批量修改等多步任务。');
+}
+
+function genericBrief(): string {
+  return t('你是一个独立的子代理。专注完成用户交代的任务，') +
+    t('完成后用简洁的最终结论回答；不要询问用户，也不要等待确认。');
+}
 
 /** The one definition every installation has. */
 export function builtinAgent(): SubAgentDefinition {
   return {
     id: BUILTIN_AGENT_ID,
     name: BUILTIN_AGENT_NAME,
-    description: BUILTIN_DESCRIPTION,
+    description: builtinDescription(),
     instructions: '',
     builtIn: true
   };
@@ -126,12 +130,12 @@ export function rosterPrompt(agents: SubAgentDefinition[]): string {
   if (list.length <= 1) {
     return '';
   }
-  const lines: string[] = ['## 子代理名册',
-    'subagent_task 的 agent 参数可选：'];
+  const lines: string[] = [t('## 子代理名册'),
+    t('subagent_task 的 agent 参数可选：')];
   for (let i = 0; i < list.length; i++) {
-    lines.push('- ' + list[i].name + '：' + list[i].description);
+    lines.push('- ' + list[i].name + t('：') + list[i].description);
   }
-  lines.push('不写 agent 时使用 ' + BUILTIN_AGENT_NAME + '。');
+  lines.push(t('不写 agent 时使用 ') + BUILTIN_AGENT_NAME + t('。'));
   return lines.join('\n');
 }
 
@@ -160,13 +164,16 @@ export function agentNameList(agents: SubAgentDefinition[]): string {
   for (let i = 0; i < list.length; i++) {
     names.push(list[i].name);
   }
-  return names.join('、');
+  return names.join(t('、'));
 }
 
 /** The child's system prompt: generic brief plus the agent's own text. */
 export function childBrief(agent: SubAgentDefinition): string {
   const extra: string = agent.instructions.trim();
-  return extra.length > 0 ? GENERIC_BRIEF + '\n\n' + extra : GENERIC_BRIEF;
+  if (extra.length === 0) {
+    return genericBrief();
+  }
+  return genericBrief() + '\n\n' + extra;
 }
 
 /** `子代理 · 名字 · 标签`, matching OpenMinis' child session title. */
@@ -175,11 +182,11 @@ export function childSessionTitle(label: string, agentName: string): string {
   const text: string = label.trim();
   if (text.length === 0) {
     return name.length > 0 && name !== BUILTIN_AGENT_NAME
-      ? '子代理 · ' + name
-      : '子代理';
+      ? t('子代理 · ') + name
+      : t('子代理');
   }
   if (name.length === 0 || name === BUILTIN_AGENT_NAME) {
-    return '子代理 · ' + text;
+    return t('子代理 · ') + text;
   }
-  return '子代理 · ' + name + ' · ' + text;
+  return t('子代理 · ') + name + t(' · ') + text;
 }

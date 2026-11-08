@@ -18,6 +18,7 @@ import {
 } from '../core/Backup';
 import { encryptedBackupFileName } from '../core/BackupCrypto';
 import { encryptBackupText } from './BackupCrypto';
+import { t } from '../core/I18n';
 
 const MAX_IMPORT_BYTES: number = 16 * 1024 * 1024;
 const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
@@ -46,7 +47,7 @@ export async function saveText(
       new picker.DocumentViewPicker(context);
     const uris: string[] = await documentPicker.save(options);
     if (uris.length === 0) {
-      return { ok: false, message: '已取消导出' };
+      return { ok: false, message: t('已取消导出') };
     }
     const file = fs.openSync(
       uris[0],
@@ -60,7 +61,7 @@ export async function saveText(
     return { ok: true, message: successMessage };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return { ok: false, message: '导出失败：' + error.message };
+    return { ok: false, message: t('导出失败：') + error.message };
   }
 }
 
@@ -74,7 +75,7 @@ export async function saveSessionMarkdown(
     exportFileName(session.meta.title, now),
     'Markdown|.md',
     exportMarkdown(session, now),
-    '已导出 Markdown'
+    t('已导出 Markdown')
   );
 }
 
@@ -92,7 +93,7 @@ export async function saveSessionBundle(
   sessions: StoredSession[]
 ): Promise<ExportOutcome> {
   if (sessions.length === 0) {
-    return { ok: false, message: '没有选中会话' };
+    return { ok: false, message: t('没有选中会话') };
   }
   const now: Date = new Date();
   return saveText(
@@ -100,7 +101,7 @@ export async function saveSessionBundle(
     sessionBundleFileName(now),
     'JSON|.json',
     sessionBundleJson(sessions, now),
-    '已导出 ' + sessions.length.toString() + ' 个会话'
+    t('已导出 ') + sessions.length.toString() + t(' 个会话')
   );
 }
 
@@ -125,14 +126,14 @@ export async function pickImportText(
       new picker.DocumentViewPicker(context);
     const uris: string[] = await documentPicker.select(options);
     if (uris.length === 0) {
-      return { ok: false, message: '已取消导入', text: '' };
+      return { ok: false, message: t('已取消导入'), text: '' };
     }
     const stat = fs.statSync(uris[0]);
     if (stat.size <= 0) {
-      return { ok: false, message: '文件是空的', text: '' };
+      return { ok: false, message: t('文件是空的'), text: '' };
     }
     if (stat.size > MAX_IMPORT_BYTES) {
-      return { ok: false, message: '文件超过 16 MB，拒绝导入', text: '' };
+      return { ok: false, message: t('文件超过 16 MB，拒绝导入'), text: '' };
     }
     const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
     const file = fs.openSync(uris[0], fs.OpenMode.READ_ONLY);
@@ -148,7 +149,7 @@ export async function pickImportText(
     };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return { ok: false, message: '导入失败：' + error.message, text: '' };
+    return { ok: false, message: t('导入失败：') + error.message, text: '' };
   }
 }
 
@@ -169,8 +170,8 @@ export function importSessionsText(
   return {
     ok: true,
     message: settings !== null
-      ? '已恢复备份：' + count.toString() + ' 个会话与设置'
-      : (count === 1 ? '已导入会话' : '已导入 ' + count.toString() + ' 个会话'),
+      ? t('已恢复备份：') + count.toString() + t(' 个会话与设置')
+      : (count === 1 ? t('已导入会话') : t('已导入 ') + count.toString() + t(' 个会话')),
     sessions: parsed.sessions,
     settings: settings
   };
@@ -198,7 +199,7 @@ export async function saveSessionJson(
     sessionJsonFileName(session.meta.title, now),
     'JSON|.json',
     sessionExportJson(session, now),
-    '已导出 JSON'
+    t('已导出 JSON')
   );
 }
 
@@ -214,7 +215,7 @@ export async function saveBackup(
     backupFileName(now),
     'JSON|.json',
     backupJson(settings, sessions, now),
-    '已导出 ' + sessions.length.toString() + ' 个会话与设置（不含密钥）'
+    t('已导出 ') + sessions.length.toString() + t(' 个会话与设置（不含密钥）')
   );
 }
 
@@ -237,10 +238,10 @@ export async function saveEncryptedBackup(
       encryptedBackupFileName(now),
       'JSON|.json',
       sealed,
-      '已导出加密备份：' + sessions.length.toString() + ' 个会话与设置'
+      t('已导出加密备份：') + sessions.length.toString() + t(' 个会话与设置')
     );
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return { ok: false, message: '加密失败：' + error.message };
+    return { ok: false, message: t('加密失败：') + error.message };
   }
 }

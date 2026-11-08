@@ -9,6 +9,7 @@ import {
   webDavUploadTargets
 } from '../core/WebDav';
 import { encryptBackupText } from './BackupCrypto';
+import { t } from '../core/I18n';
 
 const encoder: util.TextEncoder = new util.TextEncoder();
 const base64: util.Base64Helper = new util.Base64Helper();
@@ -49,16 +50,16 @@ function requestOptions(settings: AppSettings): http.HttpRequestOptions {
 
 function statusMessage(action: string, status: number, body: string): string {
   const detail: string = body.length > 160 ? body.substring(0, 160) : body;
-  return action + '失败：HTTP ' + status.toString() +
-    (detail.length > 0 ? '（' + detail + '）' : '');
+  return action + t('失败：HTTP ') + status.toString() +
+    (detail.length > 0 ? t('（') + detail + t('）') : '');
 }
 
 function configured(settings: AppSettings): string {
   if (normalizeWebDavUrl(settings.webDavUrl).length === 0) {
-    return '请先填写 WebDAV 地址（http 或 https）';
+    return t('请先填写 WebDAV 地址（http 或 https）');
   }
   if (settings.webDavPassword.length === 0) {
-    return '请先填写 WebDAV 密码';
+    return t('请先填写 WebDAV 密码');
   }
   return '';
 }
@@ -77,14 +78,14 @@ async function put(url: string, settings: AppSettings, body: string): Promise<We
     if (response.responseCode < 200 || response.responseCode >= 300) {
       return {
         ok: false,
-        message: statusMessage('上传', response.responseCode,
+        message: statusMessage(t('上传'), response.responseCode,
           typeof response.result === 'string' ? response.result : '')
       };
     }
     return { ok: true, message: '' };
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, message: '上传失败：' + error.message };
+    return { ok: false, message: t('上传失败：') + error.message };
   } finally {
     request.destroy();
   }
@@ -110,7 +111,7 @@ export async function uploadEncryptedBackup(
     ? webDavUploadTargets(settings.webDavUrl, now)
     : [webDavFileUrl(settings.webDavUrl, WEBDAV_LATEST_NAME)];
   if (targets.length === 0 || targets[0].length === 0) {
-    return { ok: false, message: 'WebDAV 地址无效' };
+    return { ok: false, message: t('WebDAV 地址无效') };
   }
   let sealed: string = '';
   try {
@@ -118,7 +119,7 @@ export async function uploadEncryptedBackup(
     sealed = await encryptBackupText(plain, settings.webDavPassword, now);
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, message: '加密备份失败：' + error.message };
+    return { ok: false, message: t('加密备份失败：') + error.message };
   }
   for (let i = 0; i < targets.length; i++) {
     const outcome: WebDavOutcome = await put(targets[i], settings, sealed);
@@ -128,7 +129,7 @@ export async function uploadEncryptedBackup(
   }
   return {
     ok: true,
-    message: '已上传加密备份：' + sessions.length.toString() + ' 个会话'
+    message: t('已上传加密备份：') + sessions.length.toString() + t(' 个会话')
   };
 }
 
@@ -142,34 +143,34 @@ export async function downloadLatestBackup(
   }
   const url: string = webDavFileUrl(settings.webDavUrl, WEBDAV_LATEST_NAME);
   if (url.length === 0) {
-    return { ok: false, message: 'WebDAV 地址无效', text: '' };
+    return { ok: false, message: t('WebDAV 地址无效'), text: '' };
   }
   const request: http.HttpRequest = http.createHttp();
   try {
     const response: http.HttpResponse =
       await request.request(url, requestOptions(settings));
     if (response.responseCode === 404) {
-      return { ok: false, message: '远端还没有备份', text: '' };
+      return { ok: false, message: t('远端还没有备份'), text: '' };
     }
     if (response.responseCode < 200 || response.responseCode >= 300) {
       return {
         ok: false,
-        message: statusMessage('下载', response.responseCode,
+        message: statusMessage(t('下载'), response.responseCode,
           typeof response.result === 'string' ? response.result : ''),
         text: ''
       };
     }
     const text: string = typeof response.result === 'string' ? response.result : '';
     if (text.length === 0) {
-      return { ok: false, message: '远端备份是空的', text: '' };
+      return { ok: false, message: t('远端备份是空的'), text: '' };
     }
     if (text.length > MAX_REMOTE_CHARS) {
-      return { ok: false, message: '远端备份超过 32 MB，拒绝导入', text: '' };
+      return { ok: false, message: t('远端备份超过 32 MB，拒绝导入'), text: '' };
     }
     return { ok: true, message: '', text: text };
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, message: '下载失败：' + error.message, text: '' };
+    return { ok: false, message: t('下载失败：') + error.message, text: '' };
   } finally {
     request.destroy();
   }

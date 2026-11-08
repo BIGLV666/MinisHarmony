@@ -1,5 +1,6 @@
 import { notificationManager } from '@kit.NotificationKit';
 import { common, wantAgent, WantAgent } from '@kit.AbilityKit';
+import { t } from '../core/I18n';
 
 /**
  * Generation reminders in the notification centre. They are only published
@@ -56,14 +57,14 @@ async function publish(context: common.UIAbilityContext, text: string, ongoing: 
 
 /** Called when the app leaves the foreground while a turn is still running. */
 export async function publishGenerating(context: common.UIAbilityContext, title: string): Promise<void> {
-  const label: string = title.length > 0 ? title : '当前对话';
-  await publish(context, label + ' · 正在生成回复…', true);
+  const label: string = title.length > 0 ? title : t('当前对话');
+  await publish(context, label + t(' · 正在生成回复…'), true);
 }
 
 /** Replaces the ongoing notification with a completed reminder. */
 export async function publishDone(context: common.UIAbilityContext, title: string): Promise<void> {
-  const label: string = title.length > 0 ? title : '当前对话';
-  await publish(context, label + ' · 回复已完成', false);
+  const label: string = title.length > 0 ? title : t('当前对话');
+  await publish(context, label + t(' · 回复已完成'), false);
 }
 
 /** Clears the reminder when the user comes back to the app. */

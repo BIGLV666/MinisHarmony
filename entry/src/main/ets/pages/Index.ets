@@ -122,6 +122,7 @@ import { SidebarView } from '../components/SidebarView';
 import { BrowserPage } from '../components/BrowserPage';
 import { HiddenBrowser } from '../components/HiddenBrowser';
 import { BrowserTool } from '../service/BrowserTool';
+import { t } from '../core/I18n';
 
 /** Snapshot kept only until the compaction notice is dismissed. */
 interface CompactUndo {
@@ -133,6 +134,7 @@ interface CompactUndo {
 @Entry
 @Component
 struct Index {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
   @StorageProp('pendingShareText') @Watch('onSharedText') sharedText: string = '';
@@ -236,7 +238,7 @@ struct Index {
   private applyDeepLink(uri: string): void {
     const link: DeepLink | null = parseDeepLink(uri);
     if (link === null) {
-      this.toast('无法识别的链接');
+      this.toast(t('无法识别的链接'));
       return;
     }
     if (link.kind === 'new') {
@@ -247,7 +249,7 @@ struct Index {
     if (link.kind === 'task') {
       const task: ScheduledTask | null = this.findTask(link.value);
       if (task === null) {
-        this.toast('定时任务已不存在');
+        this.toast(t('定时任务已不存在'));
         return;
       }
       // The reminder only restores the prompt; sending stays a user action.
@@ -258,11 +260,11 @@ struct Index {
         this.markTaskTriggered(task);
       }
       this.mobileChat = true;
-      this.toast('定时任务已填入输入框，确认后发送');
+      this.toast(t('定时任务已填入输入框，确认后发送'));
       return;
     }
     if (this.findSession(link.value) === null) {
-      this.toast('链接指向的会话不存在');
+      this.toast(t('链接指向的会话不存在'));
       return;
     }
     this.mobileChat = true;
@@ -282,7 +284,7 @@ struct Index {
   private replaceTasks(next: ScheduledTask[]): void {
     this.tasks = sortTasks(next);
     LocalStore.saveScheduledTasks(this.tasks).catch((error: Error) => {
-      this.toast('定时任务保存失败');
+      this.toast(t('定时任务保存失败'));
     });
   }
 
@@ -310,7 +312,7 @@ struct Index {
     const text: string = normalizeTaskPrompt(prompt);
     const reason: string = validateTaskAt(at, Date.now());
     if (text.length === 0) {
-      this.toast('请填写提示词');
+      this.toast(t('请填写提示词'));
       return;
     }
     if (reason.length > 0) {
@@ -327,7 +329,7 @@ struct Index {
     }
     task.reminderId = outcome.reminderId;
     this.replaceTasks(this.tasks.concat([task]));
-    this.toast('已安排提醒：' + formatTaskTime(at, Date.now()));
+    this.toast(t('已安排提醒：') + formatTaskTime(at, Date.now()));
   }
 
   private async cancelScheduledTask(id: string): Promise<void> {
@@ -347,7 +349,7 @@ struct Index {
       this.pendingTaskId = '';
       this.pendingTaskPrompt = '';
     }
-    this.toast('已删除定时任务');
+    this.toast(t('已删除定时任务'));
   }
 
   private fillTask(id: string): void {
@@ -359,13 +361,13 @@ struct Index {
     this.pendingTaskPrompt = task.prompt;
     this.draft = task.prompt;
     this.showTasks = false;
-    this.toast('已填入输入框，确认后发送');
+    this.toast(t('已填入输入框，确认后发送'));
   }
 
   private clearTaskRuns(): void {
     this.taskRuns = [];
     LocalStore.saveTaskRuns([]).catch((error: Error) => {
-      this.toast('历史记录保存失败');
+      this.toast(t('历史记录保存失败'));
     });
   }
 
@@ -392,7 +394,7 @@ struct Index {
       replyText, errorText, Date.now());
     this.taskRuns = trimRuns([run].concat(this.taskRuns));
     LocalStore.saveTaskRuns(this.taskRuns).catch((error: Error) => {
-      this.toast('运行历史保存失败');
+      this.toast(t('运行历史保存失败'));
     });
     // One-shot: the reminder has served its purpose.
     const remaining: ScheduledTask[] = [];
@@ -444,7 +446,7 @@ struct Index {
     this.activeTaskStartedAt = 0;
     const task: ScheduledTask | null = this.findTask(taskId);
     if (task !== null) {
-      this.appendTaskRun(task, started, '', '已取消');
+      this.appendTaskRun(task, started, '', t('已取消'));
     }
   }
 
@@ -456,7 +458,7 @@ struct Index {
     }
     this.draft = text;
     AppStorage.setOrCreate<string>('pendingShareText', '');
-    this.toast('已填入分享内容');
+    this.toast(t('已填入分享内容'));
   }
 
   onPageShow(): void {
@@ -501,7 +503,7 @@ struct Index {
       await OAuthService.init();
       await SubagentRunner.restore();
     } catch (e) {
-      this.toast('本地存储初始化失败，本次会话不会保存');
+      this.toast(t('本地存储初始化失败，本次会话不会保存'));
     }
     this.settings = await LocalStore.loadSettings();
     this.applyAppearance(this.settings);
@@ -550,7 +552,7 @@ struct Index {
     }
     this.locked = true;
     this.unlocking = true;
-    const unlocked: boolean = await authenticate('解锁 Minis Harmony');
+    const unlocked: boolean = await authenticate(t('解锁 Minis Harmony'));
     this.unlocking = false;
     if (unlocked) {
       this.locked = false;
@@ -566,10 +568,10 @@ struct Index {
     this.settings = next;
     this.showOnboarding = false;
     LocalStore.saveSettings(next).catch((error: Error) => {
-      this.toast('设置保存失败');
+      this.toast(t('设置保存失败'));
     });
     if (!skipped && apiKey.length > 0) {
-      this.toast('已保存 API Key');
+      this.toast(t('已保存 API Key'));
     }
   }
 
@@ -607,7 +609,7 @@ struct Index {
 
   private currentTitle(): string {
     const session: StoredSession | null = this.findSession(this.currentId);
-    return session === null ? '新对话' : session.meta.title;
+    return session === null ? t('新对话') : session.meta.title;
   }
 
   /** Model actually used for the current conversation (override wins). */
@@ -654,7 +656,7 @@ struct Index {
     this.thinkingOverride = value;
     this.refreshSessions();
     this.persistSoon();
-    this.toast(value === 'off' ? '本会话思考已关闭' : '本会话思考强度：' + this.thinkingLabel(value));
+    this.toast(value === 'off' ? t('本会话思考已关闭') : t('本会话思考强度：') + this.thinkingLabel(value));
   }
 
   private toast(message: string): void {
@@ -681,12 +683,12 @@ struct Index {
 
   private createChat(persist: boolean = true): void {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const meta: SessionMeta = {
       id: util.generateRandomUUID(true),
-      title: '新对话',
+      title: t('新对话'),
       updatedAt: Date.now(),
       modelId: this.settings.modelId,
       messageCount: 0,
@@ -711,7 +713,7 @@ struct Index {
 
   private selectSession(id: string): void {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const session: StoredSession | null = this.findSession(id);
@@ -759,7 +761,7 @@ struct Index {
     session.meta.pinned = !session.meta.pinned;
     this.refreshSessions();
     this.persistSoon();
-    this.toast(session.meta.pinned ? '已置顶' : '已取消置顶');
+    this.toast(session.meta.pinned ? t('已置顶') : t('已取消置顶'));
   }
 
   private toggleArchive(): void {
@@ -774,7 +776,7 @@ struct Index {
     }
     this.refreshSessions();
     this.persistSoon();
-    this.toast(session.meta.archived ? '已归档' : '已取消归档');
+    this.toast(session.meta.archived ? t('已归档') : t('已取消归档'));
   }
 
   /**
@@ -784,7 +786,7 @@ struct Index {
    */
   private requestRewind(id: string): void {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     this.rewindId = id;
@@ -821,7 +823,7 @@ struct Index {
     this.messages = trimmed.slice();
     this.refreshSessions();
     this.persistSoon();
-    this.toast('已回退到该消息');
+    this.toast(t('已回退到该消息'));
   }
 
   private async exportSession(id: string): Promise<void> {
@@ -831,7 +833,7 @@ struct Index {
       return;
     }
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -846,7 +848,7 @@ struct Index {
       return;
     }
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -856,7 +858,7 @@ struct Index {
 
   private async importSessionFromFile(): Promise<void> {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -886,7 +888,7 @@ struct Index {
       this.applyAppearance(merged);
       AppLogger.setEnabled(merged.loggingEnabled);
       LocalStore.saveSettings(merged).catch((error: Error) => {
-        this.toast('设置保存失败');
+        this.toast(t('设置保存失败'));
       });
       McpRegistry.refresh(merged.mcpServers).catch((error: Error) => {});
     }
@@ -926,11 +928,11 @@ struct Index {
     }
     if (this.passwordMode === 'encrypt') {
       if (this.passwordValue.length < BACKUP_MIN_PASSWORD) {
-        this.toast('密码至少 ' + BACKUP_MIN_PASSWORD.toString() + ' 位');
+        this.toast(t('密码至少 ') + BACKUP_MIN_PASSWORD.toString() + t(' 位'));
         return;
       }
       if (this.passwordValue !== this.passwordConfirm) {
-        this.toast('两次输入的密码不一致');
+        this.toast(t('两次输入的密码不一致'));
         return;
       }
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -950,7 +952,7 @@ struct Index {
       return;
     }
     if (this.passwordValue.length === 0) {
-      this.toast('请输入备份密码');
+      this.toast(t('请输入备份密码'));
       return;
     }
     this.passwordBusy = true;
@@ -971,7 +973,7 @@ struct Index {
   /** Ask for a password, then export the whole library encrypted. */
   private exportEncryptedBackup(): void {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     this.openPasswordDialog('encrypt', '');
@@ -999,7 +1001,7 @@ struct Index {
     password: string
   ): Promise<void> {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const next: AppSettings = cloneSettings(this.settings);
@@ -1018,7 +1020,7 @@ struct Index {
     password: string
   ): Promise<void> {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const next: AppSettings = cloneSettings(this.settings);
@@ -1048,8 +1050,8 @@ struct Index {
       this.messages = current.messages.slice();
     }
     this.persistSoon();
-    this.toast('已合并远端备份：新增 ' + merge.addedFromRemote.toString() +
-      '，更新 ' + merge.updatedFromRemote.toString());
+    this.toast(t('已合并远端备份：新增 ') + merge.addedFromRemote.toString() +
+      t('，更新 ') + merge.updatedFromRemote.toString());
   }
 
   /** Merge with the remote copy, then push the merged library back. */
@@ -1092,19 +1094,19 @@ struct Index {
   private async syncBackup(settings: AppSettings, manual: boolean): Promise<void> {
     if (this.syncRunning) {
       if (manual) {
-        this.toast('正在同步，请稍候');
+        this.toast(t('正在同步，请稍候'));
       }
       return;
     }
     if (this.streaming) {
       if (manual) {
-        this.toast('请先停止当前生成');
+        this.toast(t('请先停止当前生成'));
       }
       return;
     }
     if (settings.webDavUrl.trim().length === 0 || settings.webDavPassword.length === 0) {
       if (manual) {
-        this.toast('请先填写 WebDAV 地址与密码');
+        this.toast(t('请先填写 WebDAV 地址与密码'));
       }
       return;
     }
@@ -1129,7 +1131,7 @@ struct Index {
           return;
         }
         remote = parsed.sessions;
-      } else if (download.message !== '远端还没有备份') {
+      } else if (download.message !== t('远端还没有备份')) {
         if (manual) {
           this.toast(download.message);
         }
@@ -1159,12 +1161,12 @@ struct Index {
       this.settings = settings;
       await LocalStore.saveSettings(settings);
       if (manual || changed) {
-        this.toast('已同步：新增 ' + merge.addedFromRemote.toString() +
-          '，更新 ' + merge.updatedFromRemote.toString());
+        this.toast(t('已同步：新增 ') + merge.addedFromRemote.toString() +
+          t('，更新 ') + merge.updatedFromRemote.toString());
       }
     } catch (e) {
       if (manual) {
-        this.toast('同步失败，请检查 WebDAV 配置');
+        this.toast(t('同步失败，请检查 WebDAV 配置'));
       }
     } finally {
       this.syncRunning = false;
@@ -1174,7 +1176,7 @@ struct Index {
   /** Export every session plus a secret-free settings snapshot. */
   private async exportBackup(): Promise<void> {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -1192,7 +1194,7 @@ struct Index {
       }
     }
     if (picked.length === 0) {
-      this.toast('没有可导出的会话');
+      this.toast(t('没有可导出的会话'));
       return;
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -1208,12 +1210,12 @@ struct Index {
       return;
     }
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const meta: SessionMeta = {
       id: util.generateRandomUUID(true),
-      title: source.meta.title + ' 副本',
+      title: source.meta.title + t(' 副本'),
       updatedAt: Date.now(),
       modelId: source.meta.modelId,
       messageCount: source.messages.length,
@@ -1233,7 +1235,7 @@ struct Index {
     this.syncThinkingOverride();
     this.mobileChat = true;
     this.persistSoon();
-    this.toast('已复制为新会话');
+    this.toast(t('已复制为新会话'));
   }
 
   private openSessionParams(id: string): void {
@@ -1262,7 +1264,7 @@ struct Index {
     }
     this.refreshSessions();
     this.persistSoon();
-    this.toast('会话参数已保存');
+    this.toast(t('会话参数已保存'));
   }
 
   private resetSessionParams(): void {
@@ -1279,14 +1281,14 @@ struct Index {
     }
     this.refreshSessions();
     this.persistSoon();
-    this.toast('已恢复为全局设置');
+    this.toast(t('已恢复为全局设置'));
   }
 
   private performDelete(): void {
     const id: string = this.deleteId;
     this.deleteId = '';
     if (this.streaming && this.currentId === id) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     this.store = this.store.filter((session: StoredSession): boolean => session.meta.id !== id);
@@ -1332,17 +1334,17 @@ struct Index {
       }
       this.pendingAttachments = next;
       if (failed > 0) {
-        this.toast(failed.toString() + ' 张图片无法读取（格式或大小不支持）');
+        this.toast(failed.toString() + t(' 张图片无法读取（格式或大小不支持）'));
       }
       const session: StoredSession | null = this.findSession(this.currentId);
       const modelId: string = session !== null
         ? effectiveSettings(this.settings, session.meta).modelId
         : this.settings.modelId;
       if (!capsForModel(modelId).vision) {
-        this.toast('当前模型未标记视觉能力，图片可能被拒绝');
+        this.toast(t('当前模型未标记视觉能力，图片可能被拒绝'));
       }
     } catch (e) {
-      this.toast('选择图片失败');
+      this.toast(t('选择图片失败'));
     }
   }
 
@@ -1363,7 +1365,7 @@ struct Index {
       return;
     }
     if (this.compacting) {
-      this.toast('正在压缩上下文，请稍候');
+      this.toast(t('正在压缩上下文，请稍候'));
       return;
     }
     if (text.length > 0 && text.startsWith('/')) {
@@ -1380,20 +1382,20 @@ struct Index {
       !copilotLogin && !codexLogin) {
       this.pendingSkillBody = '';
       this.showSettings = true;
-      this.toast('请先填写 API Key 或登录账号');
+      this.toast(t('请先填写 API Key 或登录账号'));
       return;
     }
     if (this.settings.baseUrl.trim().length === 0) {
       this.pendingSkillBody = '';
       this.showSettings = true;
-      this.toast('请先填写 API 地址');
+      this.toast(t('请先填写 API 地址'));
       return;
     }
     if (this.settings.toolsEnabled && this.settings.sandboxMode === 'remote' &&
       this.settings.sandboxUrl.trim().length === 0) {
       this.pendingSkillBody = '';
       this.showSettings = true;
-      this.toast('请先填写远程沙箱地址');
+      this.toast(t('请先填写远程沙箱地址'));
       return;
     }
 
@@ -1416,7 +1418,7 @@ struct Index {
     }
 
     if (session.messages.length === 0) {
-      session.meta.title = text.length > 0 ? titleFrom(text) : '图片对话';
+      session.meta.title = text.length > 0 ? titleFrom(text) : t('图片对话');
     }
     session.meta.updatedAt = Date.now();
     session.meta.modelId = effectiveSettings(this.settings, session.meta).modelId;
@@ -1501,7 +1503,7 @@ struct Index {
   /** Re-run the last user turn after dropping the assistant answer. */
   private regenerateLast(): void {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const session: StoredSession | null = this.findSession(this.currentId);
@@ -1514,7 +1516,7 @@ struct Index {
     }
     if (session.messages.length === 0 ||
       session.messages[session.messages.length - 1].role !== 'user') {
-      this.toast('没有可重新生成的回复');
+      this.toast(t('没有可重新生成的回复'));
       return;
     }
     this.runAgent(session, '', false);
@@ -1523,7 +1525,7 @@ struct Index {
   /** Open the composer overlay with the message text for editing. */
   private beginEdit(id: string): void {
     if (this.streaming) {
-      this.toast('请先停止当前生成');
+      this.toast(t('请先停止当前生成'));
       return;
     }
     const session: StoredSession | null = this.findSession(this.currentId);
@@ -1548,7 +1550,7 @@ struct Index {
   private confirmEdit(): void {
     const text: string = this.editText.trim();
     if (text.length === 0) {
-      this.toast('消息不能为空');
+      this.toast(t('消息不能为空'));
       return;
     }
     const session: StoredSession | null = this.findSession(this.currentId);
@@ -1598,13 +1600,13 @@ struct Index {
   private async compactSession(auto: boolean = false): Promise<boolean> {
     if (this.streaming) {
       if (!auto) {
-        this.toast('请先停止当前生成');
+        this.toast(t('请先停止当前生成'));
       }
       return false;
     }
     if (this.compacting) {
       if (!auto) {
-        this.toast('正在压缩上下文');
+        this.toast(t('正在压缩上下文'));
       }
       return false;
     }
@@ -1616,7 +1618,7 @@ struct Index {
       planCompact(session.messages, COMPACT_DEFAULT_KEEP_TURNS);
     if (plan === null) {
       if (!auto) {
-        this.toast('对话还太短，或最近几轮已覆盖全部内容');
+        this.toast(t('对话还太短，或最近几轮已覆盖全部内容'));
       }
       return false;
     }
@@ -1625,7 +1627,7 @@ struct Index {
     const transcript: string =
       transcriptForSummary(plan.head, SUMMARY_TRANSCRIPT_LIMIT);
     this.compacting = true;
-    this.toast(auto ? '上下文接近上限，正在自动压缩…' : '正在生成摘要…');
+    this.toast(auto ? t('上下文接近上限，正在自动压缩…') : t('正在生成摘要…'));
     const summarySettings: AppSettings =
       await OAuthService.decorate(effectiveSettings(this.settings, session.meta));
     const result: SummaryResult = await summarizeConversation(
@@ -1634,7 +1636,7 @@ struct Index {
     this.compacting = false;
     if (!result.ok) {
       // Keep the original history; tell the user instead of silently failing.
-      this.toast('压缩失败，原对话已保留：' + result.message);
+      this.toast(t('压缩失败，原对话已保留：') + result.message);
       return false;
     }
     const summary: ChatMessage =
@@ -1651,13 +1653,13 @@ struct Index {
     this.messages = session.messages.slice();
     this.autoCompactMarker = this.currentId + ':' +
       session.messages[session.messages.length - 1].id;
-    this.compactNotice = (auto ? '上下文接近上限，已自动把较早的 ' :
-      '已把较早的 ') + plan.head.length.toString() +
-      ' 条消息压缩为摘要。';
+    this.compactNotice = (auto ? t('上下文接近上限，已自动把较早的 ') :
+      t('已把较早的 ')) + plan.head.length.toString() +
+      t(' 条消息压缩为摘要。');
     this.refreshSessions();
     this.persistNow();
-    this.toast(auto ? '已自动压缩较早的对话' :
-      '已压缩 ' + plan.head.length.toString() + ' 条早期消息');
+    this.toast(auto ? t('已自动压缩较早的对话') :
+      t('已压缩 ') + plan.head.length.toString() + t(' 条早期消息'));
     return true;
   }
 
@@ -1689,7 +1691,7 @@ struct Index {
     this.autoCompactMarker = '';
     this.refreshSessions();
     this.persistNow();
-    this.toast('已恢复压缩前的对话');
+    this.toast(t('已恢复压缩前的对话'));
   }
 
   /** Latest reported prompt+completion, the best local estimate we have. */
@@ -1757,24 +1759,24 @@ struct Index {
     }
     if (command === '/help') {
       let help: string =
-        '可用命令：\n' +
-          '/new — 新建对话\n' +
-          '/clear — 清空当前对话\n' +
-          '/compact — 用模型摘要较早的对话，保留最近几轮\n' +
-          '/memory — 开启/关闭持久记忆与记忆工具\n' +
-          '/thinking — 循环切换思考档位（off → low → medium → high）\n' +
-          '/help — 显示本帮助\n';
+        t('可用命令：\n') +
+          t('/new — 新建对话\n') +
+          t('/clear — 清空当前对话\n') +
+          t('/compact — 用模型摘要较早的对话，保留最近几轮\n') +
+          t('/memory — 开启/关闭持久记忆与记忆工具\n') +
+          t('/thinking — 循环切换思考档位（off → low → medium → high）\n') +
+          t('/help — 显示本帮助\n');
       const docs: SkillDoc[] = SkillStore.list();
       let skillLines: string = '';
       for (let i = 0; i < docs.length; i++) {
         if (this.settings.enabledSkills.indexOf(docs[i].id) >= 0) {
-          skillLines += '\n/' + docs[i].id + ' — 使用技能：' + docs[i].name;
+          skillLines += '\n/' + docs[i].id + t(' — 使用技能：') + docs[i].name;
         }
       }
       if (skillLines.length > 0) {
-        help += '\n已启用的技能命令：' + skillLines;
+        help += t('\n已启用的技能命令：') + skillLines;
       }
-      help += '\n\n长对话接近上下文预算时，发送前会自动裁剪较早的工具结果。';
+      help += t('\n\n长对话接近上下文预算时，发送前会自动裁剪较早的工具结果。');
       this.appendLocalNotice(help);
       return;
     }
@@ -1784,51 +1786,51 @@ struct Index {
         return;
       }
       session.messages = [];
-      session.meta.title = '新对话';
+      session.meta.title = t('新对话');
       session.meta.messageCount = 0;
       session.meta.updatedAt = Date.now();
       this.messages = [];
       this.refreshSessions();
       this.persistSoon();
-      this.toast('当前对话已清空');
+      this.toast(t('当前对话已清空'));
       return;
     }
     if (command === '/memory') {
       this.settings.memoryEnabled = !this.settings.memoryEnabled;
       const on: boolean = this.settings.memoryEnabled;
       LocalStore.saveSettings(this.settings).catch((error: Error) => {
-        this.toast('设置保存失败');
+        this.toast(t('设置保存失败'));
       });
-      this.toast(on ? '持久记忆已开启' : '持久记忆已关闭');
+      this.toast(on ? t('持久记忆已开启') : t('持久记忆已关闭'));
       this.appendLocalNotice(on
-        ? '持久记忆已开启：模型可以读写本机记忆，并会在后续对话中看到它。'
-        : '持久记忆已关闭：不再注入记忆，记忆工具也会从工具列表移除。');
+        ? t('持久记忆已开启：模型可以读写本机记忆，并会在后续对话中看到它。')
+        : t('持久记忆已关闭：不再注入记忆，记忆工具也会从工具列表移除。'));
       return;
     }
     if (command === '/thinking') {
       const next: ThinkingLevel = cycleThinkingLevel(this.effectiveThinking());
       this.setThinkingLevel(next);
       this.appendLocalNotice(next === 'off'
-        ? '已关闭本会话的思考：请求不再携带 reasoning_effort。部分模型仍可能返回推理内容。'
-        : '已设置本会话思考强度：reasoning_effort=' + next +
-          '。再次输入 /thinking 会切换到下一档；新会话仍使用全局设置。');
+        ? t('已关闭本会话的思考：请求不再携带 reasoning_effort。部分模型仍可能返回推理内容。')
+        : t('已设置本会话思考强度：reasoning_effort=') + next +
+          t('。再次输入 /thinking 会切换到下一档；新会话仍使用全局设置。'));
       return;
     }
     const skill: SkillCommand | null = matchSkillCommand(raw, this.settings.enabledSkills);
     if (skill !== null) {
       const doc: SkillDoc | null = SkillStore.get(skill.id);
       if (doc === null || doc.body.trim().length === 0) {
-        this.toast('技能内容为空：' + skill.id);
+        this.toast(t('技能内容为空：') + skill.id);
         return;
       }
-      this.pendingSkillBody = '# 技能：' + doc.name + '\n\n' + doc.body;
+      this.pendingSkillBody = t('# 技能：') + doc.name + '\n\n' + doc.body;
       this.draft = skill.rest.length > 0
         ? skill.rest
-        : '请按照技能「' + doc.name + '」的说明处理当前任务。';
+        : t('请按照技能「') + doc.name + t('」的说明处理当前任务。');
       this.sendMessage();
       return;
     }
-    this.toast('未知命令，输入 /help 查看');
+    this.toast(t('未知命令，输入 /help 查看'));
   }
 
   private appendLocalNotice(text: string): void {
@@ -1975,7 +1977,7 @@ struct Index {
   private askToolPermission(name: string, argumentsText: string): Promise<boolean> {
     this.confirmName = name;
     this.confirmArgs = argumentsText.length > 1500
-      ? argumentsText.substring(0, 1500) + '\n…（已截断）'
+      ? argumentsText.substring(0, 1500) + t('\n…（已截断）')
       : argumentsText;
     this.confirmVisible = true;
     return new Promise<boolean>((resolve: (allowed: boolean) => void) => {
@@ -2004,7 +2006,7 @@ struct Index {
     AppLogger.setEnabled(next.loggingEnabled);
     this.showSettings = false;
     LocalStore.saveSettings(next).catch((error: Error) => {
-      this.toast('设置保存失败');
+      this.toast(t('设置保存失败'));
     });
     McpRegistry.refresh(next.mcpServers).catch((error: Error) => {});
     const session: StoredSession | null = this.findSession(this.currentId);
@@ -2013,7 +2015,7 @@ struct Index {
     }
     this.refreshSessions();
     this.scheduleAutoSync();
-    this.toast('设置已保存');
+    this.toast(t('设置已保存'));
   }
 
   private pickModel(id: string): void {
@@ -2025,14 +2027,14 @@ struct Index {
     this.settings = next;
     this.showModels = false;
     LocalStore.saveSettings(next).catch((error: Error) => {
-      this.toast('模型设置保存失败');
+      this.toast(t('模型设置保存失败'));
     });
     const session: StoredSession | null = this.findSession(this.currentId);
     if (session !== null) {
       session.meta.modelId = id;
     }
     this.refreshSessions();
-    this.toast('已切换到 ' + id);
+    this.toast(t('已切换到 ') + id);
   }
 
   /**
@@ -2082,10 +2084,10 @@ struct Index {
   /** Mirror the current conversation into the home-screen card. */
   private publishWidget(): void {
     let title: string = 'Minis';
-    let body: string = '打开应用开始新对话';
+    let body: string = t('打开应用开始新对话');
     const session: StoredSession | null = this.findSession(this.currentId);
     if (session !== null) {
-      title = session.meta.title.length > 0 ? session.meta.title : '未命名对话';
+      title = session.meta.title.length > 0 ? session.meta.title : t('未命名对话');
       for (let i = session.messages.length - 1; i >= 0; i--) {
         const message: ChatMessage = session.messages[i];
         if (message.role !== 'assistant') {
@@ -2099,7 +2101,7 @@ struct Index {
         break;
       }
     }
-    const hint: string = this.streaming ? '生成中' : '';
+    const hint: string = this.streaming ? t('生成中') : '';
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     WidgetBridge.publish(context, title, body, hint).catch((error: Error) => {
       // The card is decorative; never disturb the conversation for it.
@@ -2113,7 +2115,7 @@ struct Index {
         .width(32)
         .height(32)
         .color(this.accent)
-      Text('正在加载…')
+      Text(t('正在加载…'))
         .fontSize(12)
         .fontColor($r('app.color.text_secondary'))
     }
@@ -2134,13 +2136,13 @@ struct Index {
           this.actionId = '';
         })
       Column({ space: 10 }) {
-        Text('会话操作')
+        Text(t('会话操作'))
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
           .width('100%')
         Column({ space: 4 }) {
-          Text(this.actionPinned() ? '取消置顶' : '置顶')
+          Text(this.actionPinned() ? t('取消置顶') : t('置顶'))
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
             .width('100%')
@@ -2148,7 +2150,7 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.togglePin())
-          Text(this.actionArchived() ? '取消归档' : '归档')
+          Text(this.actionArchived() ? t('取消归档') : t('归档'))
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
             .width('100%')
@@ -2156,7 +2158,7 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.toggleArchive())
-          Text('复制为新会话')
+          Text(t('复制为新会话'))
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
             .width('100%')
@@ -2164,7 +2166,7 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.forkSession(this.actionId))
-          Text('会话参数')
+          Text(t('会话参数'))
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
             .width('100%')
@@ -2172,7 +2174,7 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.openSessionParams(this.actionId))
-          Text('导出为 Markdown')
+          Text(t('导出为 Markdown'))
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
             .width('100%')
@@ -2180,7 +2182,7 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.exportSession(this.actionId))
-          Text('导出为 JSON')
+          Text(t('导出为 JSON'))
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
             .width('100%')
@@ -2188,7 +2190,7 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.exportSessionJson(this.actionId))
-          Text('删除会话')
+          Text(t('删除会话'))
             .fontSize(14)
             .fontColor($r('app.color.danger'))
             .width('100%')
@@ -2202,7 +2204,7 @@ struct Index {
         }
         .width('100%')
 
-        Button('取消', { type: ButtonType.Normal })
+        Button(t('取消'), { type: ButtonType.Normal })
           .width('100%')
           .height(40)
           .fontSize(13)
@@ -2226,18 +2228,18 @@ struct Index {
 
   private thinkingLabel(value: string): string {
     if (value === 'low') {
-      return '低';
+      return t('低');
     }
     if (value === 'medium') {
-      return '中';
+      return t('中');
     }
     if (value === 'high') {
-      return '高';
+      return t('高');
     }
     if (value === 'off') {
-      return '关闭';
+      return t('关闭');
     }
-    return '跟随全局';
+    return t('跟随全局');
   }
 
   @Builder
@@ -2251,21 +2253,21 @@ struct Index {
           this.paramsId = '';
         })
       Column({ space: 10 }) {
-        Text('会话参数')
+        Text(t('会话参数'))
           .fontSize(17)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
           .width('100%')
-        Text('只影响当前对话；留空或「跟随全局」即继承设置。')
+        Text(t('只影响当前对话；留空或「跟随全局」即继承设置。'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
 
-        Text('模型 ID')
+        Text(t('模型 ID'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
-        TextInput({ text: this.paramModel, placeholder: '留空则使用全局模型' })
+        TextInput({ text: this.paramModel, placeholder: t('留空则使用全局模型') })
           .width('100%')
           .height(40)
           .fontSize(13)
@@ -2277,7 +2279,7 @@ struct Index {
             this.paramModel = value;
           })
 
-        Text('思考档位')
+        Text(t('思考档位'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
@@ -2300,11 +2302,11 @@ struct Index {
         }
         .width('100%')
 
-        Text('追加系统提示词')
+        Text(t('追加系统提示词'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
-        TextArea({ text: this.paramPrompt, placeholder: '只在本会话追加，留空则不加' })
+        TextArea({ text: this.paramPrompt, placeholder: t('只在本会话追加，留空则不加') })
           .width('100%')
           .height(84)
           .fontSize(13)
@@ -2317,7 +2319,7 @@ struct Index {
           })
 
         Row({ space: 8 }) {
-          Button('恢复全局', { type: ButtonType.Normal })
+          Button(t('恢复全局'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2325,7 +2327,7 @@ struct Index {
             .backgroundColor($r('app.color.surface_alt'))
             .borderRadius(11)
             .onClick(() => this.resetSessionParams())
-          Button('取消', { type: ButtonType.Normal })
+          Button(t('取消'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2334,7 +2336,7 @@ struct Index {
             .onClick(() => {
               this.paramsId = '';
             })
-          Button('保存', { type: ButtonType.Normal })
+          Button(t('保存'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2369,16 +2371,16 @@ struct Index {
           this.deleteId = '';
         })
       Column({ space: 12 }) {
-        Text('删除这个对话？')
+        Text(t('删除这个对话？'))
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
-        Text('对话内容与全部上下文会从本机移除，无法恢复。')
+        Text(t('对话内容与全部上下文会从本机移除，无法恢复。'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .lineHeight(18)
         Row({ space: 10 }) {
-          Button('取消', { type: ButtonType.Normal })
+          Button(t('取消'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2388,7 +2390,7 @@ struct Index {
             .onClick(() => {
               this.deleteId = '';
             })
-          Button('删除', { type: ButtonType.Normal })
+          Button(t('删除'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2415,14 +2417,14 @@ struct Index {
   @Builder
   lockScreen() {
     Column({ space: 12 }) {
-      Text('Minis Harmony 已锁定')
+      Text(t('Minis Harmony 已锁定'))
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
-      Text('验证系统锁屏密码、人脸或指纹后继续。')
+      Text(t('验证系统锁屏密码、人脸或指纹后继续。'))
         .fontSize(11)
         .fontColor($r('app.color.text_secondary'))
-      Button(this.unlocking ? '验证中…' : '解锁', { type: ButtonType.Normal })
+      Button(this.unlocking ? t('验证中…') : t('解锁'), { type: ButtonType.Normal })
         .height(38)
         .width(160)
         .fontSize(13)
@@ -2448,11 +2450,11 @@ struct Index {
         .height('100%')
         .backgroundColor($r('app.color.overlay'))
       Column({ space: 10 }) {
-        Text('允许模型修改文件？')
+        Text(t('允许模型修改文件？'))
           .fontSize(17)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
-        Text('工具：' + this.confirmName)
+        Text(t('工具：') + this.confirmName)
           .fontSize(11)
           .fontColor($r('app.color.text_tertiary'))
         Scroll() {
@@ -2469,7 +2471,7 @@ struct Index {
         .borderRadius(9)
         .scrollBar(BarState.Auto)
         Row({ space: 10 }) {
-          Button('拒绝', { type: ButtonType.Normal })
+          Button(t('拒绝'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2477,7 +2479,7 @@ struct Index {
             .backgroundColor($r('app.color.surface_alt'))
             .borderRadius(11)
             .onClick(() => this.settleToolPermission(false))
-          Button('允许', { type: ButtonType.Normal })
+          Button(t('允许'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2513,19 +2515,19 @@ struct Index {
         .height('100%')
         .backgroundColor($r('app.color.overlay'))
       Column({ space: 12 }) {
-        Text(this.passwordMode === 'encrypt' ? '加密备份' : '解密备份')
+        Text(this.passwordMode === 'encrypt' ? t('加密备份') : t('解密备份'))
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
         Text(this.passwordMode === 'encrypt'
-          ? '设置一个备份密码（AES-256-GCM）。忘记密码后这份备份无法恢复，请妥善保存。'
-          : '这是加密备份，请输入导出时设置的密码。')
+          ? t('设置一个备份密码（AES-256-GCM）。忘记密码后这份备份无法恢复，请妥善保存。')
+          : t('这是加密备份，请输入导出时设置的密码。'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .lineHeight(18)
         TextInput({
           text: this.passwordValue,
-          placeholder: this.passwordMode === 'encrypt' ? '密码（至少 6 位）' : '备份密码'
+          placeholder: this.passwordMode === 'encrypt' ? t('密码（至少 6 位）') : t('备份密码')
         })
           .type(InputType.Password)
           .width('100%')
@@ -2540,7 +2542,7 @@ struct Index {
             this.passwordValue = value;
           })
         if (this.passwordMode === 'encrypt') {
-          TextInput({ text: this.passwordConfirm, placeholder: '再次输入密码' })
+          TextInput({ text: this.passwordConfirm, placeholder: t('再次输入密码') })
             .type(InputType.Password)
             .width('100%')
             .height(42)
@@ -2555,7 +2557,7 @@ struct Index {
             })
         }
         Row({ space: 10 }) {
-          Button('取消', { type: ButtonType.Normal })
+          Button(t('取消'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2564,8 +2566,8 @@ struct Index {
             .borderRadius(11)
             .enabled(!this.passwordBusy)
             .onClick(() => this.closePasswordDialog())
-          Button(this.passwordBusy ? '处理中…' :
-            (this.passwordMode === 'encrypt' ? '导出加密备份' : '解密并导入'),
+          Button(this.passwordBusy ? t('处理中…') :
+            (this.passwordMode === 'encrypt' ? t('导出加密备份') : t('解密并导入')),
             { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
@@ -2604,15 +2606,15 @@ struct Index {
           this.editing = false;
         })
       Column({ space: 12 }) {
-        Text('编辑消息')
+        Text(t('编辑消息'))
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
-        Text('修改后会删除这条消息之后的回复，并从这里重新开始。')
+        Text(t('修改后会删除这条消息之后的回复，并从这里重新开始。'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .lineHeight(18)
-        TextArea({ text: this.editText, placeholder: '输入消息…' })
+        TextArea({ text: this.editText, placeholder: t('输入消息…') })
           .width('100%')
           .height(140)
           .fontSize(14)
@@ -2625,7 +2627,7 @@ struct Index {
             this.editText = value;
           })
         Row({ space: 10 }) {
-          Button('取消', { type: ButtonType.Normal })
+          Button(t('取消'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2635,7 +2637,7 @@ struct Index {
             .onClick(() => {
               this.editing = false;
             })
-          Button('保存并重发', { type: ButtonType.Normal })
+          Button(t('保存并重发'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2670,17 +2672,17 @@ struct Index {
           this.rewindId = '';
         })
       Column({ space: 12 }) {
-        Text('回退到这条消息？')
+        Text(t('回退到这条消息？'))
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
-        Text('其后的 ' + this.rewindCount().toString() +
-          ' 条消息（含工具结果）会被删除，当前消息保留。可用「编辑」修改后再发送。')
+        Text(t('其后的 ') + this.rewindCount().toString() +
+          t(' 条消息（含工具结果）会被删除，当前消息保留。可用「编辑」修改后再发送。'))
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .lineHeight(18)
         Row({ space: 10 }) {
-          Button('取消', { type: ButtonType.Normal })
+          Button(t('取消'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)
@@ -2690,7 +2692,7 @@ struct Index {
             .onClick(() => {
               this.rewindId = '';
             })
-          Button('回退', { type: ButtonType.Normal })
+          Button(t('回退'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(40)
             .fontSize(13)

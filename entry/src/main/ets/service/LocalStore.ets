@@ -41,6 +41,7 @@ import {
   reasoningPart,
   textPart
 } from '../core/Types';
+import { t } from '../core/I18n';
 
 const STORE_NAME: string = 'minis_harmony_store_v1';
 const KEY_SETTINGS: string = 'settings';
@@ -172,7 +173,7 @@ function normalizePart(source: MessagePart): MessagePart | null {
     part.status = TOOL_ERROR;
     part.isError = true;
     if (part.resultText.length === 0) {
-      part.resultText = '上次运行中断，工具未完成。';
+      part.resultText = t('上次运行中断，工具未完成。');
     }
   }
   return part;
@@ -243,7 +244,7 @@ function normalizeSession(source: StoredSession): StoredSession | null {
       id: id,
       title: source.meta.title !== undefined && source.meta.title.length > 0
         ? source.meta.title
-        : '新对话',
+        : t('新对话'),
       updatedAt: source.meta.updatedAt !== undefined ? source.meta.updatedAt : 0,
       modelId: source.meta.modelId !== undefined ? source.meta.modelId : '',
       messageCount: messages.length,

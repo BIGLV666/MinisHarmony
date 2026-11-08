@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Detects a model stuck calling the same tool with identical arguments.
  *
@@ -34,7 +35,7 @@ export class ToolLoopGuard {
 }
 
 export function toolLoopWarning(name: string, count: number): string {
-  return '注意：检测到重复工具调用：' + name + ' 已用完全相同的参数连续调用 ' +
-    count.toString() + ' 次。继续重复不会得到新信息；请改用其他方法，' +
-    '或直接基于已有结果回答。';
+  return t('注意：检测到重复工具调用：') + name + t(' 已用完全相同的参数连续调用 ') +
+    count.toString() + t(' 次。继续重复不会得到新信息；请改用其他方法，') +
+    t('或直接基于已有结果回答。');
 }

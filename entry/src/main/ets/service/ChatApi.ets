@@ -69,11 +69,14 @@ import {
   promptCacheKey,
   responsesUrl
 } from '../core/ResponsesProtocol';
+import { t } from '../core/I18n';
 
 const USER_AGENT: string = 'MinisHarmony/1.0 (HarmonyOS tablet)';
-const SUMMARY_INSTRUCTION: string = '你是对话压缩器。把给出的对话压缩成简洁的中文摘要，保留：' +
-  '用户目标与约束、已确认的事实与决定、改过的文件与命令、未完成事项。' +
-  '不要编造，不要加开场白，直接输出摘要正文。';
+function summaryInstruction(): string {
+  return t('你是对话压缩器。把给出的对话压缩成简洁的中文摘要，保留：') +
+    t('用户目标与约束、已确认的事实与决定、改过的文件与命令、未完成事项。') +
+    t('不要编造，不要加开场白，直接输出摘要正文。');
+}
 
 export interface ChatCallbacks {
   onDelta: (content: string, reasoning: string, toolCalls: ToolCallDelta[]) => void;
@@ -276,28 +279,28 @@ export class ChatStreamHandle {
 }
 
 function describeNetworkError(error: BusinessError): string {
-  return '网络请求失败（' + error.code + '）：' + error.message;
+  return t('网络请求失败（') + error.code + t('）：') + error.message;
 }
 
 function httpErrorText(code: number, body: string): string {
   const detail: string = parseErrorMessage(body);
-  let prefix: string = '请求失败（HTTP ' + code + '）';
+  let prefix: string = t('请求失败（HTTP ') + code + t('）');
   if (code === 400) {
-    prefix = '请求参数被拒绝（HTTP 400）';
+    prefix = t('请求参数被拒绝（HTTP 400）');
   } else if (code === 401) {
-    prefix = 'API Key 无效或未被授权（HTTP 401）';
+    prefix = t('API Key 无效或未被授权（HTTP 401）');
   } else if (code === 402) {
-    prefix = 'OpenCode Go 订阅额度不足（HTTP 402）';
+    prefix = t('OpenCode Go 订阅额度不足（HTTP 402）');
   } else if (code === 403) {
-    prefix = '当前账号或区域无权访问该模型（HTTP 403）';
+    prefix = t('当前账号或区域无权访问该模型（HTTP 403）');
   } else if (code === 404) {
-    prefix = '接口地址或模型不存在（HTTP 404）';
+    prefix = t('接口地址或模型不存在（HTTP 404）');
   } else if (code === 429) {
-    prefix = '请求过于频繁，请稍后重试（HTTP 429）';
+    prefix = t('请求过于频繁，请稍后重试（HTTP 429）');
   } else if (code >= 500) {
-    prefix = '服务端暂时不可用（HTTP ' + code + '）';
+    prefix = t('服务端暂时不可用（HTTP ') + code + t('）');
   }
-  return detail.length > 0 ? prefix + '：' + detail : prefix;
+  return detail.length > 0 ? prefix + t('：') + detail : prefix;
 }
 
 /** Soul persona + user prompt + recalled memory, in that order. */
@@ -530,7 +533,7 @@ function runStream(
     });
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    fail('无法发起请求：' + error.message);
+    fail(t('无法发起请求：') + error.message);
   }
 }
 
@@ -555,11 +558,11 @@ export function startChatStream(
   const apiKey: string = settings.apiKey.trim();
 
   if (baseUrl.length === 0) {
-    callbacks.onError('请先在设置中填写 API 地址');
+    callbacks.onError(t('请先在设置中填写 API 地址'));
     return handle;
   }
   if (apiKey.length === 0 && bearerToken(settings).length === 0) {
-    callbacks.onError('请先在设置中填写 API Key，或登录服务商账号');
+    callbacks.onError(t('请先在设置中填写 API Key，或登录服务商账号'));
     return handle;
   }
   if (settings.preset === 'anthropic') {
@@ -752,12 +755,12 @@ function startResponsesStream(
 ): void {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   if (baseUrl.length === 0) {
-    callbacks.onError('请先在设置中填写 API 地址');
+    callbacks.onError(t('请先在设置中填写 API 地址'));
     return;
   }
   const token: string = settings.oauthToken !== undefined ? settings.oauthToken.trim() : '';
   if (token.length === 0) {
-    callbacks.onError('请先登录 ChatGPT 账号');
+    callbacks.onError(t('请先登录 ChatGPT 账号'));
     return;
   }
   const messages: ApiMessage[] = toApiMessages(history, resolveImage);
@@ -814,11 +817,11 @@ function startAnthropicStream(
   const oauthToken: string = settings.oauthToken !== undefined
     ? settings.oauthToken.trim() : '';
   if (baseUrl.length === 0) {
-    callbacks.onError('请先在设置中填写 API 地址');
+    callbacks.onError(t('请先在设置中填写 API 地址'));
     return;
   }
   if (apiKey.length === 0 && oauthToken.length === 0) {
-    callbacks.onError('请先在设置中填写 API Key，或登录 Claude 账号');
+    callbacks.onError(t('请先在设置中填写 API Key，或登录 Claude 账号'));
     return;
   }
   const caps = capsForModel(settings.modelId);
@@ -881,11 +884,11 @@ function startGeminiStream(
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const apiKey: string = settings.apiKey.trim();
   if (baseUrl.length === 0) {
-    callbacks.onError('请先在设置中填写 API 地址');
+    callbacks.onError(t('请先在设置中填写 API 地址'));
     return;
   }
   if (apiKey.length === 0) {
-    callbacks.onError('请先在设置中填写 API Key');
+    callbacks.onError(t('请先在设置中填写 API Key'));
     return;
   }
   const caps = capsForModel(settings.modelId);
@@ -943,7 +946,7 @@ async function summarizeGemini(
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const body: GeminiRequestBody = {
     contents: [{ role: 'user', parts: [{ text: transcript }] }],
-    systemInstruction: { parts: [{ text: SUMMARY_INSTRUCTION }] },
+    systemInstruction: { parts: [{ text: summaryInstruction() }] },
     generationConfig: { maxOutputTokens: 1500, temperature: 0.2 }
   };
   const headers: Record<string, string> = {
@@ -989,9 +992,9 @@ async function summarizeGemini(
     }
     text = text.trim();
     if (text.length === 0) {
-      return { ok: false, text: '', message: '模型没有返回摘要' };
+      return { ok: false, text: '', message: t('模型没有返回摘要') };
     }
-    return { ok: true, text: text, message: '已生成摘要' };
+    return { ok: true, text: text, message: t('已生成摘要') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
     return { ok: false, text: '', message: describeNetworkError(error) };
@@ -1010,7 +1013,7 @@ async function summarizeAnthropic(
     model: settings.modelId,
     max_tokens: 1500,
     temperature: 0.2,
-    system: SUMMARY_INSTRUCTION,
+    system: summaryInstruction(),
     messages: [{ role: 'user', content: transcript }]
   };
   const headers: Record<string, string> =
@@ -1049,9 +1052,9 @@ async function summarizeAnthropic(
     }
     text = text.trim();
     if (text.length === 0) {
-      return { ok: false, text: '', message: '模型没有返回摘要' };
+      return { ok: false, text: '', message: t('模型没有返回摘要') };
     }
-    return { ok: true, text: text, message: '已生成摘要' };
+    return { ok: true, text: text, message: t('已生成摘要') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
     return { ok: false, text: '', message: describeNetworkError(error) };
@@ -1068,7 +1071,7 @@ async function summarizeResponses(
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const body: ResponsesSummaryRequest = {
     model: settings.modelId,
-    instructions: SUMMARY_INSTRUCTION,
+    instructions: summaryInstruction(),
     input: [{ role: 'user', content: transcript }],
     stream: false,
     store: false
@@ -1112,9 +1115,9 @@ async function summarizeResponses(
     }
     text = text.trim();
     if (text.length === 0) {
-      return { ok: false, text: '', message: '模型没有返回摘要' };
+      return { ok: false, text: '', message: t('模型没有返回摘要') };
     }
-    return { ok: true, text: text, message: '已生成摘要' };
+    return { ok: true, text: text, message: t('已生成摘要') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
     return { ok: false, text: '', message: describeNetworkError(error) };
@@ -1138,13 +1141,13 @@ export async function summarizeConversation(
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const apiKey: string = settings.apiKey.trim();
   if (baseUrl.length === 0) {
-    return { ok: false, text: '', message: '请先在设置中填写 API 地址' };
+    return { ok: false, text: '', message: t('请先在设置中填写 API 地址') };
   }
   if (apiKey.length === 0 && bearerToken(settings).length === 0) {
-    return { ok: false, text: '', message: '请先在设置中填写 API Key，或登录服务商账号' };
+    return { ok: false, text: '', message: t('请先在设置中填写 API Key，或登录服务商账号') };
   }
   if (transcript.trim().length === 0) {
-    return { ok: false, text: '', message: '没有可压缩的内容' };
+    return { ok: false, text: '', message: t('没有可压缩的内容') };
   }
   if (settings.preset === 'anthropic') {
     return await summarizeAnthropic(settings, transcript);
@@ -1161,7 +1164,7 @@ export async function summarizeConversation(
     messages: [
       {
         role: 'system',
-        content: SUMMARY_INSTRUCTION
+        content: summaryInstruction()
       },
       {
         role: 'user',
@@ -1209,17 +1212,17 @@ export async function summarizeConversation(
     }
     const envelope: SummaryEnvelope = JSON.parse(raw) as SummaryEnvelope;
     if (envelope.choices === undefined || envelope.choices.length === 0) {
-      return { ok: false, text: '', message: '模型没有返回摘要' };
+      return { ok: false, text: '', message: t('模型没有返回摘要') };
     }
     const choice: SummaryChoice = envelope.choices[0];
     if (choice.message === undefined || choice.message.content === undefined) {
-      return { ok: false, text: '', message: '模型没有返回摘要' };
+      return { ok: false, text: '', message: t('模型没有返回摘要') };
     }
     const text: string = choice.message.content.trim();
     if (text.length === 0) {
-      return { ok: false, text: '', message: '模型返回了空摘要' };
+      return { ok: false, text: '', message: t('模型返回了空摘要') };
     }
-    return { ok: true, text: text, message: '已生成摘要' };
+    return { ok: true, text: text, message: t('已生成摘要') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
     return { ok: false, text: '', message: describeNetworkError(error) };
@@ -1280,9 +1283,9 @@ async function fetchGeminiModelIds(settings: AppSettings): Promise<ModelsResult>
     }
     list.sort();
     if (list.length === 0) {
-      return { ok: true, models: [], message: '连接成功，但服务没有返回模型列表' };
+      return { ok: true, models: [], message: t('连接成功，但服务没有返回模型列表') };
     }
-    return { ok: true, models: list, message: '连接成功，发现 ' + list.length + ' 个模型' };
+    return { ok: true, models: list, message: t('连接成功，发现 ') + list.length + t(' 个模型') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
     return { ok: false, models: [], message: describeNetworkError(error) };
@@ -1326,9 +1329,9 @@ async function fetchAnthropicModelIds(settings: AppSettings): Promise<ModelsResu
     }
     list.sort();
     if (list.length === 0) {
-      return { ok: true, models: [], message: '连接成功，但服务没有返回模型列表' };
+      return { ok: true, models: [], message: t('连接成功，但服务没有返回模型列表') };
     }
-    return { ok: true, models: list, message: '连接成功，发现 ' + list.length + ' 个模型' };
+    return { ok: true, models: list, message: t('连接成功，发现 ') + list.length + t(' 个模型') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
     return { ok: false, models: [], message: describeNetworkError(error) };
@@ -1351,7 +1354,7 @@ async function fetchCodexModelIds(settings: AppSettings): Promise<ModelsResult> 
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const token: string = settings.oauthToken !== undefined ? settings.oauthToken.trim() : '';
   if (token.length === 0) {
-    return { ok: false, models: [], message: '请先登录 ChatGPT 账号' };
+    return { ok: false, models: [], message: t('请先登录 ChatGPT 账号') };
   }
   const headers: Record<string, string> = codexHeaders(settings, 'application/json');
   const options: http.HttpRequestOptions = {
@@ -1368,10 +1371,10 @@ async function fetchCodexModelIds(settings: AppSettings): Promise<ModelsResult> 
     const response: http.HttpResponse = await request.request(url, options);
     const raw: string = response.result as string;
     if (response.responseCode === 401 || response.responseCode === 403) {
-      return { ok: false, models: [], message: 'ChatGPT 登录已失效，请重新登录' };
+      return { ok: false, models: [], message: t('ChatGPT 登录已失效，请重新登录') };
     }
     if (response.responseCode < 200 || response.responseCode >= 300) {
-      return codexFallback('连接失败（HTTP ' + response.responseCode.toString() + '），已使用内置模型列表');
+      return codexFallback(t('连接失败（HTTP ') + response.responseCode.toString() + t('），已使用内置模型列表'));
     }
     const envelope: CodexModelsEnvelope = JSON.parse(raw) as CodexModelsEnvelope;
     const entries: CodexModelEntry[] | undefined =
@@ -1393,12 +1396,12 @@ async function fetchCodexModelIds(settings: AppSettings): Promise<ModelsResult> 
       }
     }
     if (list.length === 0) {
-      return codexFallback('账号没有返回可用模型，已使用内置模型列表');
+      return codexFallback(t('账号没有返回可用模型，已使用内置模型列表'));
     }
-    return { ok: true, models: list, message: '连接成功，发现 ' + list.length + ' 个模型' };
+    return { ok: true, models: list, message: t('连接成功，发现 ') + list.length + t(' 个模型') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return codexFallback(describeNetworkError(error) + '，已使用内置模型列表');
+    return codexFallback(describeNetworkError(error) + t('，已使用内置模型列表'));
   } finally {
     request.destroy();
   }
@@ -1407,7 +1410,7 @@ async function fetchCodexModelIds(settings: AppSettings): Promise<ModelsResult> 
 export async function fetchModelIds(settings: AppSettings): Promise<ModelsResult> {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   if (baseUrl.length === 0) {
-    return { ok: false, models: [], message: '请先填写 API 地址' };
+    return { ok: false, models: [], message: t('请先填写 API 地址') };
   }
   if (settings.preset === 'anthropic') {
     return await fetchAnthropicModelIds(settings);
@@ -1456,9 +1459,9 @@ export async function fetchModelIds(settings: AppSettings): Promise<ModelsResult
     }
     list.sort();
     if (list.length === 0) {
-      return { ok: true, models: [], message: '连接成功，但服务没有返回模型列表' };
+      return { ok: true, models: [], message: t('连接成功，但服务没有返回模型列表') };
     }
-    return { ok: true, models: list, message: '连接成功，发现 ' + list.length + ' 个模型' };
+    return { ok: true, models: list, message: t('连接成功，发现 ') + list.length + t(' 个模型') };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
     return { ok: false, models: [], message: describeNetworkError(error) };

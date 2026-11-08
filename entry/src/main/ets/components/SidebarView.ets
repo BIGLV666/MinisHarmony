@@ -6,9 +6,11 @@ import {
   modelName
 } from '../core/Types';
 import { formatRelative } from '../service/Format';
+import { t } from '../core/I18n';
 
 @Component
 export struct SidebarView {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @Prop sessions: SessionMeta[] = [];
   @Prop searchEntries: SessionSearchEntry[] = [];
@@ -131,7 +133,7 @@ export struct SidebarView {
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
       Blank()
-      Text('设置')
+      Text(t('设置'))
         .fontSize(11)
         .fontColor($r('app.color.text_secondary'))
         .padding({ left: 8, right: 8, top: 8, bottom: 8 })
@@ -159,7 +161,7 @@ export struct SidebarView {
             .fontColor(this.accent)
         }
         if (item.pinned) {
-          Text('置顶')
+          Text(t('置顶'))
             .fontSize(9)
             .fontColor($r('app.color.text_tertiary'))
             .padding({ left: 4, right: 4, top: 1, bottom: 1 })
@@ -174,7 +176,7 @@ export struct SidebarView {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         if (item.archived) {
-          Text('归档')
+          Text(t('归档'))
             .fontSize(9)
             .fontColor($r('app.color.text_tertiary'))
             .padding({ left: 4, right: 4, top: 1, bottom: 1 })
@@ -228,7 +230,7 @@ export struct SidebarView {
         Text('＋')
           .fontSize(18)
           .fontColor($r('app.color.on_accent'))
-        Text('新建对话')
+        Text(t('新建对话'))
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.on_accent'))
@@ -240,7 +242,7 @@ export struct SidebarView {
       .borderRadius(12)
       .onClick(() => this.onNew())
 
-      TextInput({ text: this.query, placeholder: '搜索对话' })
+      TextInput({ text: this.query, placeholder: t('搜索对话') })
         .width('100%')
         .height(38)
         .fontSize(13)
@@ -255,7 +257,7 @@ export struct SidebarView {
 
       if (this.archivedCount() > 0) {
         Row({ space: 4 }) {
-          Text(this.showArchived ? '隐藏已归档' : '显示已归档')
+          Text(this.showArchived ? t('隐藏已归档') : t('显示已归档'))
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
           if (!this.showArchived) {
@@ -270,13 +272,13 @@ export struct SidebarView {
       }
 
       Row({ space: 8 }) {
-        Text(this.selecting ? '取消选择' : '选择会话')
+        Text(this.selecting ? t('取消选择') : t('选择会话'))
           .fontSize(11)
           .fontColor($r('app.color.text_tertiary'))
           .onClick(() => this.setSelecting(!this.selecting))
         Blank()
         if (this.selecting) {
-          Text('导出所选 (' + this.selectedIds.length.toString() + ')')
+          Text(t('导出所选 (') + this.selectedIds.length.toString() + ')')
             .fontSize(11)
             .fontColor(this.selectedIds.length > 0 ? this.accent : $r('app.color.text_tertiary'))
             .onClick(() => this.exportSelected())
@@ -287,10 +289,10 @@ export struct SidebarView {
 
       if (this.filtered().length === 0) {
         Column({ space: 6 }) {
-          Text(this.sessions.length === 0 ? '还没有对话' : '没有匹配的对话')
+          Text(this.sessions.length === 0 ? t('还没有对话') : t('没有匹配的对话'))
             .fontSize(13)
             .fontColor($r('app.color.text_tertiary'))
-          Text(this.sessions.length === 0 ? '点上方按钮开始' : '换个关键词试试')
+          Text(this.sessions.length === 0 ? t('点上方按钮开始') : t('换个关键词试试'))
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
         }
@@ -318,23 +320,23 @@ export struct SidebarView {
       }
 
       Column({ space: 3 }) {
-        Text('长按对话可复制或删除')
+        Text(t('长按对话可复制或删除'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
-        Text('数据仅保存在本机')
+        Text(t('数据仅保存在本机'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
-        Text('备份整库（不含密钥）')
+        Text(t('备份整库（不含密钥）'))
           .fontSize(11)
           .fontColor(this.accent)
           .padding({ top: 4, bottom: 2 })
           .onClick(() => this.onBackup())
-        Text('加密备份（密码保护）')
+        Text(t('加密备份（密码保护）'))
           .fontSize(11)
           .fontColor(this.accent)
           .padding({ top: 2, bottom: 2 })
           .onClick(() => this.onEncryptedBackup())
-        Text('导入会话 / 恢复备份')
+        Text(t('导入会话 / 恢复备份'))
           .fontSize(11)
           .fontColor(this.accent)
           .padding({ top: 2, bottom: 2 })

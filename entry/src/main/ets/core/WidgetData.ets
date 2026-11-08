@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Data shown by the home-screen service card (2x2). The main app publishes a
  * small snapshot after session changes; the form extension reads it whenever
@@ -16,7 +17,7 @@ export interface WidgetSnapshot {
 export function defaultWidgetSnapshot(): WidgetSnapshot {
   return {
     title: 'Minis',
-    body: '打开应用开始新对话',
+    body: t('打开应用开始新对话'),
     hint: '',
     updatedAt: 0
   };
@@ -28,7 +29,7 @@ export function widgetExcerpt(text: string, limit: number): string {
   if (flat.length <= limit) {
     return flat;
   }
-  return flat.substring(0, limit) + '…';
+  return flat.substring(0, limit) + t('…');
 }
 
 export function parseWidgetSnapshot(json: string): WidgetSnapshot | null {

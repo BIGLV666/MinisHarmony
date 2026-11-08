@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /** Accent presets offered in Settings; any `#RRGGBB` value is accepted. */
 export interface AccentPreset {
   name: string;
@@ -17,13 +18,13 @@ export const FONT_SCALE_OPTIONS: number[] = [0.9, 1, 1.15, 1.3];
 
 export function fontScaleLabel(scale: number): string {
   if (scale < 0.95) {
-    return '小';
+    return t('小');
   }
   if (scale < 1.08) {
-    return '标准';
+    return t('标准');
   }
   if (scale < 1.22) {
-    return '大';
+    return t('大');
   }
-  return '特大';
+  return t('特大');
 }

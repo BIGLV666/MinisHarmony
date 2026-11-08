@@ -16,6 +16,7 @@
 import { ApiContentPart, ApiMessage, ApiToolCall } from './ToolProtocol';
 import { ToolDefinition } from './ToolTypes';
 import { DeltaResult, TokenUsage, ToolCallDelta, emptyDelta } from './SseParser';
+import { t } from './I18n';
 
 /** The Codex backend mount point; the inference route hangs off it. */
 export const CODEX_API_BASE: string = 'https://chatgpt.com/backend-api/codex';
@@ -358,7 +359,7 @@ function count(value: number | undefined): number {
 }
 
 function errorMessage(code: string, message: string): string {
-  const detail: string = message.length > 0 ? message : '模型返回了错误';
+  const detail: string = message.length > 0 ? message : t('模型返回了错误');
   return code.length > 0 ? '[' + code + '] ' + detail : detail;
 }
 
@@ -398,7 +399,7 @@ export function parseResponsesData(data: string, state: ResponsesStreamState): D
   try {
     event = JSON.parse(raw) as ResponsesEvent;
   } catch (e) {
-    result.error = '无法解析流式响应';
+    result.error = t('无法解析流式响应');
     return result;
   }
   const type: string = typeof event.type === 'string' ? event.type : '';
@@ -518,7 +519,7 @@ export function parseResponsesData(data: string, state: ResponsesStreamState): D
       result.done = true;
       result.finishReason = 'length';
     } else {
-      result.error = '模型输出被截断';
+      result.error = t('模型输出被截断');
     }
     return result;
   }

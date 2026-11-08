@@ -42,6 +42,7 @@ import {
   tokenNeedsRefresh
 } from '../core/OAuth';
 import { SecureStore } from './SecureStore';
+import { t } from '../core/I18n';
 
 const encoder: util.TextEncoder = new util.TextEncoder();
 const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
@@ -153,15 +154,15 @@ async function postJson(
       }
       return {
         ok: false,
-        message: '登录失败：HTTP ' + response.responseCode.toString() +
-          (detail.length > 0 ? '（' + detail + '）' : ''),
+        message: t('登录失败：HTTP ') + response.responseCode.toString() +
+          (detail.length > 0 ? t('（') + detail + t('）') : ''),
         text: text
       };
     }
     return { ok: true, message: '', text: text };
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, message: '登录失败：' + error.message, text: '' };
+    return { ok: false, message: t('登录失败：') + error.message, text: '' };
   } finally {
     request.destroy();
   }
@@ -193,15 +194,15 @@ async function postForm(url: string, body: string): Promise<OAuthHttpResult> {
       }
       return {
         ok: false,
-        message: '刷新登录失败：HTTP ' + response.responseCode.toString() +
-          (detail.length > 0 ? '（' + detail + '）' : ''),
+        message: t('刷新登录失败：HTTP ') + response.responseCode.toString() +
+          (detail.length > 0 ? t('（') + detail + t('）') : ''),
         text: text
       };
     }
     return { ok: true, message: '', text: text };
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, message: '刷新登录失败：' + error.message, text: '' };
+    return { ok: false, message: t('刷新登录失败：') + error.message, text: '' };
   } finally {
     request.destroy();
   }
@@ -367,11 +368,11 @@ export class OAuthService {
   ): Promise<OAuthOutcome> {
     const parsed: RedirectCode | null = extractRedirectCode(pasted);
     if (parsed === null) {
-      return { ok: false, message: '没有识别到授权码，请粘贴浏览器地址栏中的回调地址或授权码' };
+      return { ok: false, message: t('没有识别到授权码，请粘贴浏览器地址栏中的回调地址或授权码') };
     }
     if (parsed.state.length > 0 && expectedState.length > 0 &&
       parsed.state !== expectedState) {
-      return { ok: false, message: '授权状态不匹配，请重新发起登录' };
+      return { ok: false, message: t('授权状态不匹配，请重新发起登录') };
     }
     const body: string = JSON.stringify({
       grant_type: 'authorization_code',
@@ -388,10 +389,10 @@ export class OAuthService {
     }
     const token: OAuthToken | null = tokenFromJson(result.text, Date.now());
     if (token === null) {
-      return { ok: false, message: '登录响应缺少 access_token' };
+      return { ok: false, message: t('登录响应缺少 access_token') };
     }
     await OAuthService.saveClaude(token);
-    return { ok: true, message: '已使用 Claude 账号登录' };
+    return { ok: true, message: t('已使用 Claude 账号登录') };
   }
 
   // MARK: - ChatGPT Codex (PKCE, Responses API)
@@ -457,11 +458,11 @@ export class OAuthService {
   ): Promise<OAuthOutcome> {
     const parsed: RedirectCode | null = extractRedirectCode(pasted);
     if (parsed === null) {
-      return { ok: false, message: '没有识别到授权码，请粘贴浏览器地址栏中的回调地址或授权码' };
+      return { ok: false, message: t('没有识别到授权码，请粘贴浏览器地址栏中的回调地址或授权码') };
     }
     if (parsed.state.length > 0 && expectedState.length > 0 &&
       parsed.state !== expectedState) {
-      return { ok: false, message: '授权状态不匹配，请重新发起登录' };
+      return { ok: false, message: t('授权状态不匹配，请重新发起登录') };
     }
     const body: string = JSON.stringify({
       grant_type: 'authorization_code',
@@ -476,11 +477,11 @@ export class OAuthService {
     }
     const token: OAuthToken | null = tokenFromJson(result.text, Date.now());
     if (token === null) {
-      return { ok: false, message: '登录响应缺少 access_token' };
+      return { ok: false, message: t('登录响应缺少 access_token') };
     }
     OAuthService.applyCodexClaims(token, result.text);
     await OAuthService.saveCodex(token);
-    return { ok: true, message: '已使用 ChatGPT 账号登录' };
+    return { ok: true, message: t('已使用 ChatGPT 账号登录') };
   }
 
   /** Account id and plan live in the id_token; decode, never verify. */
@@ -613,7 +614,7 @@ export class OAuthService {
         };
         OAuthService.copilot = storage;
         await SecureStore.set(ALIAS_COPILOT, copilotStorageJson(storage));
-        return { ok: true, message: '已使用 GitHub Copilot 账号登录' };
+        return { ok: true, message: t('已使用 GitHub Copilot 账号登录') };
       }
       if (poll.kind === 'pending') {
         continue;
@@ -624,7 +625,7 @@ export class OAuthService {
       }
       return { ok: false, message: poll.message };
     }
-    return { ok: false, message: '设备码已过期，请重新登录' };
+    return { ok: false, message: t('设备码已过期，请重新登录') };
   }
 
   /** The short-lived token Copilot's chat API actually accepts. */

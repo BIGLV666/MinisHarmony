@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Per-model request overrides.
  *
@@ -255,5 +256,5 @@ export function overrideSummary(item: ModelOverride): string {
   if (item.extraBody.trim().length > 0) {
     bits.push('body');
   }
-  return bits.length === 0 ? '未设置覆盖项' : bits.join(' · ');
+  return bits.length === 0 ? t('未设置覆盖项') : bits.join(t(' · '));
 }

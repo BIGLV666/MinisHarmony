@@ -1,3 +1,4 @@
+import { t } from '../../core/I18n';
 /**
  * 2x2 home-screen card. Values come from the binding data the form ability
  * provides; tapping the card opens the app on the current conversation.
@@ -6,7 +7,7 @@
 @Component
 struct WidgetCard {
   @LocalStorageProp('title') title: string = 'Minis';
-  @LocalStorageProp('body') body: string = '打开应用开始新对话';
+  @LocalStorageProp('body') body: string = t('打开应用开始新对话');
   @LocalStorageProp('hint') hint: string = '';
 
   build() {

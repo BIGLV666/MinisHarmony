@@ -24,6 +24,7 @@ import { EditOutcome, applyExactEdit } from '../core/EditPatch';
 import { MemoryStore } from './MemoryStore';
 import { SkillStore } from './SkillStore';
 import { SkillDoc } from '../core/SkillDoc';
+import { t } from '../core/I18n';
 
 const MAX_READ_BYTES: number = 1024 * 1024;
 const MAX_IMAGE_BYTES: number = 5 * 1024 * 1024;
@@ -271,7 +272,7 @@ export class LocalToolRuntime implements ToolRuntime {
     onProgress?: (text: string) => void): Promise<ToolResult> {
     try {
       if (isToolDisabled(this.disabledTools, name)) {
-        return { ok: false, content: '工具已在此设备上关闭：' + name };
+        return { ok: false, content: t('工具已在此设备上关闭：') + name };
       }
       if (name === 'now') {
         const now: Date = new Date();
@@ -315,12 +316,12 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'shell_execute') {
         if (this.shell === null) {
-          return { ok: false, content: '本地 Linux 沙箱尚未就绪。' };
+          return { ok: false, content: t('本地 Linux 沙箱尚未就绪。') };
         }
         if (!this.allowWrite) {
           return {
             ok: false,
-            content: '沙箱命令需要先在设置中开启「允许写入工作区文件」。'
+            content: t('沙箱命令需要先在设置中开启「允许写入工作区文件」。')
           };
         }
         return await this.shell.execute(argumentsJson, onProgress);
@@ -333,7 +334,7 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'browser_use') {
         if (this.browser === null) {
-          return { ok: false, content: '内置浏览器尚未就绪。' };
+          return { ok: false, content: t('内置浏览器尚未就绪。') };
         }
         return await this.browser.execute(argumentsJson);
       }
@@ -343,14 +344,14 @@ export class LocalToolRuntime implements ToolRuntime {
       if (name === 'calendar' || name === 'contacts' ||
         name === 'location' || name === 'weather') {
         if (this.device === null) {
-          return { ok: false, content: '设备工具在此模式下不可用。' };
+          return { ok: false, content: t('设备工具在此模式下不可用。') };
         }
         return await this.device.execute(name, argumentsJson);
       }
-      return { ok: false, content: '未知工具：' + name };
+      return { ok: false, content: t('未知工具：') + name };
     } catch (e) {
       const error: Error = e as Error;
-      return { ok: false, content: '工具执行失败：' + error.message };
+      return { ok: false, content: t('工具执行失败：') + error.message };
     }
   }
 
@@ -398,16 +399,16 @@ export class LocalToolRuntime implements ToolRuntime {
     if (this.imageGen === null) {
       return {
         ok: false,
-        content: '图像生成未开启。请在设置 → 工具与沙箱中允许图像生成，并使用 OpenAI 兼容协议。'
+        content: t('图像生成未开启。请在设置 → 工具与沙箱中允许图像生成，并使用 OpenAI 兼容协议。')
       };
     }
     const args: GenerateImageArgs = JSON.parse(argumentsJson) as GenerateImageArgs;
     const prompt: string = args.prompt !== undefined ? args.prompt.trim() : '';
     if (prompt.length === 0) {
-      return { ok: false, content: 'prompt 不能为空。' };
+      return { ok: false, content: t('prompt 不能为空。') };
     }
     if (prompt.length > 4000) {
-      return { ok: false, content: 'prompt 太长（上限 4000 字符）。' };
+      return { ok: false, content: t('prompt 太长（上限 4000 字符）。') };
     }
     const request: ImageGenRequest = {
       prompt: prompt,
@@ -419,13 +420,13 @@ export class LocalToolRuntime implements ToolRuntime {
 
   private async runSubagent(argumentsJson: string): Promise<ToolResult> {
     if (this.subagent === null) {
-      return { ok: false, content: '当前模式不支持子代理。' };
+      return { ok: false, content: t('当前模式不支持子代理。') };
     }
     const args: SubagentArgs = JSON.parse(argumentsJson) as SubagentArgs;
     const action: string = args.action !== undefined ? args.action.trim() : '';
     const prompt: string = args.prompt !== undefined ? args.prompt.trim() : '';
     if ((action.length === 0 || action === 'delegate') && prompt.length === 0) {
-      return { ok: false, content: 'subagent_task 的 action=delegate 需要非空的 prompt。' };
+      return { ok: false, content: t('subagent_task 的 action=delegate 需要非空的 prompt。') };
     }
     const request: SubagentRequest = {
       action: action,
@@ -444,10 +445,10 @@ export class LocalToolRuntime implements ToolRuntime {
   private resolvePath(raw: string, allowRoot: boolean): string {
     const relative: string | null = normalizeRelativePath(raw);
     if (relative === null) {
-      throw new Error('路径必须是工作区内的相对路径，不能是绝对路径或包含 ..');
+      throw new Error(t('路径必须是工作区内的相对路径，不能是绝对路径或包含 ..'));
     }
     if (!allowRoot && relative.length === 0) {
-      throw new Error('必须提供文件路径');
+      throw new Error(t('必须提供文件路径'));
     }
     this.assertNoSymlink(relative);
     return resolveWorkspacePath(this.root, relative);
@@ -463,11 +464,11 @@ export class LocalToolRuntime implements ToolRuntime {
       current += '/' + segments[i];
       try {
         if (fs.accessSync(current) && fs.lstatSync(current).isSymbolicLink()) {
-          throw new Error('不允许访问符号链接：' + segments[i]);
+          throw new Error(t('不允许访问符号链接：') + segments[i]);
         }
       } catch (e) {
         const error: Error = e as Error;
-        if (error.message.indexOf('符号链接') >= 0) {
+        if (error.message.indexOf(t('符号链接')) >= 0) {
           throw error;
         }
         // Missing intermediate paths are fine; write_file creates them.
@@ -499,11 +500,11 @@ export class LocalToolRuntime implements ToolRuntime {
     }
     lines.sort();
     if (names.length > 500) {
-      lines.push('…（共 ' + names.length.toString() + ' 项，已显示前 500 项）');
+      lines.push(t('…（共 ') + names.length.toString() + t(' 项，已显示前 500 项）'));
     }
     return {
       ok: true,
-      content: lines.length > 0 ? lines.join('\n') : '（空目录）'
+      content: lines.length > 0 ? lines.join('\n') : t('（空目录）')
     };
   }
 
@@ -513,16 +514,16 @@ export class LocalToolRuntime implements ToolRuntime {
     const absolute: string = this.resolvePath(raw, false);
     const stat = fs.statSync(absolute);
     if (stat.isDirectory()) {
-      return { ok: false, content: '这是一个目录，请使用 list_dir：' + raw };
+      return { ok: false, content: t('这是一个目录，请使用 list_dir：') + raw };
     }
     if (isBinaryName(absolute)) {
-      return { ok: false, content: '这是二进制文件，read_file 只读取文本：' + raw };
+      return { ok: false, content: t('这是二进制文件，read_file 只读取文本：') + raw };
     }
     if (stat.size > MAX_READ_BYTES) {
       return {
         ok: false,
-        content: '文件过大（' + stat.size.toString() + ' B），上限为 ' +
-          MAX_READ_BYTES.toString() + ' B。请先用 search_text 定位。'
+        content: t('文件过大（') + stat.size.toString() + t(' B），上限为 ') +
+          MAX_READ_BYTES.toString() + t(' B。请先用 search_text 定位。')
       };
     }
     const text: string = fs.readTextSync(absolute);
@@ -533,7 +534,7 @@ export class LocalToolRuntime implements ToolRuntime {
     let content: string = slice.join('\n');
     const remaining: number = lines.length - offset - slice.length;
     if (remaining > 0) {
-      content += '\n…（还有 ' + remaining.toString() + ' 行，可用 offset 继续读取）';
+      content += t('\n…（还有 ') + remaining.toString() + t(' 行，可用 offset 继续读取）');
     }
     return { ok: true, content: truncateText(content, MAX_RESULT_CHARS) };
   }
@@ -542,35 +543,35 @@ export class LocalToolRuntime implements ToolRuntime {
     if (!this.imagesEnabled) {
       return {
         ok: false,
-        content: '读取图片未开启。请在设置 → 工具与沙箱中允许读取图片，并确认当前模型支持视觉。'
+        content: t('读取图片未开启。请在设置 → 工具与沙箱中允许读取图片，并确认当前模型支持视觉。')
       };
     }
     const args: ReadImageArgs = JSON.parse(argumentsJson) as ReadImageArgs;
     const raw: string = args.path !== undefined ? args.path : '';
     const relative: string | null = normalizeRelativePath(raw);
     if (relative === null || relative.length === 0) {
-      return { ok: false, content: '路径必须是工作区内的相对文件路径。' };
+      return { ok: false, content: t('路径必须是工作区内的相对文件路径。') };
     }
     const absolute: string = this.resolvePath(raw, false);
     const stat = fs.statSync(absolute);
     if (stat.isDirectory()) {
-      return { ok: false, content: '这是一个目录，请提供图片文件路径：' + raw };
+      return { ok: false, content: t('这是一个目录，请提供图片文件路径：') + raw };
     }
     const mime: string = imageMimeFor(absolute);
     if (mime.length === 0) {
       return {
         ok: false,
-        content: '不支持的图片格式（支持 png / jpg / jpeg / webp / gif / bmp）：' + raw
+        content: t('不支持的图片格式（支持 png / jpg / jpeg / webp / gif / bmp）：') + raw
       };
     }
     if (stat.size <= 0) {
-      return { ok: false, content: '图片文件为空：' + raw };
+      return { ok: false, content: t('图片文件为空：') + raw };
     }
     if (stat.size > MAX_IMAGE_BYTES) {
       return {
         ok: false,
-        content: '图片过大（' + stat.size.toString() + ' B），上限为 ' +
-          MAX_IMAGE_BYTES.toString() + ' B。请先压缩后再读取。'
+        content: t('图片过大（') + stat.size.toString() + t(' B），上限为 ') +
+          MAX_IMAGE_BYTES.toString() + t(' B。请先压缩后再读取。')
       };
     }
     return {
@@ -586,7 +587,7 @@ export class LocalToolRuntime implements ToolRuntime {
     if (!this.allowWrite) {
       return {
         ok: false,
-        content: '写入工具未开启。请在设置 → 工具与沙箱中允许写入工作区文件。'
+        content: t('写入工具未开启。请在设置 → 工具与沙箱中允许写入工作区文件。')
       };
     }
     const args: WriteFileArgs = JSON.parse(argumentsJson) as WriteFileArgs;
@@ -608,7 +609,7 @@ export class LocalToolRuntime implements ToolRuntime {
       const written: number = fs.writeSync(file.fd, content);
       return {
         ok: true,
-        content: '已写入 ' + written.toString() + ' 字符到 ' + raw
+        content: t('已写入 ') + written.toString() + t(' 字符到 ') + raw
       };
     } finally {
       fs.closeSync(file);
@@ -619,7 +620,7 @@ export class LocalToolRuntime implements ToolRuntime {
     if (!this.allowWrite) {
       return {
         ok: false,
-        content: '编辑工具未开启。请在设置 → 工具与沙箱中允许写入工作区文件。'
+        content: t('编辑工具未开启。请在设置 → 工具与沙箱中允许写入工作区文件。')
       };
     }
     const args: EditFileArgs = JSON.parse(argumentsJson) as EditFileArgs;
@@ -630,16 +631,16 @@ export class LocalToolRuntime implements ToolRuntime {
     const absolute: string = this.resolvePath(raw, false);
     const stat = fs.statSync(absolute);
     if (stat.isDirectory()) {
-      return { ok: false, content: '这是一个目录，不能编辑：' + raw };
+      return { ok: false, content: t('这是一个目录，不能编辑：') + raw };
     }
     if (isBinaryName(absolute)) {
-      return { ok: false, content: '这是二进制文件，file_edit 只处理文本：' + raw };
+      return { ok: false, content: t('这是二进制文件，file_edit 只处理文本：') + raw };
     }
     if (stat.size > MAX_READ_BYTES) {
       return {
         ok: false,
-        content: '文件过大（' + stat.size.toString() + ' B），上限为 ' +
-          MAX_READ_BYTES.toString() + ' B。'
+        content: t('文件过大（') + stat.size.toString() + t(' B），上限为 ') +
+          MAX_READ_BYTES.toString() + t(' B。')
       };
     }
     const source: string = fs.readTextSync(absolute);
@@ -658,7 +659,7 @@ export class LocalToolRuntime implements ToolRuntime {
     }
     return {
       ok: true,
-      content: outcome.message + ' 文件：' + raw
+      content: outcome.message + t(' 文件：') + raw
     };
   }
 
@@ -666,7 +667,7 @@ export class LocalToolRuntime implements ToolRuntime {
     const args: SearchTextArgs = JSON.parse(argumentsJson) as SearchTextArgs;
     const query: string = args.query !== undefined ? args.query.trim() : '';
     if (query.length === 0) {
-      return { ok: false, content: 'query 不能为空' };
+      return { ok: false, content: t('query 不能为空') };
     }
     const raw: string = args.path !== undefined ? args.path : '';
     const start: string = this.resolvePath(raw, true);
@@ -720,7 +721,7 @@ export class LocalToolRuntime implements ToolRuntime {
         for (let lineNo = 0; lineNo < lines.length; lineNo++) {
           if (lines[lineNo].toLowerCase().indexOf(needle) >= 0) {
             const snippet: string = lines[lineNo].length > 240
-              ? lines[lineNo].substring(0, 240) + '…'
+              ? lines[lineNo].substring(0, 240) + t('…')
               : lines[lineNo];
             results.push(relative + ':' + (lineNo + 1).toString() + ': ' + snippet);
             if (results.length >= maxResults) {
@@ -733,9 +734,9 @@ export class LocalToolRuntime implements ToolRuntime {
 
     let content: string = results.length > 0
       ? results.join('\n')
-      : '没有找到包含“' + query + '”的文本';
+      : t('没有找到包含“') + query + t('”的文本');
     if (visited >= MAX_SEARCH_FILES) {
-      content += '\n…（已扫描 ' + MAX_SEARCH_FILES.toString() + ' 个文件后停止）';
+      content += t('\n…（已扫描 ') + MAX_SEARCH_FILES.toString() + t(' 个文件后停止）');
     }
     return { ok: true, content: truncateText(content, MAX_RESULT_CHARS) };
   }
@@ -744,13 +745,13 @@ export class LocalToolRuntime implements ToolRuntime {
     if (!this.memoryEnabled) {
       return {
         ok: false,
-        content: '持久记忆未开启。请在设置 → 工具与沙箱中打开。'
+        content: t('持久记忆未开启。请在设置 → 工具与沙箱中打开。')
       };
     }
     const args: MemoryWriteArgs = JSON.parse(argumentsJson) as MemoryWriteArgs;
     const content: string = args.content !== undefined ? args.content : '';
     const status: string = MemoryStore.write(content);
-    const ok: boolean = status.startsWith('已写入记忆');
+    const ok: boolean = status.startsWith(t('已写入记忆'));
     return { ok: ok, content: status };
   }
 
@@ -766,8 +767,8 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       return {
         ok: false,
-        content: '没有找到技能：' + (id.length > 0 ? id : '（空）') +
-          '。可用 id：' + (names.length > 0 ? names.join(', ') : '无')
+        content: t('没有找到技能：') + (id.length > 0 ? id : t('（空）')) +
+          t('。可用 id：') + (names.length > 0 ? names.join(', ') : t('无'))
       };
     }
     return { ok: true, content: doc.name + '\n\n' + doc.body };
@@ -784,14 +785,14 @@ export class LocalToolRuntime implements ToolRuntime {
         text = '';
       }
       if (text.length === 0) {
-        return { ok: true, content: '剪贴板中没有纯文本。' };
+        return { ok: true, content: t('剪贴板中没有纯文本。') };
       }
       return { ok: true, content: truncateText(text, MAX_RESULT_CHARS) };
     } catch (e) {
       const error: Error = e as Error;
       return {
         ok: false,
-        content: '读取剪贴板失败：' + error.message + '（系统可能要求用户在弹窗中允许粘贴）'
+        content: t('读取剪贴板失败：') + error.message + t('（系统可能要求用户在弹窗中允许粘贴）')
       };
     }
   }
@@ -800,13 +801,13 @@ export class LocalToolRuntime implements ToolRuntime {
     const args: ClipboardWriteArgs = JSON.parse(argumentsJson) as ClipboardWriteArgs;
     const text: string = args.text !== undefined ? args.text : '';
     if (text.length === 0) {
-      return { ok: false, content: 'text 不能为空。' };
+      return { ok: false, content: t('text 不能为空。') };
     }
     if (text.length > MAX_CLIPBOARD_CHARS) {
       return {
         ok: false,
-        content: '文本过长（' + text.length.toString() + ' 字符），上限 ' +
-          MAX_CLIPBOARD_CHARS.toString() + '。'
+        content: t('文本过长（') + text.length.toString() + t(' 字符），上限 ') +
+          MAX_CLIPBOARD_CHARS.toString() + t('。')
       };
     }
     try {
@@ -816,11 +817,11 @@ export class LocalToolRuntime implements ToolRuntime {
       await board.setData(data);
       return {
         ok: true,
-        content: '已写入剪贴板（' + text.length.toString() + ' 字符）。'
+        content: t('已写入剪贴板（') + text.length.toString() + t(' 字符）。')
       };
     } catch (e) {
       const error: Error = e as Error;
-      return { ok: false, content: '写入剪贴板失败：' + error.message };
+      return { ok: false, content: t('写入剪贴板失败：') + error.message };
     }
   }
 
@@ -828,7 +829,7 @@ export class LocalToolRuntime implements ToolRuntime {
     if (!this.memoryEnabled) {
       return {
         ok: false,
-        content: '持久记忆未开启。请在设置 → 工具与沙箱中打开。'
+        content: t('持久记忆未开启。请在设置 → 工具与沙箱中打开。')
       };
     }
     const args: MemoryGetArgs = JSON.parse(argumentsJson) as MemoryGetArgs;
@@ -845,7 +846,7 @@ export class LocalToolRuntime implements ToolRuntime {
     const args: FetchUrlArgs = JSON.parse(argumentsJson) as FetchUrlArgs;
     const url: string = args.url !== undefined ? args.url.trim() : '';
     if (!url.startsWith('https://') && !url.startsWith('http://')) {
-      return { ok: false, content: '只支持 http:// 和 https:// 地址' };
+      return { ok: false, content: t('只支持 http:// 和 https:// 地址') };
     }
     const method: string = args.method !== undefined
       ? args.method.toUpperCase()

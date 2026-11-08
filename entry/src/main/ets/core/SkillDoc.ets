@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * SKILL.md documents: optional YAML-ish frontmatter with `name` and
  * `description`, followed by the instruction body. Only the short description
@@ -85,7 +86,7 @@ export function parseSkillDoc(text: string, fallbackId: string): SkillDoc {
     name = fallbackId;
   }
   if (description.length === 0) {
-    description = body.length > 120 ? body.substring(0, 120) + '…' : body;
+    description = body.length > 120 ? body.substring(0, 120) + t('…') : body;
   }
   return {
     id: fallbackId,
@@ -100,9 +101,9 @@ export function skillCatalogue(docs: SkillDoc[]): string {
   if (docs.length === 0) {
     return '';
   }
-  let text: string = '以下技能（Skills）已启用。需要完整步骤时调用 read_skill 并传入 id：\n';
+  let text: string = t('以下技能（Skills）已启用。需要完整步骤时调用 read_skill 并传入 id：\n');
   for (let i = 0; i < docs.length; i++) {
-    text += '- ' + docs[i].name + '（id: ' + docs[i].id + '）：' +
+    text += '- ' + docs[i].name + t('（id: ') + docs[i].id + t('）：') +
       docs[i].description + '\n';
   }
   return text.trim();

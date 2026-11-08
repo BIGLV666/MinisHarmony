@@ -2,6 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { ToolDefinition, ToolResult, ToolRuntime } from '../core/ToolTypes';
 import { builtinToolDefinitions, isToolDisabled } from '../core/ToolCatalog';
 import { truncateText } from '../core/Workspace';
+import { t } from '../core/I18n';
 
 interface RemoteToolRequest {
   name: string;
@@ -74,56 +75,56 @@ export class RemoteToolRuntime implements ToolRuntime {
 
   async execute(name: string, argumentsJson: string): Promise<ToolResult> {
     if (isToolDisabled(this.disabledTools, name)) {
-      return { ok: false, content: '工具已在此设备上关闭：' + name };
+      return { ok: false, content: t('工具已在此设备上关闭：') + name };
     }
     if (name === 'memory_write' || name === 'memory_get') {
       return {
         ok: false,
-        content: '持久记忆只在本机工作区模式下可用，远程沙箱不会转发记忆工具。'
+        content: t('持久记忆只在本机工作区模式下可用，远程沙箱不会转发记忆工具。')
       };
     }
     if (name === 'generate_image') {
       return {
         ok: false,
-        content: '图像生成在平板本机执行，远程沙箱不会转发该工具。'
+        content: t('图像生成在平板本机执行，远程沙箱不会转发该工具。')
       };
     }
     if (name === 'read_image') {
       return {
         ok: false,
-        content: '读取图片只在本机工作区模式下可用，远程沙箱不会转发图片内容。'
+        content: t('读取图片只在本机工作区模式下可用，远程沙箱不会转发图片内容。')
       };
     }
     if (name === 'subagent_task') {
       return {
         ok: false,
-        content: '子代理只在本机工作区模式下运行。'
+        content: t('子代理只在本机工作区模式下运行。')
       };
     }
     if (name === 'clipboard_read' || name === 'clipboard_write') {
       return {
         ok: false,
-        content: '剪贴板属于平板本机能力，远程沙箱不转发。'
+        content: t('剪贴板属于平板本机能力，远程沙箱不转发。')
       };
     }
     if (name === 'browser_use') {
       return {
         ok: false,
-        content: '内置浏览器运行在平板上，远程沙箱模式下不可用。'
+        content: t('内置浏览器运行在平板上，远程沙箱模式下不可用。')
       };
     }
     if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {
       return {
         ok: false,
-        content: '写入工具未开启。请在设置 → 工具与沙箱中允许写入。'
+        content: t('写入工具未开启。请在设置 → 工具与沙箱中允许写入。')
       };
     }
     if (this.endpoint.length === 0) {
-      return { ok: false, content: '远程沙箱地址未配置，请在设置 → 工具与沙箱中填写。' };
+      return { ok: false, content: t('远程沙箱地址未配置，请在设置 → 工具与沙箱中填写。') };
     }
     if (!this.endpoint.startsWith('https://') &&
       !this.endpoint.startsWith('http://')) {
-      return { ok: false, content: '远程沙箱地址必须以 http:// 或 https:// 开头。' };
+      return { ok: false, content: t('远程沙箱地址必须以 http:// 或 https:// 开头。') };
     }
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -153,7 +154,7 @@ export class RemoteToolRuntime implements ToolRuntime {
       if (response.responseCode >= 400) {
         return {
           ok: false,
-          content: '远程沙箱 HTTP ' + response.responseCode.toString() + '\n' +
+          content: t('远程沙箱 HTTP ') + response.responseCode.toString() + '\n' +
             truncateText(raw, 2000)
         };
       }
@@ -163,7 +164,7 @@ export class RemoteToolRuntime implements ToolRuntime {
       } catch (e) {
         return {
           ok: false,
-          content: '远程沙箱返回了非 JSON 内容：\n' + truncateText(raw, 2000)
+          content: t('远程沙箱返回了非 JSON 内容：\n') + truncateText(raw, 2000)
         };
       }
       const content: string = parsed.content !== undefined
@@ -175,7 +176,7 @@ export class RemoteToolRuntime implements ToolRuntime {
       };
     } catch (e) {
       const error: Error = e as Error;
-      return { ok: false, content: '远程沙箱连接失败：' + error.message };
+      return { ok: false, content: t('远程沙箱连接失败：') + error.message };
     } finally {
       request.destroy();
     }

@@ -6,6 +6,7 @@ import {
   taskTitle,
   validateTaskAt
 } from '../core/ScheduledTask';
+import { t } from '../core/I18n';
 
 const DAY_MS: number = 24 * 60 * 60 * 1000;
 
@@ -18,6 +19,7 @@ const DAY_MS: number = 24 * 60 * 60 * 1000;
  */
 @Component
 export struct ScheduledTasksSheet {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop tasks: ScheduledTask[] = [];
   @Prop runs: TaskRun[] = [];
   onCreate: (prompt: string, at: number) => void = () => {
@@ -52,7 +54,7 @@ export struct ScheduledTasksSheet {
   private create(): void {
     const prompt: string = this.prompt.trim();
     if (prompt.length === 0) {
-      this.error = '请填写到时间后要发送的提示词';
+      this.error = t('请填写到时间后要发送的提示词');
       return;
     }
     const reason: string = validateTaskAt(this.at, Date.now());
@@ -67,23 +69,23 @@ export struct ScheduledTasksSheet {
 
   private statusOf(task: ScheduledTask, now: number): string {
     if (task.at > now) {
-      return '等待提醒';
+      return t('等待提醒');
     }
     if (task.triggeredAt > 0) {
-      return '已触发';
+      return t('已触发');
     }
-    return '已过期';
+    return t('已过期');
   }
 
   @Builder
   header() {
     Row({ space: 8 }) {
       Column({ space: 3 }) {
-        Text('定时任务')
+        Text(t('定时任务'))
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
-        Text('到点提醒，点通知把提示词填回输入框')
+        Text(t('到点提醒，点通知把提示词填回输入框'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
       }
@@ -101,7 +103,7 @@ export struct ScheduledTasksSheet {
   @Builder
   composer() {
     Column({ space: 8 }) {
-      TextArea({ text: this.prompt, placeholder: '到时间后要发送的提示词，例如：总结今天的日程' })
+      TextArea({ text: this.prompt, placeholder: t('到时间后要发送的提示词，例如：总结今天的日程') })
         .width('100%')
         .height(84)
         .fontSize(13)
@@ -114,9 +116,9 @@ export struct ScheduledTasksSheet {
         })
 
       Row({ space: 6 }) {
-        this.quickChip('1 小时后', () => this.quick(1))
-        this.quickChip('今晚 20:00', () => this.quickAt(20, 0))
-        this.quickChip('明早 09:00', () => this.quickAt(9, 1))
+        this.quickChip(t('1 小时后'), () => this.quick(1))
+        this.quickChip(t('今晚 20:00'), () => this.quickAt(20, 0))
+        this.quickChip(t('明早 09:00'), () => this.quickAt(9, 1))
       }
       .width('100%')
 
@@ -150,11 +152,11 @@ export struct ScheduledTasksSheet {
         })
 
       Row({ space: 8 }) {
-        Text('提醒：' + formatTaskTime(this.at, Date.now()))
+        Text(t('提醒：') + formatTaskTime(this.at, Date.now()))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
           .layoutWeight(1)
-        Text('创建')
+        Text(t('创建'))
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
           .fontColor(Color.White)
@@ -210,11 +212,11 @@ export struct ScheduledTasksSheet {
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .layoutWeight(1)
-        Text('填入')
+        Text(t('填入'))
           .fontSize(11)
           .fontColor($r('app.color.accent'))
           .onClick(() => this.onFill(task.id))
-        Text('删除')
+        Text(t('删除'))
           .fontSize(11)
           .fontColor($r('app.color.danger'))
           .onClick(() => this.onCancelTask(task.id))
@@ -232,12 +234,12 @@ export struct ScheduledTasksSheet {
   taskList() {
     Column({ space: 8 }) {
       Row({ space: 8 }) {
-        Text('已安排')
+        Text(t('已安排'))
           .fontSize(11)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_secondary'))
           .layoutWeight(1)
-        Text(this.showHistory ? '隐藏历史' : '运行历史 (' + this.runs.length.toString() + ')')
+        Text(this.showHistory ? t('隐藏历史') : t('运行历史 (') + this.runs.length.toString() + ')')
           .fontSize(10)
           .fontColor($r('app.color.accent'))
           .onClick(() => {
@@ -247,7 +249,7 @@ export struct ScheduledTasksSheet {
       .width('100%')
 
       if (this.tasks.length === 0) {
-        Text('还没有定时任务')
+        Text(t('还没有定时任务'))
           .fontSize(11)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
@@ -266,13 +268,13 @@ export struct ScheduledTasksSheet {
   history() {
     Column({ space: 8 }) {
       Row({ space: 8 }) {
-        Text('运行历史')
+        Text(t('运行历史'))
           .fontSize(11)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_secondary'))
           .layoutWeight(1)
         if (this.runs.length > 0) {
-          Text('清空')
+          Text(t('清空'))
             .fontSize(10)
             .fontColor($r('app.color.danger'))
             .onClick(() => this.onClearRuns())
@@ -281,7 +283,7 @@ export struct ScheduledTasksSheet {
       .width('100%')
 
       if (this.runs.length === 0) {
-        Text('任务提示词发送并完成后，这里会记录结果摘要')
+        Text(t('任务提示词发送并完成后，这里会记录结果摘要'))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')

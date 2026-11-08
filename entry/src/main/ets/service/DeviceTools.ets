@@ -28,6 +28,7 @@ import {
   weatherUrl
 } from '../core/Device';
 import { truncateText } from '../core/Workspace';
+import { t } from '../core/I18n';
 
 const DAY_MS: number = 24 * 60 * 60 * 1000;
 const MAX_HTTP_CHARS: number = 1024 * 1024;
@@ -92,10 +93,10 @@ export class DeviceTools implements DeviceToolsHandler {
 
   async execute(name: string, argumentsJson: string): Promise<ToolResult> {
     if (name === 'contacts') {
-      return { ok: false, content: '通讯录工具需要受限 ACL 权限，当前签名尚未包含该权限。' };
+      return { ok: false, content: t('通讯录工具需要受限 ACL 权限，当前签名尚未包含该权限。') };
     }
     if (!this.enabled(name)) {
-      return { ok: false, content: '该设备工具已在设置中关闭：' + name };
+      return { ok: false, content: t('该设备工具已在设置中关闭：') + name };
     }
     try {
       if (name === 'calendar') {
@@ -110,10 +111,10 @@ export class DeviceTools implements DeviceToolsHandler {
       if (name === 'weather') {
         return await this.weather(argumentsJson);
       }
-      return { ok: false, content: '未知设备工具：' + name };
+      return { ok: false, content: t('未知设备工具：') + name };
     } catch (e) {
       const error: BusinessError = e as BusinessError;
-      return { ok: false, content: '设备工具执行失败：' + error.message };
+      return { ok: false, content: t('设备工具执行失败：') + error.message };
     }
   }
 
@@ -124,13 +125,13 @@ export class DeviceTools implements DeviceToolsHandler {
       const result = await manager.requestPermissionsFromUser(this.context, permissions);
       for (let i = 0; i < result.authResults.length; i++) {
         if (result.authResults[i] !== 0) {
-          return '用户未授予所需权限：' + result.permissions[i];
+          return t('用户未授予所需权限：') + result.permissions[i];
         }
       }
       return '';
     } catch (e) {
       const error: BusinessError = e as BusinessError;
-      return '无法请求系统权限：' + error.message;
+      return t('无法请求系统权限：') + error.message;
     }
   }
 
@@ -140,7 +141,7 @@ export class DeviceTools implements DeviceToolsHandler {
       ? stringArg(args.action).toLowerCase()
       : 'list';
     if (action !== 'list' && action !== 'create') {
-      return { ok: false, content: 'calendar 的 action 只支持 list 或 create。' };
+      return { ok: false, content: t('calendar 的 action 只支持 list 或 create。') };
     }
     const now: number = Date.now();
     if (action === 'create') {
@@ -150,13 +151,13 @@ export class DeviceTools implements DeviceToolsHandler {
       ? parseTimeArg(stringArg(args.start), now)
       : this.startOfToday(now);
     if (start < 0) {
-      return { ok: false, content: 'start 时间无法识别，请用 YYYY-MM-DD HH:mm。' };
+      return { ok: false, content: t('start 时间无法识别，请用 YYYY-MM-DD HH:mm。') };
     }
     const end: number = stringArg(args.end).length > 0
       ? parseTimeArg(stringArg(args.end), now)
       : start + 7 * DAY_MS;
     if (end < 0 || end <= start) {
-      return { ok: false, content: 'end 必须晚于 start。' };
+      return { ok: false, content: t('end 必须晚于 start。') };
     }
     const denied: string = await this.ensurePermissions(
       ['ohos.permission.READ_CALENDAR'] as Permissions[]);
@@ -177,7 +178,7 @@ export class DeviceTools implements DeviceToolsHandler {
         event.location.location !== undefined ? event.location.location : '';
       lines.push(formatEventLine(
         event.id !== undefined ? event.id : 0,
-        event.title !== undefined ? event.title : '（无标题）',
+        event.title !== undefined ? event.title : t('（无标题）'),
         event.startTime,
         event.endTime,
         place
@@ -186,12 +187,12 @@ export class DeviceTools implements DeviceToolsHandler {
     if (lines.length === 0) {
       return {
         ok: true,
-        content: '此范围内没有日历事件（' + formatDateTime(start) + ' – ' +
-          formatDateTime(end) + '）。'
+        content: t('此范围内没有日历事件（') + formatDateTime(start) + ' – ' +
+          formatDateTime(end) + t('）。')
       };
     }
     if (events.length > MAX_LISTED_EVENTS) {
-      lines.push('…还有 ' + (events.length - MAX_LISTED_EVENTS).toString() + ' 条未显示。');
+      lines.push(t('…还有 ') + (events.length - MAX_LISTED_EVENTS).toString() + t(' 条未显示。'));
     }
     return { ok: true, content: lines.join('\n') };
   }
@@ -204,18 +205,18 @@ export class DeviceTools implements DeviceToolsHandler {
   private async createEvent(args: CalendarArgs, now: number): Promise<ToolResult> {
     const title: string = stringArg(args.title);
     if (title.length === 0) {
-      return { ok: false, content: 'create 需要非空的 title。' };
+      return { ok: false, content: t('create 需要非空的 title。') };
     }
     const start: number = parseTimeArg(stringArg(args.start), now);
     if (start < 0) {
-      return { ok: false, content: 'start 时间无法识别，请用 YYYY-MM-DD HH:mm。' };
+      return { ok: false, content: t('start 时间无法识别，请用 YYYY-MM-DD HH:mm。') };
     }
     const endText: string = stringArg(args.end);
     const end: number = endText.length > 0
       ? parseTimeArg(endText, now)
       : start + 60 * 60 * 1000;
     if (end < 0 || end <= start) {
-      return { ok: false, content: 'end 必须晚于 start。' };
+      return { ok: false, content: t('end 必须晚于 start。') };
     }
     const denied: string = await this.ensurePermissions(
       ['ohos.permission.READ_CALENDAR', 'ohos.permission.WRITE_CALENDAR'] as Permissions[]);
@@ -241,8 +242,8 @@ export class DeviceTools implements DeviceToolsHandler {
     const id: number = await calendar.addEvent(event);
     return {
       ok: true,
-      content: '已创建日历事件 #' + id.toString() + '：' + title +
-        '（' + formatDateTime(start) + ' – ' + formatDateTime(end) + '）'
+      content: t('已创建日历事件 #') + id.toString() + t('：') + title +
+        t('（') + formatDateTime(start) + ' – ' + formatDateTime(end) + t('）')
     };
   }
 
@@ -288,8 +289,8 @@ export class DeviceTools implements DeviceToolsHandler {
       return {
         ok: true,
         content: query.length > 0
-          ? '没有匹配「' + query + '」的联系人。'
-          : '通讯录为空，或没有可读取的联系人。'
+          ? t('没有匹配「') + query + t('」的联系人。')
+          : t('通讯录为空，或没有可读取的联系人。')
       };
     }
     return { ok: true, content: blocks.join('\n') };
@@ -309,9 +310,9 @@ export class DeviceTools implements DeviceToolsHandler {
       await geoLocationManager.getCurrentLocation(request);
     return {
       ok: true,
-      content: '纬度：' + position.latitude.toFixed(6) + '\n经度：' +
-        position.longitude.toFixed(6) + '\n精度：约 ' +
-        position.accuracy.toFixed(0) + ' 米'
+      content: t('纬度：') + position.latitude.toFixed(6) + t('\n经度：') +
+        position.longitude.toFixed(6) + t('\n精度：约 ') +
+        position.accuracy.toFixed(0) + t(' 米')
     };
   }
 
@@ -321,7 +322,7 @@ export class DeviceTools implements DeviceToolsHandler {
       ? stringArg(args.action).toLowerCase()
       : 'current';
     if (action !== 'current' && action !== 'forecast') {
-      return { ok: false, content: 'weather 的 action 只支持 current 或 forecast。' };
+      return { ok: false, content: t('weather 的 action 只支持 current 或 forecast。') };
     }
     const days: number = clampWeatherDays(
       action === 'forecast' ? (args.days !== undefined ? args.days : 3) : 1);
@@ -332,11 +333,11 @@ export class DeviceTools implements DeviceToolsHandler {
     if (city.length > 0) {
       const geoBody: string = await this.get(geocodeUrl(city));
       if (geoBody.length === 0) {
-        return { ok: false, content: '无法解析城市「' + city + '」，请换一个名称。' };
+        return { ok: false, content: t('无法解析城市「') + city + t('」，请换一个名称。') };
       }
       place = parseGeoJson(geoBody);
       if (place === null) {
-        return { ok: false, content: '找不到城市「' + city + '」。' };
+        return { ok: false, content: t('找不到城市「') + city + t('」。') };
       }
       lat = place.latitude;
       lon = place.longitude;
@@ -344,7 +345,7 @@ export class DeviceTools implements DeviceToolsHandler {
       const denied: string = await this.ensurePermissions(
         ['ohos.permission.APPROXIMATELY_LOCATION'] as Permissions[]);
       if (denied.length > 0) {
-        return { ok: false, content: denied + '（也可以传 city 参数按城市查询。）' };
+        return { ok: false, content: denied + t('（也可以传 city 参数按城市查询。）') };
       }
       const request: geoLocationManager.CurrentLocationRequest = {
         priority: geoLocationManager.LocationRequestPriority.FIRST_FIX,
@@ -357,11 +358,11 @@ export class DeviceTools implements DeviceToolsHandler {
     }
     const body: string = await this.get(weatherUrl(lat, lon, days));
     if (body.length === 0) {
-      return { ok: false, content: '天气服务暂时不可用。' };
+      return { ok: false, content: t('天气服务暂时不可用。') };
     }
     const report: WeatherReport = parseWeatherJson(body);
     if (report.current === null && report.days.length === 0) {
-      return { ok: false, content: '天气响应无法解析。' };
+      return { ok: false, content: t('天气响应无法解析。') };
     }
     return { ok: true, content: formatWeatherText(placeLabel(place, lat, lon), report) };
   }

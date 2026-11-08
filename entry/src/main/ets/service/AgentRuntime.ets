@@ -49,6 +49,7 @@ import { clampMaxTurns } from '../core/Types';
 import { AppLogger } from './AppLogger';
 import { MemoryStore } from './MemoryStore';
 import { ChatStreamHandle, startChatStream } from './ChatApi';
+import { t } from '../core/I18n';
 
 const MAX_TOOL_RESULT: number = 20000;
 const FLUSH_MS: number = 50;
@@ -208,7 +209,7 @@ export class AgentRuntime {
       return;
     }
     this.cancelled = true;
-    this.log(EVENT_CANCELLED, LOG_WARN, this.step, '', false, 0, '用户停止生成');
+    this.log(EVENT_CANCELLED, LOG_WARN, this.step, '', false, 0, t('用户停止生成'));
     if (this.handle !== null) {
       this.handle.cancel();
       this.handle = null;
@@ -216,7 +217,7 @@ export class AgentRuntime {
     if (this.lastAssistant !== null) {
       this.interruptToolCalls(this.lastAssistant);
       if (this.lastAssistant.parts.length === 0) {
-        appendText(this.lastAssistant, '（已停止生成）');
+        appendText(this.lastAssistant, t('（已停止生成）'));
       }
     }
     this.finish();
@@ -231,10 +232,10 @@ export class AgentRuntime {
         part.status = TOOL_ERROR;
         part.isError = true;
         if (part.resultText.length === 0) {
-          part.resultText = '生成已停止，工具未执行。';
+          part.resultText = t('生成已停止，工具未执行。');
         } else {
           // The card may hold a live tail already; keep it but say it is partial.
-          part.resultText = part.resultText + '\n（已停止，以上为不完整输出）';
+          part.resultText = part.resultText + t('\n（已停止，以上为不完整输出）');
         }
       }
     }
@@ -298,8 +299,8 @@ export class AgentRuntime {
       if (this.lastAssistant !== null) {
         appendText(
           this.lastAssistant,
-          '\n\n> 已达到 ' + this.maxTurns.toString() +
-            ' 轮工具调用上限。已完成的上下文与工具结果都保留在本对话中，继续发送消息即可接着执行。'
+          t('\n\n> 已达到 ') + this.maxTurns.toString() +
+            t(' 轮工具调用上限。已完成的上下文与工具结果都保留在本对话中，继续发送消息即可接着执行。')
         );
       }
       this.log(
@@ -313,7 +314,7 @@ export class AgentRuntime {
 
     const assistant: ChatMessage | null = this.lastAssistant;
     if (assistant === null) {
-      this.callbacks.onError('内部错误：缺少 assistant 占位消息');
+      this.callbacks.onError(t('内部错误：缺少 assistant 占位消息'));
       this.finish();
       return;
     }
@@ -422,7 +423,7 @@ export class AgentRuntime {
 
     if (finishReason === 'length') {
       const prefix: string = textOf(assistant).length > 0 ? '\n\n' : '';
-      appendText(assistant, prefix + '> 已达到最大输出长度，内容可能被截断。');
+      appendText(assistant, prefix + t('> 已达到最大输出长度，内容可能被截断。'));
     }
 
     const calls: MessagePart[] = this.settings.toolsEnabled
@@ -431,12 +432,12 @@ export class AgentRuntime {
     if (calls.length === 0) {
       if (this.settings.toolsEnabled) {
         if (textOf(assistant).length === 0) {
-          appendText(assistant, '（模型没有返回内容）');
+          appendText(assistant, t('（模型没有返回内容）'));
         }
       } else if (this.accumulators.size > 0) {
-        appendText(assistant, '（模型请求了工具，但工具调用已在设置中关闭）');
+        appendText(assistant, t('（模型请求了工具，但工具调用已在设置中关闭）'));
       } else if (textOf(assistant).length === 0) {
-        appendText(assistant, '（模型没有返回内容）');
+        appendText(assistant, t('（模型没有返回内容）'));
       }
       // A steer that arrived while this turn was streaming keeps the loop
       // alive instead of being reported as missed.
@@ -487,7 +488,7 @@ export class AgentRuntime {
     if (textOf(assistant).length > 0) {
       appendText(assistant, '\n\n');
     }
-    appendText(assistant, '> 注意：' + message);
+    appendText(assistant, t('> 注意：') + message);
     assistant.error = true;
     this.callbacks.onError(message);
     this.finish();
@@ -542,7 +543,7 @@ export class AgentRuntime {
         this.finish();
         return;
       }
-      this.callbacks.onError('工具调度失败：' + error.message);
+      this.callbacks.onError(t('工具调度失败：') + error.message);
       this.finish();
     });
   }
@@ -571,7 +572,7 @@ export class AgentRuntime {
         return;
       }
       if (!allowed) {
-        call.resultText = '用户拒绝了这次工具调用：' + call.toolName;
+        call.resultText = t('用户拒绝了这次工具调用：') + call.toolName;
         call.status = TOOL_ERROR;
         call.isError = true;
         this.toolCount++;
@@ -624,7 +625,7 @@ export class AgentRuntime {
         return;
       }
       const error: Error = e as Error;
-      call.resultText = '工具执行异常：' + error.message;
+      call.resultText = t('工具执行异常：') + error.message;
       call.status = TOOL_ERROR;
       call.isError = true;
       this.toolCount++;

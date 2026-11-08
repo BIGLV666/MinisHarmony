@@ -18,6 +18,7 @@ import {
   newChatMessage,
   textOf
 } from './Types';
+import { t } from './I18n';
 
 export const COMPACT_DEFAULT_KEEP_TURNS: number = 3;
 export const COMPACT_MIN_MESSAGES: number = 6;
@@ -72,7 +73,7 @@ function clip(value: string, limit: number): string {
   if (value.length <= limit) {
     return value;
   }
-  return value.substring(0, limit) + '…（截断）';
+  return value.substring(0, limit) + t('…（截断）');
 }
 
 /**
@@ -88,20 +89,20 @@ export function transcriptForSummary(messages: ChatMessage[], maxChars: number):
     const message: ChatMessage = messages[i];
     const body: string = textOf(message).trim();
     if (body.length > 0) {
-      out += (message.role === 'user' ? '用户：' : '助手：') + body + '\n\n';
+      out += (message.role === 'user' ? t('用户：') : t('助手：')) + body + '\n\n';
     }
     for (let j = 0; j < message.parts.length; j++) {
       const part: MessagePart = message.parts[j];
       if (part.kind !== PART_TOOL_CALL) {
         continue;
       }
-      out += '[工具 ' + part.toolName + '] 参数：' +
-        clip(part.argumentsText, 300) + '\n结果：' +
+      out += t('[工具 ') + part.toolName + t('] 参数：') +
+        clip(part.argumentsText, 300) + t('\n结果：') +
         clip(part.resultText, 600) + '\n\n';
     }
   }
   if (out.length > maxChars) {
-    out = out.substring(0, maxChars) + '\n…（更早内容已省略）';
+    out = out.substring(0, maxChars) + t('\n…（更早内容已省略）');
   }
   return out;
 }
@@ -111,7 +112,7 @@ export function makeSummaryMessage(id: string, summary: string): ChatMessage {
   return newChatMessage(
     id,
     'system',
-    '以下是本次对话较早部分的摘要，请把它当作已读上下文：\n\n' + summary.trim()
+    t('以下是本次对话较早部分的摘要，请把它当作已读上下文：\n\n') + summary.trim()
   );
 }
 
@@ -197,8 +198,8 @@ export function fitHistoryToBudget(
       }
       const originalLength: number = part.resultText.length;
       part.resultText = part.resultText.substring(0, TOOL_TRIM_KEEP) +
-        '\n…（为控制上下文，较早的工具结果已省略 ' +
-        (originalLength - TOOL_TRIM_KEEP).toString() + ' 字符）';
+        t('\n…（为控制上下文，较早的工具结果已省略 ') +
+        (originalLength - TOOL_TRIM_KEEP).toString() + t(' 字符）');
       trimmedParts++;
       savedChars += originalLength - part.resultText.length;
     }

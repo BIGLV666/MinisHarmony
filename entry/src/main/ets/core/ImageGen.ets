@@ -6,6 +6,7 @@
  */
 
 import { normalizeBaseUrl } from './OpenCodeRules';
+import { t } from './I18n';
 
 export const IMAGE_SIZES: string[] = ['1024x1024', '1024x1792', '1792x1024'];
 export const DEFAULT_IMAGE_SIZE: string = '1024x1024';
@@ -93,19 +94,19 @@ export function parseImageGenResponse(body: string): ImageGenPayload {
   try {
     root = JSON.parse(body) as RawImageResponse;
   } catch (e) {
-    return { b64: '', url: '', error: '接口返回的不是 JSON' };
+    return { b64: '', url: '', error: t('接口返回的不是 JSON') };
   }
   if (root === null || root === undefined) {
-    return { b64: '', url: '', error: '接口返回为空' };
+    return { b64: '', url: '', error: t('接口返回为空') };
   }
   if (root.error !== undefined && root.error !== null) {
     const message: string = root.error.message !== undefined &&
-      root.error.message.length > 0 ? root.error.message : '图片生成失败';
+      root.error.message.length > 0 ? root.error.message : t('图片生成失败');
     return { b64: '', url: '', error: message };
   }
   if (root.data === undefined || !Array.isArray(root.data) || root.data.length === 0) {
     const fallback: string = root.message !== undefined && root.message.length > 0
-      ? root.message : '接口没有返回图片';
+      ? root.message : t('接口没有返回图片');
     return { b64: '', url: '', error: fallback };
   }
   const first: RawImageData = root.data[0];
@@ -117,5 +118,5 @@ export function parseImageGenResponse(body: string): ImageGenPayload {
   if (url.startsWith('https://') || url.startsWith('http://')) {
     return { b64: '', url: url, error: '' };
   }
-  return { b64: '', url: '', error: '接口没有返回可用图片' };
+  return { b64: '', url: '', error: t('接口没有返回可用图片') };
 }

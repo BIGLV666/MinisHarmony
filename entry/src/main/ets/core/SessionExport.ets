@@ -22,6 +22,7 @@ import {
   makePart
 } from './Types';
 import { exportStamp, safeFileBase } from './MarkdownExport';
+import { t } from './I18n';
 
 export const SESSION_EXPORT_APP: string = 'MinisHarmony';
 export const SESSION_EXPORT_VERSION: number = 1;
@@ -196,7 +197,7 @@ function importPart(source: RawPart): MessagePart | null {
     part.status = TOOL_ERROR;
     part.isError = true;
     if (part.resultText.length === 0) {
-      part.resultText = '导入的文件里该工具调用尚未完成。';
+      part.resultText = t('导入的文件里该工具调用尚未完成。');
     }
   }
   if (kind === PART_TOOL_CALL && part.status.length === 0) {
@@ -253,15 +254,15 @@ export function parseSessionExport(
   try {
     root = JSON.parse(text) as SessionExportEnvelope;
   } catch (e) {
-    return { ok: false, error: '文件不是有效的 JSON', session: null };
+    return { ok: false, error: t('文件不是有效的 JSON'), session: null };
   }
   if (root === null || root === undefined || root.app !== SESSION_EXPORT_APP) {
-    return { ok: false, error: '不是 MinisHarmony 导出的会话', session: null };
+    return { ok: false, error: t('不是 MinisHarmony 导出的会话'), session: null };
   }
   if (root.version === undefined || root.version < 1 ||
     root.version > SESSION_EXPORT_VERSION) {
-    return { ok: false, error: '不支持的导出版本：' + (root.version === undefined
-      ? '未知' : root.version.toString()), session: null };
+    return { ok: false, error: t('不支持的导出版本：') + (root.version === undefined
+      ? t('未知') : root.version.toString()), session: null };
   }
   const raw: RawSession = root.session as RawSession;
   const result: RawImport = importRawSession(raw, newId, now);
@@ -284,7 +285,7 @@ function importRawSession(
 ): RawImport {
   if (raw === null || raw === undefined || raw.meta === undefined ||
     !Array.isArray(raw.messages)) {
-    return { session: null, error: '文件里没有会话数据' };
+    return { session: null, error: t('文件里没有会话数据') };
   }
   const messages: ChatMessage[] = [];
   for (let i = 0; i < raw.messages.length; i++) {
@@ -294,11 +295,12 @@ function importRawSession(
     }
   }
   if (messages.length === 0) {
-    return { session: null, error: '会话里没有可导入的消息' };
+    return { session: null, error: t('会话里没有可导入的消息') };
   }
   let title: string = raw.meta.title !== undefined && raw.meta.title.trim().length > 0
     ? raw.meta.title.trim()
-    : '导入的对话';
+    : t('导入的对话');
+  // A stable marker keeps duplicate detection working across language switches.
   if (!preserve && !title.endsWith('（导入）')) {
     title = title + '（导入）';
   }
@@ -358,17 +360,17 @@ export function parseSessionsExport(
   try {
     root = JSON.parse(text) as RawEnvelopeRoot;
   } catch (e) {
-    return { ok: false, error: '文件不是有效的 JSON', sessions: [] };
+    return { ok: false, error: t('文件不是有效的 JSON'), sessions: [] };
   }
   if (root === null || root === undefined || root.app !== SESSION_EXPORT_APP) {
-    return { ok: false, error: '不是 MinisHarmony 导出的会话', sessions: [] };
+    return { ok: false, error: t('不是 MinisHarmony 导出的会话'), sessions: [] };
   }
   if (root.version === undefined || root.version < 1 ||
     root.version > SESSION_EXPORT_VERSION) {
     return {
       ok: false,
-      error: '不支持的导出版本：' + (root.version === undefined
-        ? '未知' : root.version.toString()),
+      error: t('不支持的导出版本：') + (root.version === undefined
+        ? t('未知') : root.version.toString()),
       sessions: []
     };
   }
@@ -381,7 +383,7 @@ export function parseSessionsExport(
     rawList.push(root.session);
   }
   if (rawList.length === 0) {
-    return { ok: false, error: '文件里没有会话数据', sessions: [] };
+    return { ok: false, error: t('文件里没有会话数据'), sessions: [] };
   }
   const imported: StoredSession[] = [];
   let firstError: string = '';
@@ -397,7 +399,7 @@ export function parseSessionsExport(
   if (imported.length === 0) {
     return {
       ok: false,
-      error: firstError.length > 0 ? firstError : '没有可导入的会话',
+      error: firstError.length > 0 ? firstError : t('没有可导入的会话'),
       sessions: []
     };
   }

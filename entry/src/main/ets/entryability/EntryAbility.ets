@@ -4,6 +4,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { handleShareWant } from '../service/ShareReceiver';
 import { handleDeepLinkWant } from '../service/DeepLinkRouter';
+import { I18nService } from '../service/I18n';
 import { SandboxProbe } from '../service/SandboxProbe';
 import { SandboxIsh, SandboxOptions, SandboxRunResult } from '../service/SandboxIsh';
 
@@ -13,6 +14,7 @@ const TAG: string = 'MinisHarmony';
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
+    I18nService.init(this.context);
     this.routeWant(want);
   }
 

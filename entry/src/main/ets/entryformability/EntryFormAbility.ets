@@ -2,6 +2,7 @@ import { FormExtensionAbility, formBindingData, formInfo, formProvider } from '@
 import { Want } from '@kit.AbilityKit';
 import { WidgetSnapshot } from '../core/WidgetData';
 import { WidgetBridge } from '../service/WidgetBridge';
+import { I18nService } from '../service/I18n';
 
 /**
  * Background entry point for the home-screen card. The card only shows data
@@ -19,6 +20,7 @@ export default class EntryFormAbility extends FormExtensionAbility {
   }
 
   onAddForm(want: Want): formBindingData.FormBindingData {
+    I18nService.init(this.context);
     const formId: string = this.formIdOf(want);
     WidgetBridge.registerForm(this.context, formId);
     const snapshot: WidgetSnapshot = WidgetBridge.loadSync(this.context);

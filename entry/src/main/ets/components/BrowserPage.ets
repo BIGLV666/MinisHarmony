@@ -1,6 +1,7 @@
 import { webview } from '@kit.ArkWeb';
 import { common, Want } from '@kit.AbilityKit';
 import { normalizeWebUrl, webHost } from '../core/WebUrl';
+import { t } from '../core/I18n';
 
 /**
  * In-app browser for links in chat, mirroring OpenMinis's single-sheet web
@@ -10,6 +11,7 @@ import { normalizeWebUrl, webHost } from '../core/WebUrl';
  */
 @Component
 export struct BrowserPage {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop initialUrl: string = '';
   onClose: () => void = () => {
   };
@@ -50,7 +52,7 @@ export struct BrowserPage {
       uri: target
     };
     context.startAbility(want).catch((error: Error) => {
-      this.getUIContext().getPromptAction().showToast({ message: '没有可打开该链接的应用' });
+      this.getUIContext().getPromptAction().showToast({ message: t('没有可打开该链接的应用') });
     });
   }
 
@@ -87,7 +89,7 @@ export struct BrowserPage {
             this.controller.refresh();
           }
         })
-        TextInput({ text: this.address, placeholder: '输入网址' })
+        TextInput({ text: this.address, placeholder: t('输入网址') })
           .layoutWeight(1)
           .height(36)
           .fontSize(13)

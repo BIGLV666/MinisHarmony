@@ -9,6 +9,7 @@ import {
 import { capsForModel, contextPercent, formatWindow } from '../core/ModelCaps';
 import { formatTokens } from '../service/Format';
 import { MessageBubble } from './MessageBubble';
+import { t } from '../core/I18n';
 
 const SUGGESTIONS: string[] = [
   '帮我写一个鸿蒙 ArkTS 页面',
@@ -19,10 +20,11 @@ const SUGGESTIONS: string[] = [
 
 @Component
 export struct ChatView {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop @Watch('onMessagesChanged') messages: ChatMessage[] = [];
   @Prop streaming: boolean = false;
   @Prop modelId: string = '';
-  @Prop title: string = '新对话';
+  @Prop title: string = t('新对话');
   @Prop isWide: boolean = true;
   @Prop hasKey: boolean = false;
   /** Enter submits instead of inserting a newline (physical + soft keyboard). */
@@ -155,14 +157,14 @@ export struct ChatView {
    * conversation's current size.
    */
   private subtitle(): string {
-    let value: string = this.messages.length.toString() + ' 条消息 · ' +
+    let value: string = this.messages.length.toString() + t(' 条消息 · ') +
       modelName(this.modelId);
     for (let i = this.messages.length - 1; i >= 0; i--) {
       const message: ChatMessage = this.messages[i];
       if (message.role === 'assistant' && message.totalTokens > 0) {
         const used: number = message.promptTokens + message.completionTokens;
         const window: number = capsForModel(this.modelId).contextWindow;
-        value += ' · 上下文 ' + formatTokens(used) + ' / ' + formatWindow(window) +
+        value += t(' · 上下文 ') + formatTokens(used) + ' / ' + formatWindow(window) +
           ' (' + contextPercent(used, window).toString() + '%)';
         break;
       }
@@ -172,21 +174,21 @@ export struct ChatView {
 
   private thinkingLabel(value: string): string {
     if (value === 'low') {
-      return '低';
+      return t('低');
     }
     if (value === 'medium') {
-      return '中';
+      return t('中');
     }
     if (value === 'high') {
-      return '高';
+      return t('高');
     }
-    return '关';
+    return t('关');
   }
 
   @Builder
   thinkingMenu() {
     Column({ space: 2 }) {
-      Text('思考等级')
+      Text(t('思考等级'))
         .fontSize(10)
         .fontColor($r('app.color.text_tertiary'))
         .width('100%')
@@ -196,7 +198,7 @@ export struct ChatView {
           Text(this.thinkingLabel(value))
             .fontSize(13)
             .fontColor($r('app.color.text_primary'))
-          Text(value === 'off' ? '不发送 reasoning_effort' : 'reasoning_effort=' + value)
+          Text(value === 'off' ? t('不发送 reasoning_effort') : 'reasoning_effort=' + value)
             .fontSize(10)
             .fontColor($r('app.color.text_tertiary'))
           Blank()
@@ -221,13 +223,13 @@ export struct ChatView {
   @Builder
   headerMenu() {
     Column({ space: 2 }) {
-      Text('定时任务')
+      Text(t('定时任务'))
         .width(160)
         .fontSize(13)
         .fontColor($r('app.color.text_primary'))
         .padding(10)
         .onClick(() => this.onScheduledTasks())
-      Text('设置')
+      Text(t('设置'))
         .width(160)
         .fontSize(13)
         .fontColor($r('app.color.text_primary'))
@@ -282,7 +284,7 @@ export struct ChatView {
 
       if (this.canThink) {
         Row({ space: 4 }) {
-          Text('思考')
+          Text(t('思考'))
             .fontSize(10)
             .fontColor($r('app.color.text_tertiary'))
           Text(this.thinkingLabel(this.thinkingLevel))
@@ -307,19 +309,19 @@ export struct ChatView {
       }
 
       if (this.isWide) {
-        Text('任务')
+        Text(t('任务'))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
           .padding({ left: 8, right: 8, top: 8, bottom: 8 })
           .onClick(() => this.onScheduledTasks())
 
-        Text('设置')
+        Text(t('设置'))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
           .padding({ left: 8, right: 8, top: 8, bottom: 8 })
           .onClick(() => this.onSettings())
       } else {
-        Text('更多')
+        Text(t('更多'))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
           .padding({ left: 8, right: 8, top: 8, bottom: 8 })
@@ -346,14 +348,14 @@ export struct ChatView {
         .fontColor($r('app.color.on_accent'))
         .backgroundColor(this.accent)
         .margin({ bottom: 8 })
-      Text('新对话')
+      Text(t('新对话'))
         .fontSize(22)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
         .textAlign(TextAlign.Center)
       Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center }) {
         ForEach(SUGGESTIONS, (item: string) => {
-          Text(item)
+          Text(t(item))
             .fontSize(12)
             .fontColor($r('app.color.text_secondary'))
             .padding({ left: 12, right: 12, top: 8, bottom: 8 })
@@ -378,11 +380,11 @@ export struct ChatView {
   @Builder
   keyBanner() {
     Row({ space: 8 }) {
-      Text('尚未配置 API Key')
+      Text(t('尚未配置 API Key'))
         .fontSize(12)
         .fontColor($r('app.color.text_secondary'))
       Blank()
-      Text('去设置')
+      Text(t('去设置'))
         .fontSize(12)
         .fontColor(this.accent)
         .onClick(() => this.onSettings())
@@ -402,12 +404,12 @@ export struct ChatView {
         .fontColor($r('app.color.text_secondary'))
         .layoutWeight(1)
       if (this.canUndoCompact) {
-        Text('撤销')
+        Text(t('撤销'))
           .fontSize(11)
           .fontColor(this.accent)
           .onClick(() => this.onUndoCompact())
       }
-      Text('知道了')
+      Text(t('知道了'))
         .fontSize(11)
         .fontColor($r('app.color.text_tertiary'))
         .onClick(() => this.onDismissCompactNotice())
@@ -447,13 +449,13 @@ export struct ChatView {
 
       Row({ space: 8 }) {
         if (!this.streaming) {
-          Text('图片')
+          Text(t('图片'))
             .fontSize(11)
             .fontColor($r('app.color.text_secondary'))
             .padding({ left: 6, right: 6, top: 10, bottom: 10 })
             .onClick(() => this.onPickImage())
         }
-        TextArea({ text: this.draft, placeholder: '问点什么…' })
+        TextArea({ text: this.draft, placeholder: t('问点什么…') })
           .id('composerInput')
           .layoutWeight(1)
           .constraintSize({ minHeight: 42, maxHeight: 150 })

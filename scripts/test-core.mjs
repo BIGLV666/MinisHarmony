@@ -25,12 +25,14 @@ mkdirSync(tmp, { recursive: true });
  */
 function copyCore(name, deps = []) {
   let source = readFileSync(join(core, `${name}.ets`), 'utf8');
-  for (const dep of deps) {
+  // Every core module may call `t()`; rewrite that import unconditionally.
+  for (const dep of deps.concat(['I18n'])) {
     source = source.split(`from './${dep}'`).join(`from './${dep}.mts'`);
   }
   writeFileSync(join(tmp, `${name}.mts`), source);
 }
 
+copyCore('I18n');
 copyCore('SseParser');
 copyCore('OpenCodeRules');
 copyCore('Latex');
@@ -171,6 +173,7 @@ markTypeOnly('ResponsesProtocol', 'SseParser', ['DeltaResult', 'TokenUsage', 'To
   );
 }
 
+const i18n = await import(pathToFileURL(join(tmp, 'I18n.mts')).href);
 const sse = await import(pathToFileURL(join(tmp, 'SseParser.mts')).href);
 const rules = await import(pathToFileURL(join(tmp, 'OpenCodeRules.mts')).href);
 const md = await import(pathToFileURL(join(tmp, 'Markdown.mts')).href);
@@ -552,7 +555,7 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(soul.soulPrompt('general'), '');
   assert.equal(soul.soulPrompt('engineer').length > 0, true);
   assert.equal(soul.soulPrompt('unknown'), '');
-  assert.equal(soul.SOUL_PRESETS.length >= 5, true);
+  assert.equal(soul.soulPresets().length >= 5, true);
   assert.deepEqual(settings.enabledSkills, []);
   assert.deepEqual(
     types.cloneSettings({ ...settings, enabledSkills: ['a', 'a', ''] }).enabledSkills,
@@ -3282,4 +3285,34 @@ test('subagent child session titles carry the agent name', () => {
   assert.equal(roster.childSessionTitle('调研', 'research'), '子代理 · research · 调研');
   assert.equal(roster.childSessionTitle('', 'research'), '子代理 · research');
   assert.equal(roster.childSessionTitle('', 'helper'), '子代理');
+});
+
+test('i18n language normalization and locale list', () => {
+  assert.equal(i18n.I18N_LANGUAGES.length, 18);
+  assert.equal(i18n.normalizeI18nLanguage('zh-CN'), 'zh-Hans');
+  assert.equal(i18n.normalizeI18nLanguage('zh'), 'zh-Hans');
+  assert.equal(i18n.normalizeI18nLanguage('zh-Hant-TW'), 'zh-Hant');
+  assert.equal(i18n.normalizeI18nLanguage('zh-TW'), 'zh-Hant');
+  assert.equal(i18n.normalizeI18nLanguage('en-US'), 'en');
+  assert.equal(i18n.normalizeI18nLanguage('pt-PT'), 'pt-BR');
+  assert.equal(i18n.normalizeI18nLanguage('tl'), 'fil');
+  assert.equal(i18n.normalizeI18nLanguage('fr-CA'), 'fr');
+  assert.equal(i18n.normalizeI18nLanguage('unknown'), 'zh-Hans');
+  assert.equal(i18n.i18nLanguageLabel('ja'), '日本語');
+  assert.equal(i18n.i18nLanguageLabel('pt-BR'), 'Português (Brasil)');
+});
+
+test('i18n catalogs fall back through English to the source string', () => {
+  i18n.registerI18nCatalog('en', { '保存': 'Save', '设置': 'Settings' });
+  i18n.registerI18nCatalog('ja', { '保存': '保存する' });
+  i18n.selectI18nLanguage('ja');
+  assert.equal(i18n.t('保存'), '保存する');
+  assert.equal(i18n.t('设置'), 'Settings');
+  assert.equal(i18n.t('未知文本'), '未知文本');
+  assert.deepEqual(i18n.i18nVariants('保存'), ['保存', 'Save', '保存する']);
+  assert.deepEqual(i18n.i18nVariants('未知文本'), ['未知文本']);
+  assert.equal(i18n.activeI18nLanguage(), 'ja');
+  i18n.selectI18nLanguage('zh-Hans');
+  assert.equal(i18n.t('保存'), '保存');
+  assert.equal(i18n.activeI18nLanguage(), 'zh-Hans');
 });

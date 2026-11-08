@@ -2,6 +2,7 @@ import { ToolDefinition, ToolParameters, ToolResult, ToolProperty, ToolRuntime }
 import { McpServerConfig, McpToolInfo } from '../core/McpProtocol';
 import { McpClient } from './McpClient';
 import { McpOAuthService } from './McpOAuth';
+import { t } from '../core/I18n';
 
 export interface McpServerStatus {
   serverId: string;
@@ -20,7 +21,7 @@ function definitionFor(info: McpToolInfo): ToolDefinition {
     name: info.exposedName,
     description: info.description.length > 0
       ? info.description
-      : 'MCP 工具 ' + info.toolName + '（来自 ' + info.serverName + '）',
+      : t('MCP 工具 ') + info.toolName + t('（来自 ') + info.serverName + t('）'),
     parameters: emptyParameters(),
     schemaJson: info.schemaJson
   };
@@ -126,7 +127,7 @@ class McpRegistryStore {
       }
       const client: McpClient | undefined = this.clients.get(info.serverId);
       if (client === undefined) {
-        return { ok: false, content: 'MCP 服务未连接：' + info.serverName };
+        return { ok: false, content: t('MCP 服务未连接：') + info.serverName };
       }
       return client.callTool(info.toolName, argumentsJson);
     }

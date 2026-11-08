@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * OAuth 2.0 (PKCE) and RFC 8628 device-flow helpers shared by the provider
  * logins. Everything here is pure: randomness and SHA-256 come from the
@@ -414,7 +415,7 @@ export function classifyDevicePoll(text: string, httpOk: boolean): DevicePollRes
   try {
     raw = JSON.parse(text) as RawDevicePoll;
   } catch (e) {
-    return { kind: 'fatal', accessToken: '', message: '无法解析设备码响应' };
+    return { kind: 'fatal', accessToken: '', message: t('无法解析设备码响应') };
   }
   if (raw !== null && raw !== undefined && typeof raw.access_token === 'string' &&
     raw.access_token.length > 0) {
@@ -431,15 +432,15 @@ export function classifyDevicePoll(text: string, httpOk: boolean): DevicePollRes
     return { kind: 'slow_down', accessToken: '', message: '' };
   }
   if (code === 'access_denied') {
-    return { kind: 'denied', accessToken: '', message: detail.length > 0 ? detail : '已拒绝授权' };
+    return { kind: 'denied', accessToken: '', message: detail.length > 0 ? detail : t('已拒绝授权') };
   }
   if (code === 'expired_token') {
-    return { kind: 'expired', accessToken: '', message: '设备码已过期，请重新登录' };
+    return { kind: 'expired', accessToken: '', message: t('设备码已过期，请重新登录') };
   }
   return {
     kind: 'fatal',
     accessToken: '',
-    message: detail.length > 0 ? detail : ('登录失败：' + (code.length > 0 ? code : '未知错误'))
+    message: detail.length > 0 ? detail : (t('登录失败：') + (code.length > 0 ? code : t('未知错误')))
   };
 }
 

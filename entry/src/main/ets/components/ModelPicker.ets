@@ -1,8 +1,10 @@
 import { BUILTIN_MODELS, ModelInfo } from '../core/Types';
 import { capsForModel, capsLabel } from '../core/ModelCaps';
+import { t } from '../core/I18n';
 
 @Component
 export struct ModelPicker {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop currentId: string = '';
   onPick: (id: string) => void = (id: string) => {
   };
@@ -17,8 +19,8 @@ export struct ModelPicker {
         Text(item.name)
           .fontSize(14)
           .fontColor($r('app.color.text_primary'))
-        Text(item.id + (item.note.length > 0 ? ' · ' + item.note : '') +
-          ' · ' + capsLabel(capsForModel(item.id)))
+        Text(item.id + (item.note.length > 0 ? t(' · ') + t(item.note) : '') +
+          t(' · ') + capsLabel(capsForModel(item.id)))
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
       }
@@ -48,11 +50,11 @@ export struct ModelPicker {
       Column() {
         Row() {
           Column({ space: 2 }) {
-            Text('选择模型')
+            Text(t('选择模型'))
               .fontSize(19)
               .fontWeight(FontWeight.Bold)
               .fontColor($r('app.color.text_primary'))
-            Text('OpenCode Go 常用模型')
+            Text(t('OpenCode Go 常用模型'))
               .fontSize(11)
               .fontColor($r('app.color.text_tertiary'))
           }
@@ -80,7 +82,7 @@ export struct ModelPicker {
 
         Column({ space: 8 }) {
           Row({ space: 8 }) {
-            TextInput({ text: this.custom, placeholder: '自定义模型 ID' })
+            TextInput({ text: this.custom, placeholder: t('自定义模型 ID') })
               .layoutWeight(1)
               .height(40)
               .fontSize(12)
@@ -89,7 +91,7 @@ export struct ModelPicker {
               .onChange((value: string) => {
                 this.custom = value;
               })
-            Button('使用')
+            Button(t('使用'))
               .height(40)
               .fontSize(12)
               .fontColor($r('app.color.on_accent'))
@@ -100,7 +102,7 @@ export struct ModelPicker {
           }
           .width('100%')
 
-          Text('更多模型可在设置中获取；不同区域与隐私设置会影响可用模型。')
+          Text(t('更多模型可在设置中获取；不同区域与隐私设置会影响可用模型。'))
             .fontSize(9)
             .fontColor($r('app.color.text_tertiary'))
             .width('100%')

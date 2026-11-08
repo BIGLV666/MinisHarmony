@@ -14,6 +14,7 @@ import {
 import { AppLogger } from './AppLogger';
 import { CrashLog } from './CrashLog';
 import { ExportOutcome, saveText } from './ExportService';
+import { t } from '../core/I18n';
 
 function environment(): DiagnosticsEnvironment {
   let versionName: string = '';
@@ -117,13 +118,13 @@ export async function saveDiagnostics(
     });
   } catch (e) {
     const error: Error = e as Error;
-    return { ok: false, message: '生成诊断包失败：' + error.message };
+    return { ok: false, message: t('生成诊断包失败：') + error.message };
   }
   return saveText(
     context,
     diagnosticsFileName(now),
     'JSON|.json',
     text,
-    '已导出诊断包'
+    t('已导出诊断包')
   );
 }

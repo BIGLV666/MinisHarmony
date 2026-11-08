@@ -1,3 +1,4 @@
+import { t } from './I18n';
 /**
  * Pure helpers behind the device-data tools (calendar / contacts / location /
  * weather). Keeping parsing and formatting here lets them run under Node.
@@ -43,63 +44,63 @@ export interface WeatherReport {
 
 export function weatherCodeText(code: number): string {
   if (code === 0) {
-    return '晴';
+    return t('晴');
   }
   if (code === 1) {
-    return '大部晴朗';
+    return t('大部晴朗');
   }
   if (code === 2) {
-    return '多云';
+    return t('多云');
   }
   if (code === 3) {
-    return '阴';
+    return t('阴');
   }
   if (code === 45 || code === 48) {
-    return '雾';
+    return t('雾');
   }
   if (code === 51 || code === 53 || code === 55) {
-    return '毛毛雨';
+    return t('毛毛雨');
   }
   if (code === 56 || code === 57) {
-    return '冻毛毛雨';
+    return t('冻毛毛雨');
   }
   if (code === 61) {
-    return '小雨';
+    return t('小雨');
   }
   if (code === 63) {
-    return '中雨';
+    return t('中雨');
   }
   if (code === 65) {
-    return '大雨';
+    return t('大雨');
   }
   if (code === 66 || code === 67) {
-    return '冻雨';
+    return t('冻雨');
   }
   if (code === 71) {
-    return '小雪';
+    return t('小雪');
   }
   if (code === 73) {
-    return '中雪';
+    return t('中雪');
   }
   if (code === 75) {
-    return '大雪';
+    return t('大雪');
   }
   if (code === 77) {
-    return '米雪';
+    return t('米雪');
   }
   if (code === 80 || code === 81 || code === 82) {
-    return '阵雨';
+    return t('阵雨');
   }
   if (code === 85 || code === 86) {
-    return '阵雪';
+    return t('阵雪');
   }
   if (code === 95) {
-    return '雷暴';
+    return t('雷暴');
   }
   if (code === 96 || code === 99) {
-    return '雷暴伴冰雹';
+    return t('雷暴伴冰雹');
   }
-  return '未知天气';
+  return t('未知天气');
 }
 
 function pad2(value: number): string {
@@ -316,32 +317,32 @@ export function placeLabel(place: GeoPlace | null, lat: number, lon: number): st
   if (parts.length === 0) {
     return lat.toFixed(3) + ', ' + lon.toFixed(3);
   }
-  return parts.join(' · ');
+  return parts.join(t(' · '));
 }
 
 export function formatWeatherText(place: string, report: WeatherReport): string {
   const lines: string[] = [];
-  lines.push('地点：' + place);
+  lines.push(t('地点：') + place);
   const current: WeatherNow | null = report.current;
   if (current !== null) {
-    lines.push('当前：' + weatherCodeText(current.code) +
-      '，' + current.temperature.toFixed(1) + '°C' +
-      '（体感 ' + current.apparent.toFixed(1) + '°C）');
-    lines.push('湿度 ' + current.humidity.toString() + '%' +
-      '，风速 ' + current.wind.toFixed(1) + ' km/h' +
-      '，降水 ' + current.precipitation.toFixed(1) + ' mm');
+    lines.push(t('当前：') + weatherCodeText(current.code) +
+      t('，') + current.temperature.toFixed(1) + '°C' +
+      t('（体感 ') + current.apparent.toFixed(1) + t('°C）'));
+    lines.push(t('湿度 ') + current.humidity.toString() + '%' +
+      t('，风速 ') + current.wind.toFixed(1) + ' km/h' +
+      t('，降水 ') + current.precipitation.toFixed(1) + ' mm');
     if (current.time.length > 0) {
-      lines.push('观测时间：' + current.time);
+      lines.push(t('观测时间：') + current.time);
     }
   }
   if (report.days.length > 0) {
     lines.push('');
-    lines.push('预报：');
+    lines.push(t('预报：'));
     for (let i = 0; i < report.days.length; i++) {
       const day: WeatherDay = report.days[i];
       lines.push(day.date + '  ' + weatherCodeText(day.code) +
         '  ' + day.min.toFixed(0) + '~' + day.max.toFixed(0) + '°C' +
-        '  降水概率 ' + day.precipitationProbability.toString() + '%');
+        t('  降水概率 ') + day.precipitationProbability.toString() + '%');
     }
   }
   return lines.join('\n');
@@ -368,12 +369,12 @@ export function formatContactBlock(
   emails: string[]
 ): string {
   const parts: string[] = [];
-  parts.push(name.length > 0 ? name : '（未命名）');
+  parts.push(name.length > 0 ? name : t('（未命名）'));
   if (phones.length > 0) {
     parts.push(phones.slice(0, 3).join(' / '));
   }
   if (emails.length > 0) {
     parts.push(emails.slice(0, 2).join(' / '));
   }
-  return parts.join(' · ');
+  return parts.join(t(' · '));
 }

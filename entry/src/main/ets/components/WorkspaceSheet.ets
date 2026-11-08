@@ -5,6 +5,7 @@ import {
   listWorkspace,
   previewWorkspaceFile
 } from '../service/WorkspaceFiles';
+import { t } from '../core/I18n';
 
 /**
  * Read-only browser for the app-private workspace. It uses the same path
@@ -12,6 +13,7 @@ import {
  */
 @Component
 export struct WorkspaceSheet {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop workspaceRoot: string = '';
   onClose: () => void = () => {
   };
@@ -68,7 +70,7 @@ export struct WorkspaceSheet {
   header() {
     Row({ space: 8 }) {
       Column({ space: 3 }) {
-        Text('工作区文件')
+        Text(t('工作区文件'))
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
@@ -91,14 +93,14 @@ export struct WorkspaceSheet {
   fileList() {
     Column({ space: 8 }) {
       Row({ space: 8 }) {
-        Text(this.path.length > 0 ? '↑ 上级目录' : '根目录')
+        Text(this.path.length > 0 ? t('↑ 上级目录') : t('根目录'))
           .fontSize(11)
           .fontColor(this.path.length > 0
             ? $r('app.color.accent')
             : $r('app.color.text_tertiary'))
           .onClick(() => this.goUp())
         Blank()
-        Text('刷新')
+        Text(t('刷新'))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
           .onClick(() => this.reload())
@@ -111,7 +113,7 @@ export struct WorkspaceSheet {
           .fontColor($r('app.color.danger'))
           .width('100%')
       } else if (this.entries.length === 0) {
-        Text('空目录')
+        Text(t('空目录'))
           .fontSize(12)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
@@ -122,7 +124,7 @@ export struct WorkspaceSheet {
           ForEach(this.entries, (entry: FileEntry) => {
             ListItem() {
               Row({ space: 8 }) {
-                Text(entry.isDir ? '▸' : '·')
+                Text(entry.isDir ? '▸' : t('·'))
                   .fontSize(12)
                   .fontColor(entry.isDir
                     ? $r('app.color.accent')
@@ -166,7 +168,7 @@ export struct WorkspaceSheet {
   preview() {
     Column({ space: 8 }) {
       Row({ space: 8 }) {
-        Text('‹ 返回列表')
+        Text(t('‹ 返回列表'))
           .fontSize(11)
           .fontColor($r('app.color.accent'))
           .onClick(() => this.closePreview())
@@ -201,7 +203,7 @@ export struct WorkspaceSheet {
         .borderRadius(9)
         .scrollBar(BarState.Auto)
         if (this.previewTruncated) {
-          Text('仅显示前 256 KB')
+          Text(t('仅显示前 256 KB'))
             .fontSize(10)
             .fontColor($r('app.color.text_tertiary'))
             .width('100%')

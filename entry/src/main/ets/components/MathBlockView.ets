@@ -33,6 +33,7 @@ class MathBridge {
  */
 @Component
 export struct MathBlockView {
+  @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop @Watch('onSourceChanged') source: string = '';
   @StorageProp('fontScale') fontScale: number = 1;
   @State boxHeight: number = 48;

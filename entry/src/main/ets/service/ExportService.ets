@@ -1,9 +1,17 @@
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { util } from '@kit.ArkTS';
 import { StoredSession } from '../core/Types';
 import { exportFileName, exportMarkdown } from '../core/MarkdownExport';
-import { sessionExportJson, sessionJsonFileName } from '../core/SessionExport';
+import {
+  parseSessionExport,
+  sessionExportJson,
+  sessionJsonFileName
+} from '../core/SessionExport';
+
+const MAX_IMPORT_BYTES: number = 8 * 1024 * 1024;
+const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
 
 export interface ExportOutcome {
   ok: boolean;
@@ -59,6 +67,56 @@ export async function saveSessionMarkdown(
     exportMarkdown(session, now),
     '已导出 Markdown'
   );
+}
+
+export interface ImportOutcome {
+  ok: boolean;
+  message: string;
+  session: StoredSession | null;
+}
+
+/**
+ * Read a JSON file chosen by the user and parse it into a fresh session.
+ * Parsing is pure and defensive; this function only does file I/O.
+ */
+export async function importSessionJson(
+  context: common.UIAbilityContext,
+  newId: string
+): Promise<ImportOutcome> {
+  try {
+    const options: picker.DocumentSelectOptions = new picker.DocumentSelectOptions();
+    options.maxSelectNumber = 1;
+    options.fileSuffixFilters = ['JSON|.json'];
+    const documentPicker: picker.DocumentViewPicker =
+      new picker.DocumentViewPicker(context);
+    const uris: string[] = await documentPicker.select(options);
+    if (uris.length === 0) {
+      return { ok: false, message: '已取消导入', session: null };
+    }
+    const stat = fs.statSync(uris[0]);
+    if (stat.size <= 0) {
+      return { ok: false, message: '文件是空的', session: null };
+    }
+    if (stat.size > MAX_IMPORT_BYTES) {
+      return { ok: false, message: '文件超过 8 MB，拒绝导入', session: null };
+    }
+    const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
+    const file = fs.openSync(uris[0], fs.OpenMode.READ_ONLY);
+    try {
+      fs.readSync(file.fd, buffer);
+    } finally {
+      fs.closeSync(file);
+    }
+    const text: string = decoder.decodeToString(new Uint8Array(buffer));
+    const parsed = parseSessionExport(text, newId, new Date());
+    if (!parsed.ok || parsed.session === null) {
+      return { ok: false, message: parsed.error, session: null };
+    }
+    return { ok: true, message: '已导入会话', session: parsed.session };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return { ok: false, message: '导入失败：' + error.message, session: null };
+  }
 }
 
 export async function saveSessionJson(

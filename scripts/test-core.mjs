@@ -59,7 +59,7 @@ function markTypeOnly(name, from, names) {
 }
 
 markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'ToolProperty']);
-markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'StoredSession']);
+markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'MessagePart', 'StoredSession']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -790,4 +790,61 @@ test('session JSON export keeps parts and settles streaming flags', () => {
     sessionExport.sessionJsonFileName('JSON/导出', now),
     'JSON_导出-2026-11-08.json'
   );
+});
+
+test('session JSON import validates the envelope and rebuilds parts', () => {
+  const now = new Date(2026, 10, 8);
+  const assistant = types.newChatMessage('a1', 'assistant', '在');
+  const call = types.toolCallPart('c1', 'read_file', '{"path":"a.txt"}');
+  call.resultText = 'hi';
+  call.status = types.TOOL_DONE;
+  assistant.parts.push(call);
+  const original = {
+    meta: {
+      id: 's1', title: '标题', modelId: 'kimi-k3', updatedAt: 1,
+      messageCount: 2, pinned: true, archived: true
+    },
+    messages: [types.newChatMessage('u1', 'user', '你好'), assistant]
+  };
+  const later = new Date(2026, 10, 9, 8, 0);
+  const json = sessionExport.sessionExportJson(original, now);
+  const imported = sessionExport.parseSessionExport(json, 'new-id', later);
+  assert.equal(imported.ok, true);
+  assert.equal(imported.session.meta.id, 'new-id');
+  assert.equal(imported.session.meta.title, '标题（导入）');
+  assert.equal(imported.session.meta.updatedAt, later.getTime());
+  assert.equal(imported.session.meta.pinned, false);
+  assert.equal(imported.session.meta.archived, false);
+  assert.equal(imported.session.messages.length, 2);
+  assert.equal(imported.session.messages[1].parts[1].toolName, 'read_file');
+  assert.equal(imported.session.messages[1].parts[1].resultText, 'hi');
+
+  const bad = JSON.parse(json);
+  bad.app = 'Other';
+  assert.equal(sessionExport.parseSessionExport(JSON.stringify(bad), 'n', later).ok, false);
+  bad.app = 'MinisHarmony';
+  bad.version = 99;
+  assert.equal(sessionExport.parseSessionExport(JSON.stringify(bad), 'n', later).ok, false);
+  assert.equal(sessionExport.parseSessionExport('{not json', 'n', later).ok, false);
+  assert.equal(sessionExport.parseSessionExport('{}', 'n', later).ok, false);
+
+  const pending = JSON.parse(json);
+  pending.session.messages[1].parts[1].status = 'running';
+  const recovered = sessionExport.parseSessionExport(
+    JSON.stringify(pending), 'n', later
+  );
+  assert.equal(recovered.ok, true);
+  const part = recovered.session.messages[1].parts[1];
+  assert.equal(part.status, 'error');
+  assert.equal(part.isError, true);
+  // A partial result already written is kept; only an empty one gets a note.
+  assert.equal(part.resultText, 'hi');
+  pending.session.messages[1].parts[1].resultText = '';
+  const noted = sessionExport.parseSessionExport(
+    JSON.stringify(pending), 'n', later
+  );
+  assert.match(noted.session.messages[1].parts[1].resultText, /尚未完成/);
+  // The exported source object keeps its original id and flags.
+  assert.equal(original.meta.id, 's1');
+  assert.equal(original.meta.pinned, true);
 });

@@ -154,10 +154,10 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 |---|---|---|---|---|
 | - [x] | 导出会话 JSON | 单会话 zip（含附件） | 带 `app/version/exportedAt` 信封的 JSON，保留全部 part 与工具结果；系统文档选择器保存（无附件，故不打包 zip） | P2 |
 | - [x] | 导出 Markdown | 对话转 Markdown | 纯函数生成，经系统文档选择器保存（含思考与工具结果） | P2 |
-| - [ ] | 多会话导出 | 多选打包 | 依赖导出 | P3 |
+| - [ ] | 多会话导出 | 多选打包 | 依赖导出；当前逐个会话导出 | P3 |
 | - [ ] | 单轮截图分享 | 渲染一张图 | `componentSnapshot` | P3 |
 | - [ ] | 系统分享 | 文件/链接/文本 | `ShareKit` | P2 |
-| - [ ] | 备份 / 恢复 | 本地归档、加密 | 导出 zip + 恢复 | P2 |
+| - [~] | 备份 / 恢复 | 本地归档、加密 | 单会话 JSON 已可导出并重新导入（新 ID、标题加「（导入）」、未完成工具标为 error）；尚无整库归档、加密包 | P2 |
 | - [ ] | 远程备份 | rclone（SMB/WebDAV/S3/SFTP） | WebDAV 起步 | P3 |
 | - [ ] | 多端同步 | iCloud（iOS） | 自建 WebDAV，端到端加密 | P3 |
 | - [ ] | 分享链接 / 回放卡 | ——（OpenMinis 也没有） | 不做 | - |
@@ -234,3 +234,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 记忆查看 / 编辑 | 文件选择 + TextArea 编辑 + 保存；仅允许 GLOBAL.md 与 `YYYY-MM-DD.md`，缓存即时失效 |
 | 2026-11-08 | 回车键行为 | 设置项「Enter 键发送」；开启后 `enterKeyType=Send` 且 `onSubmit` 发送，关闭保持换行；输入提示随设置切换 |
 | 2026-11-08 | 导出会话 JSON | `SessionExport` 版本化信封 + 完整 parts；长按菜单「导出为 JSON」，选择器保存；43 项测试通过 |
+| 2026-11-08 | 导入会话 JSON | 侧栏「导入会话 JSON」；校验 app/version、重建 parts、新 ID、标题后缀、未完成工具转 error；8 MB 上限；44 项测试通过 |

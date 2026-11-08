@@ -32,7 +32,13 @@ import { AppLogger } from '../service/AppLogger';
 import { BackgroundGuard } from '../service/BackgroundGuard';
 import { LocalStore } from '../service/LocalStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
-import { ExportOutcome, saveSessionJson, saveSessionMarkdown } from '../service/ExportService';
+import {
+  ExportOutcome,
+  ImportOutcome,
+  importSessionJson,
+  saveSessionJson,
+  saveSessionMarkdown
+} from '../service/ExportService';
 import { MemoryStore } from '../service/MemoryStore';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { SubagentRunner } from '../service/SubagentRunner';
@@ -315,6 +321,29 @@ struct Index {
     }
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     const outcome: ExportOutcome = await saveSessionJson(context, session);
+    this.toast(outcome.message);
+  }
+
+  private async importSessionFromFile(): Promise<void> {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const outcome: ImportOutcome =
+      await importSessionJson(context, util.generateRandomUUID(true));
+    if (!outcome.ok || outcome.session === null) {
+      this.toast(outcome.message);
+      return;
+    }
+    const session: StoredSession = outcome.session;
+    this.store = [session].concat(this.store);
+    this.refreshSessions();
+    this.currentId = session.meta.id;
+    this.messages = session.messages.slice();
+    this.draft = '';
+    this.mobileChat = true;
+    this.persistSoon();
     this.toast(outcome.message);
   }
 
@@ -1053,6 +1082,7 @@ struct Index {
         this.showArchived = !this.showArchived;
       },
       onNew: () => this.createChat(),
+      onImport: () => this.importSessionFromFile(),
       onSelect: (id: string) => this.selectSession(id),
       onMore: (id: string) => this.requestActions(id),
       onSettings: () => {

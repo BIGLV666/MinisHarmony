@@ -377,7 +377,13 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 保留每个 part 的工具参数与结果。导出时会复制消息并把 `streaming` 置为 `false`，
 不修改内存里的会话；`exportedAt` 用 ISO-8601 UTC，`exportedOn` 便于人读。
 `ExportService.saveSessionJson()` 复用同一套选择器写入流程，`fileSuffixChoices`
-为 `.json`。这个格式是恢复 / 备份功能的输入格式。
+为 `.json`。
+
+导入走 `parseSessionExport(text, newId, now)`：只接受 `app` 匹配且 `version` 在
+1..当前版本内的文件，逐条重建 message/part（未知字段丢弃、未知角色丢弃、空消息丢弃）。
+导入的会话总是换新 ID，标题追加「（导入）」，`updatedAt` 设为当前时间以便排在顶部；
+状态仍是 pending/running 的工具调用改为 error，已有部分结果保留。文件读取限制 8 MB，
+在 `ExportService.importSessionJson()` 里完成；解析本身不碰文件系统，可单测。
 
 ## 工具参数修复与循环检测
 

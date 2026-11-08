@@ -18,6 +18,8 @@ export struct SidebarView {
   };
   onNew: () => void = () => {
   };
+  onImport: () => void = () => {
+  };
   onSelect: (id: string) => void = (id: string) => {
   };
   onMore: (id: string) => void = (id: string) => {
@@ -248,6 +250,11 @@ export struct SidebarView {
         Text('数据仅保存在本机')
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
+        Text('导入会话 JSON')
+          .fontSize(11)
+          .fontColor($r('app.color.accent'))
+          .padding({ top: 4, bottom: 2 })
+          .onClick(() => this.onImport())
       }
       .width('100%')
       .alignItems(HorizontalAlign.Center)

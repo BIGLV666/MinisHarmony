@@ -2764,7 +2764,7 @@ test('sandbox command payload matches the harness framing', () => {
 
 test('sandbox request payload is one key per line', () => {
   const payload = sandboxProtocol.sandboxRequestPayload(
-    '/r', '/o', '/c', '/w', '/m');
+    '/r', '/o', '/c', '/w', '/m', '/a');
   assert.equal(payload,
-    'rootfs=/r\noutput=/o\ncommands=/c\nworkspace=/w\nmemory=/m\n');
+    'rootfs=/r\noutput=/o\ncommands=/c\nworkspace=/w\nmemory=/m\nattachments=/a\n');
 });

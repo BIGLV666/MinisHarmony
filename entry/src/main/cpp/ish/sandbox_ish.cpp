@@ -13,6 +13,7 @@
  *   commands=<file the app rewrites per command>
  *   workspace=<optional host dir mounted at /var/minis/workspace>
  *   memory=<optional host dir mounted at /var/minis/memory>
+ *   attachments=<optional host dir mounted at /var/minis/attachments>
  *
  * The guest keeps one `/bin/sh` alive as PID 1 and reads a script stream from
  * stdin. Each command file is `id=<n>\n<command text>`; the harness feeds
@@ -111,6 +112,7 @@ struct Request {
     char commands[512];
     char workspace[512];
     char memory[512];
+    char attachments[512];
 };
 
 sem_t g_exitSem;
@@ -197,6 +199,9 @@ bool parseRequest(const char *path, Request *request) {
             snprintf(request->workspace, sizeof(request->workspace), "%s", line + 10);
         } else if (strncmp(line, "memory=", 7) == 0) {
             snprintf(request->memory, sizeof(request->memory), "%s", line + 7);
+        } else if (strncmp(line, "attachments=", 12) == 0) {
+            snprintf(request->attachments, sizeof(request->attachments), "%s",
+                     line + 12);
         }
     }
     free(text);
@@ -372,6 +377,9 @@ int serve(Request *request) {
     // directory are the same files the file tools already work on.
     mountGuestDir(request->workspace, "/var/minis/workspace");
     mountGuestDir(request->memory, "/var/minis/memory");
+    // Chat attachments (images, files); the shell can process the same media
+    // read_image sees, for example with Python or file(1).
+    mountGuestDir(request->attachments, "/var/minis/attachments");
 
     err = become_new_init_child();
     if (err < 0) {

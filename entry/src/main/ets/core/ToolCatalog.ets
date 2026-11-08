@@ -194,7 +194,8 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'shell_execute',
       description: '在本机的 Linux 沙箱（Alpine）中执行 shell 命令，返回 stdout+stderr 与退出码。' +
         '同一个会话共享一个常驻 shell，cd、环境变量会保留到下一次调用。工作区挂载在 ' +
-        '/var/minis/workspace，记忆目录挂载在 /var/minis/memory，用它们读写用户文件。' +
+        '/var/minis/workspace，记忆目录挂载在 /var/minis/memory，聊天附件（图片等）在 ' +
+        '/var/minis/attachments，用它们读写用户文件。' +
         '沙箱内可能没有外网；需要联网取数据请用 fetch_url。',
       parameters: parametersOf(shellFields, ['command'])
     },

@@ -62,6 +62,7 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
                  ├─ fakefs / realfs：Alpine minirootfs
                  ├─ /var/minis/workspace ← 应用 workspace/
                  ├─ /var/minis/memory    ← 应用 memory/
+                 ├─ /var/minis/attachments ← 应用 attachments/（聊天图片等）
                  └─ 管道协议：start / write / read / signal / exit
                               │
                               ▼
@@ -82,7 +83,8 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   首次启动用 `@ohos.zlib.decompressFile` 解到应用私有目录 `filesDir/ish-rootfs/`；
   不把 rootfs 放在 `/data/local/tmp`，避免 `debug_hap` 域访问
   `data_local_tmp` 的 SELinux 限制，应用也天然拥有 rootfs 的读写权限。
-  workspace、memory、skills、attachments 后续映射进 guest 的 `/var/minis/*`。
+  workspace、memory、attachments 已映射进 guest 的 `/var/minis/*`；skills
+  仍由 `read_skill` 直接读应用目录，暂未挂载。
 - **预装 Python 3**：minirootfs 只有 busybox + apk，而 guest 没有网络，
   运行期无法 `apk add`。因此 `scripts/ish-rootfs-python.py` 在构建时按固定
   版本与 SHA-256 下载 Python 3.12.16 及 17 个依赖（musl、openssl、sqlite、

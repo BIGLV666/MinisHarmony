@@ -33,7 +33,10 @@ export class ShellTool implements ShellHandler {
     this.context = context;
     this.options = {
       workspace: context.filesDir + '/workspace',
-      memory: context.filesDir + '/memory'
+      memory: context.filesDir + '/memory',
+      // Attachments are where read_image and the chat picker store media, so
+      // the shell can process the same files (Python, file, identify, ...).
+      attachments: context.filesDir + '/attachments'
     };
   }
 

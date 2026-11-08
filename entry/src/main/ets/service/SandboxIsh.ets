@@ -28,6 +28,8 @@ export interface SandboxOptions {
   workspace: string;
   /** Host directory mounted at /var/minis/memory. */
   memory: string;
+  /** Host directory mounted at /var/minis/attachments. */
+  attachments: string;
 }
 
 export interface SandboxRunResult {
@@ -89,7 +91,7 @@ export class SandboxIsh {
   private static outputPath: string = '';
   private static commandPath: string = '';
   private static requestPath: string = '';
-  private static options: SandboxOptions = { workspace: '', memory: '' };
+  private static options: SandboxOptions = { workspace: '', memory: '', attachments: '' };
   /** Commands share one shell, so they also share one queue. */
   private static queue: Promise<void> = Promise.resolve();
   private static busy: number = 0;
@@ -102,7 +104,7 @@ export class SandboxIsh {
    */
   static async run(context: common.UIAbilityContext, command: string,
     timeoutMs: number = 300000,
-    options: SandboxOptions = { workspace: '', memory: '' }): Promise<SandboxRunResult> {
+    options: SandboxOptions = { workspace: '', memory: '', attachments: '' }): Promise<SandboxRunResult> {
     const previous: Promise<void> = SandboxIsh.queue;
     let release: () => void = () => {
     };
@@ -327,6 +329,7 @@ export class SandboxIsh {
     // a fresh install (no memory yet) still gets its mounts.
     SandboxIsh.ensureDirectory(SandboxIsh.options.workspace);
     SandboxIsh.ensureDirectory(SandboxIsh.options.memory);
+    SandboxIsh.ensureDirectory(SandboxIsh.options.attachments);
     // A previous daemon may still be alive (a timeout or reset happened while
     // this call was queued). Tell it to stop and give its 80 ms poll loop time
     // to see the request; deleting the command file first would strand it.
@@ -339,7 +342,8 @@ export class SandboxIsh {
     SandboxIsh.consumed = 0;
 
     const request: string = sandboxRequestPayload(rootfs, SandboxIsh.outputPath,
-      SandboxIsh.commandPath, SandboxIsh.options.workspace, SandboxIsh.options.memory);
+      SandboxIsh.commandPath, SandboxIsh.options.workspace, SandboxIsh.options.memory,
+      SandboxIsh.options.attachments);
     if (!SandboxIsh.writeText(SandboxIsh.requestPath, request)) {
       return '无法写入沙箱请求文件：' + SandboxIsh.requestPath;
     }

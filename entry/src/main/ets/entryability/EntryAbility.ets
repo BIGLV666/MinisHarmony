@@ -64,7 +64,8 @@ export default class EntryAbility extends UIAbility {
     const began: number = Date.now();
     const options: SandboxOptions = {
       workspace: this.context.filesDir + '/workspace',
-      memory: this.context.filesDir + '/memory'
+      memory: this.context.filesDir + '/memory',
+      attachments: this.context.filesDir + '/attachments'
     };
     const first: string = 'cd /tmp; export MINIS_SMOKE=kept; ' +
       'echo hello-from-ish; uname -a; id; cat /etc/alpine-release';

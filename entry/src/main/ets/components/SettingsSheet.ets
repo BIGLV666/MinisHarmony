@@ -1025,7 +1025,8 @@ export struct SettingsSheet {
         : '首次使用：正在解压 rootfs（约 15 MB），可能需要十几秒…';
       const options: SandboxOptions = {
         workspace: context.filesDir + '/workspace',
-        memory: context.filesDir + '/memory'
+        memory: context.filesDir + '/memory',
+        attachments: context.filesDir + '/attachments'
       };
       const result: SandboxRunResult = await SandboxIsh.run(context,
         'echo hello-from-ish; uname -a; id; cat /etc/alpine-release', 180000, options);

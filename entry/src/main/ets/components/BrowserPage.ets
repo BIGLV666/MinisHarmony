@@ -1,10 +1,12 @@
 import { webview } from '@kit.ArkWeb';
 import { common, Want } from '@kit.AbilityKit';
+import { normalizeWebUrl, webHost } from '../core/WebUrl';
 
 /**
- * Minimal in-app browser for links in chat. One page per session: back,
- * forward, reload, address bar and "open in system browser". Multi-tab,
- * history and download management are not implemented.
+ * In-app browser for links in chat, mirroring OpenMinis's single-sheet web
+ * preview: page title plus host, close, reload/stop, back/forward, address bar
+ * and "open in system browser". Like the reference it is one page at a time;
+ * tabs, a history list and download management are not part of that design.
  */
 @Component
 export struct BrowserPage {
@@ -14,30 +16,21 @@ export struct BrowserPage {
   @State url: string = '';
   @State address: string = '';
   @State title: string = '';
+  @State hostHint: string = '';
   @State progress: number = 0;
+  @State loading: boolean = false;
   @State canBack: boolean = false;
   @State canForward: boolean = false;
   private controller: webview.WebviewController = new webview.WebviewController();
 
-  private normalize(input: string): string {
-    let value: string = input.trim();
-    if (value.length === 0) {
-      return '';
-    }
-    const lower: string = value.toLowerCase();
-    if (lower.indexOf('http://') !== 0 && lower.indexOf('https://') !== 0) {
-      value = 'https://' + value;
-    }
-    return value;
-  }
-
   aboutToAppear(): void {
     this.url = this.initialUrl;
     this.address = this.initialUrl;
+    this.hostHint = webHost(this.initialUrl);
   }
 
   private navigate(): void {
-    const target: string = this.normalize(this.address);
+    const target: string = normalizeWebUrl(this.address);
     if (target.length === 0) {
       return;
     }
@@ -86,8 +79,13 @@ export struct BrowserPage {
         this.toolbarButton('›', this.canForward, () => {
           this.controller.forward();
         })
-        this.toolbarButton('⟳', true, () => {
-          this.controller.refresh();
+        this.toolbarButton(this.loading ? '⏹' : '⟳', true, () => {
+          if (this.loading) {
+            this.controller.stop();
+            this.loading = false;
+          } else {
+            this.controller.refresh();
+          }
         })
         TextInput({ text: this.address, placeholder: '输入网址' })
           .layoutWeight(1)
@@ -115,15 +113,29 @@ export struct BrowserPage {
           .backgroundColor($r('app.color.border'))
       }
 
-      if (this.title.length > 0) {
-        Text(this.title)
-          .fontSize(11)
-          .fontColor($r('app.color.text_tertiary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
-          .padding({ left: 14, right: 14, top: 4, bottom: 4 })
-          .backgroundColor($r('app.color.surface'))
+      if (this.title.length > 0 || this.hostHint.length > 0) {
+        Column({ space: 1 }) {
+          if (this.title.length > 0) {
+            Text(this.title)
+              .fontSize(12)
+              .fontColor($r('app.color.text_secondary'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
+          }
+          if (this.hostHint.length > 0) {
+            Text(this.hostHint)
+              .fontSize(10)
+              .fontColor($r('app.color.text_tertiary'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
+          }
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .padding({ left: 14, right: 14, top: 4, bottom: 4 })
+        .backgroundColor($r('app.color.surface'))
       }
 
       Web({ src: this.url, controller: this.controller })
@@ -135,10 +147,14 @@ export struct BrowserPage {
         .onPageBegin((event) => {
           this.url = event.url;
           this.address = event.url;
+          this.hostHint = webHost(event.url);
+          this.loading = true;
         })
         .onPageEnd((event) => {
           this.canBack = this.controller.accessBackward();
           this.canForward = this.controller.accessForward();
+          this.hostHint = webHost(this.url);
+          this.loading = false;
         })
         .onTitleReceive((event) => {
           this.title = event.title;

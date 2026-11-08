@@ -1,6 +1,7 @@
 import { webview } from '@kit.ArkWeb';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { BrowserHandler, ToolResult } from '../core/ToolTypes';
+import { normalizeWebUrl } from '../core/WebUrl';
 
 const PAGE_LOAD_TIMEOUT_MS: number = 20000;
 const DEFAULT_MAX_CHARS: number = 8000;
@@ -94,18 +95,6 @@ interface BrowserArgs {
   milliseconds?: number;
 }
 
-function normalizeUrl(input: string): string {
-  let value: string = input.trim();
-  if (value.length === 0) {
-    return '';
-  }
-  const lower: string = value.toLowerCase();
-  if (lower.indexOf('http://') !== 0 && lower.indexOf('https://') !== 0) {
-    value = 'https://' + value;
-  }
-  return value;
-}
-
 function clampNumber(value: number | undefined, fallback: number, min: number, max: number): number {
   if (value === undefined || Number.isNaN(value)) {
     return fallback;
@@ -181,7 +170,7 @@ export class BrowserTool implements BrowserHandler {
 
     try {
       if (action === 'open' || action === 'navigate') {
-        const url: string = normalizeUrl(args.url !== undefined ? args.url : '');
+        const url: string = normalizeWebUrl(args.url !== undefined ? args.url : '');
         if (url.length === 0) {
           return { ok: false, content: 'open 需要 url。' };
         }

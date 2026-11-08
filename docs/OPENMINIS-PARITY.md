@@ -114,7 +114,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | MCP HTTP / SSE | JSON-RPC、工具发现 | `core/McpProtocol.ets` + `service/McpClient.ets`：Streamable HTTP 的 `initialize` / `tools/list` / `tools/call`，响应兼容纯 JSON 与 SSE；工具以 `mcp_服务_工具` 暴露，聊天时与本机工具合并；设置页增删服务、手动刷新；无 stdio 与 OAuth | P2 |
 | - [ ] | MCP stdio | 启动本地进程 | 鸿蒙不能 spawn，做不了 | - |
 | - [ ] | MCP OAuth | PKCE | 可复用浏览器/Web 组件 | P3 |
-| - [~] | 内置浏览器 | 多标签、历史、下载、Cookie | `BrowserPage` 用 ArkWeb 全屏覆盖层：地址栏、后退/前进/刷新、进度条、标题、系统浏览器打开；暂未做多标签、历史记录列表、下载与 Cookie 管理 | P2 |
+| - [x] | 内置浏览器 | 单页预览、工具栏 | OpenMinis 的聊天内浏览器是单页 WebView 预览（标题 + 主机、关闭、刷新/停止、外部打开、全屏），本身没有多标签、历史列表、下载与 Cookie 管理；本实现用 ArkWeb 全屏覆盖层对齐，并额外提供后退/前进与可编辑地址栏 | P2 |
 | - [x] | 工作区文件浏览 | `minis://workspace` 文件页 | 设置 →「工作区文件 → 浏览」：目录浏览、上一级、文本预览（256 KB）、跳过符号链接；只读 | P2 |
 | - [x] | 附件命名空间 | `minis://attachments` | `filesDir/attachments/`，消息 part 存 `attachment:<文件名>`；无对外 URI scheme | P2 |
 | - [x] | 深链 | `minis://` 打开会话/文件 | `module.json5` 注册 `minis` scheme（viewData + browsable）；支持 `minis://session/<id>`、`/chat/<id>`、`/s/<id>`、`minis://new`；冷启动排队到 bootstrap 后执行，未知会话提示；`minis://file/...` 未接 | P3 |
@@ -270,3 +270,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | MCP HTTP 工具 | 设置页「MCP 工具」可增删服务（URL + 请求头 JSON + 启用开关）；启动与保存设置时后台发现，手动刷新强制重查；`initialize` → `notifications/initialized` → `tools/list`，调用走 `tools/call`；响应支持 JSON 与 SSE；工具名 `mcp_服务_工具`，JSON Schema 原样透传；无 stdio / OAuth；59 项测试通过 |
 | 2026-11-08 | LaTeX 公式 | `core/Latex.ets` 轻量转换：`\frac/\dfrac/\tfrac`、`\sqrt[n]`、希腊字母、关系/集合/箭头运算符、`\sin` 等函数名、`^`/`_` 上下标（Unicode 上下标字符，不支持时退 `^(...)`/`_(...)`）、`\text`/`\mathrm`/`\operatorname`、`\left`/`\right`、`\begin|\end` 环境断行；未知命令丢弃。Markdown 识别单行与围栏式 `$$` 块（等宽居中卡片）以及行内 `$...$`；行内规则排除 `$5` 货币、`$$`、空行与未闭合。矩阵/多行环境只断行，非真实排版；73 项测试通过 |
 | 2026-11-08 | 子代理 steer / status / cancel / resume | `subagent_task` 改为单个工具 + `action`：delegate 默认后台执行并立即返回 job_id，结束时把「[后台任务结束 …]」作为用户消息送回父对话并自动续跑；`wait=true`/嵌套子代理同步阻塞。全局最多 3 个并行，其余排队，空位自动泵出；`max_minutes` 1–60。`status` 报告状态/当前工具/耗时/模型/结果；`steer` 由 `AgentRuntime.injectInput` 在下一请求前插入，若 turn 刚好结束则续跑而不是丢弃；`cancel` 保留部分结果；活动任务写入 preferences，重启后标记 `interrupted` 并可由 `resume` 按原始说明重跑。父对话停止时同步取消其阻塞子代理，后台任务继续投递；非当前会话的结果在打开时自动续跑。`core/SubagentJob.ets` 状态机/前缀匹配/报告/后台消息 78 项测试通过 |
+| 2026-11-08 | 内置浏览器对齐 | 按 OpenMinis 实际范围校正清单：参考实现只有单页 WebView 预览，没有多标签/历史/下载/Cookie 管理。补齐工具栏差异：加载中显示停止按钮（`controller.stop()`），标题下方显示去 `www.` 与端口的主机名；地址栏与 `browser_use` 共用 `core/WebUrl.ets` 的补协议与主机解析；79 项测试通过 |

@@ -36,6 +36,7 @@ copyCore('OpenCodeRules');
 copyCore('Latex');
 copyCore('Markdown', ['Latex']);
 copyCore('SubagentJob');
+copyCore('WebUrl');
 copyCore('Types');
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -179,6 +180,7 @@ const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts'))
 const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href);
 const latex = await import(pathToFileURL(join(tmp, 'Latex.mts')).href);
 const jobs = await import(pathToFileURL(join(tmp, 'SubagentJob.mts')).href);
+const webUrl = await import(pathToFileURL(join(tmp, 'WebUrl.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -1875,4 +1877,17 @@ test('elapsed text and pruning stay readable', () => {
   running.startedAt = 400;
   const kept = jobs.pruneJobs([a, b, c, running], 2);
   assert.deepEqual(kept.map((job) => job.id), ['b1', 'c1', 'r1']);
+});
+
+test('web URLs get https and hosts display without noise', () => {
+  assert.equal(webUrl.normalizeWebUrl(''), '');
+  assert.equal(webUrl.normalizeWebUrl('example.com/a'), 'https://example.com/a');
+  assert.equal(webUrl.normalizeWebUrl('HTTP://example.com'), 'HTTP://example.com');
+  assert.equal(webUrl.normalizeWebUrl('  https://a.b  '), 'https://a.b');
+
+  assert.equal(webUrl.webHost('https://www.example.com/a?q=1#x'), 'example.com');
+  assert.equal(webUrl.webHost('http://user:pass@example.com:8443/path'), 'example.com');
+  assert.equal(webUrl.webHost('example.com'), 'example.com');
+  assert.equal(webUrl.webHost('https://sub.www.example.com/'), 'sub.www.example.com');
+  assert.equal(webUrl.webHost(''), '');
 });

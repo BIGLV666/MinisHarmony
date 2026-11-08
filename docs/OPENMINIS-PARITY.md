@@ -88,7 +88,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | Anthropic 原生协议 | Messages API + 流式 | `ProviderPreset` 增加 `anthropic`：`x-api-key` + `anthropic-version`；system 提到顶层，工具转为 `tool_use` / `tool_result` 块，图片转 base64 block；SSE 解析 `content_block_*` / `message_delta` / `message_stop`，工具参数按 `input_json_delta` 累加；`/compact` 与模型发现也走原生端点 | P2 |
 | - [x] | Gemini 原生协议 | `generateContent` | `ProviderPreset` 增加 `gemini`：模型 ID 拼进 URL，`x-goog-api-key` 鉴权；system 放 `systemInstruction`，工具转 `functionCall` / `functionResponse`，图片转 `inlineData`；SSE 解析 `candidates[].content.parts`、`usageMetadata` 与 `finishReason`，模型发现与 `/compact` 也走原生端点 | P2 |
 | - [ ] | OAuth 登录 | Anthropic / Copilot / Codex | 设备码或浏览器回跳 | P2 |
-| - [ ] | 模型组 | fallback / 负载均衡 | 按顺序重试 | P3 |
+| - [x] | 模型组 | fallback / 负载均衡 | 设置页「备用模型」逗号/换行分隔；每轮请求先走主模型，失败且本轮尚未产生任何文本/推理/工具调用时按顺序切换备用模型（去重、跳过空项），已重试的模型本轮不再重复；切换写事件日志（`model=` 与 `fallback ->`）；产生输出后再失败不重试，避免重复内容。负载均衡未做（参考实现也以顺序重试为主） | P3 |
 | - [x] | thinking level | 逐模型推理档位 | 设置页四档（off/low/medium/high）+ `/thinking` 循环；请求体 `reasoning_effort`。全局设置，不做逐模型元数据 | P2 |
 | - [ ] | fast mode | 优先级队列 | 取决于上游支持 | P3 |
 | - [x] | 逐模型参数覆盖 | temperature/top_p/headers/extra_body | `AppSettings.modelOverrides` 按模型 ID 精确匹配；设置页可增删改；温度/top_p/最大输出覆盖请求字段，请求头 JSON 合并，extra_body 顶层字段覆盖基础请求体；非法 JSON 在保存时拒绝、请求时忽略 | P2 |
@@ -188,7 +188,7 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | - [x] | 写入需显式开启 | 工具权限 | `allowWriteTools` | — |
 | - [x] | 密钥安全存储 | Keychain / EncryptedPrefs | `Asset Store Kit`；不可用时回退 preferences 并保留明文兼容 | P1 |
 | - [x] | 应用锁 | Face ID / 生物识别 | 设置「启动时验证系统锁屏」；启动调用 `userAuth`（PIN/人脸/指纹，ATL3），无可用认证时放行 | P2 |
-| - [ ] | 加密备份 | `BackupCrypto` | AES-GCM + 口令派生 | P3 |
+| - [x] | 加密备份 | `BackupCrypto` | AES-GCM + 口令派生 | P3 |
 | - [ ] | 崩溃 / 诊断导出 | 诊断包 | `hiAppEvent` + 日志打包 | P3 |
 | - [x] | 请求检查器 | LLM 请求日志 | 每次模型请求生成 8 位 `req`，写入 `model_start/done/error` 与同轮工具事件；日志查看器显示 `req=`，不含正文 | P2 |
 
@@ -273,3 +273,4 @@ OpenMinis 把设备能力包装成沙箱内 CLI。鸿蒙侧对应 Kit，按需�
 | 2026-11-08 | 内置浏览器对齐 | 按 OpenMinis 实际范围校正清单：参考实现只有单页 WebView 预览，没有多标签/历史/下载/Cookie 管理。补齐工具栏差异：加载中显示停止按钮（`controller.stop()`），标题下方显示去 `www.` 与端口的主机名；地址栏与 `browser_use` 共用 `core/WebUrl.ets` 的补协议与主机解析；79 项测试通过 |
 | 2026-11-08 | KaTeX 公式排版 | 从参考实现复制内置 `katex/` 资源（`katex.min.js`、`katex.min.css`、`mhchem.min.js`、字体、`katex-render.html`，约 888 KB）到 `rawfile`；`components/MathBlockView.ets` 用独立 ArkWeb 加载并 `javaScriptProxy` 回传测量宽高，`$$` 块按高度自适应，超宽横向滚动，深色与字号跟随设置，`throwOnError` 失败退回 Unicode 文本；`MdBlock.raw` 保留原始 LaTeX；`nestedScroll` 让公式内竖滑交给聊天列表；79 项测试通过、构建通过 |
 | 2026-11-08 | 加密备份 | `core/BackupCrypto.ets` 定义并严格校验加密信封（app/version/kind、cipher、kdf、迭代次数区间、base64、payload 长度）；`service/BackupCrypto.ets` 用 PBKDF2-HMAC-SHA256（12 万次、16 字节随机盐、32 字节密钥）+ AES-256-GCM（12 字节随机 IV），按官方约定 `update()` 取密文、`doFinal(null)` 取 16 字节 tag，payload 存「密文‖tag」，解密时 `update()` + `doFinal(null)` 验签；侧栏「加密备份（密码保护）」与导入自动识别，密码只存在组件状态、不落盘不写日志；错误统一提示，明文导入上限放宽到 16 MB；80 项测试通过、构建通过 |
+| 2026-11-08 | 模型组 fallback | `AppSettings.fallbackModels` + `parseModelList`/`modelChain` 纯函数（分割、去空白、去重、保持顺序）；设置页「备用模型」输入；`AgentRuntime` 每轮建立主模型 + 备用链，请求失败且本步无任何输出时 `step--` 后异步重试下一个模型，切换写入事件日志（`fallback -> <id>`），已有输出则照旧报错终止；`activeModelId()` 用于请求、事件日志与用量记录；81 项测试通过、构建通过 |

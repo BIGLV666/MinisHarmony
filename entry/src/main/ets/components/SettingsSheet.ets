@@ -8,7 +8,8 @@ import {
   clampContextBudget,
   clampMaxTurns,
   cloneSettings,
-  defaultSettings
+  defaultSettings,
+  parseModelList
 } from '../core/Types';
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
@@ -94,6 +95,8 @@ export struct SettingsSheet {
   @State baseUrl: string = OPENCODE_GO_BASE;
   @State apiKey: string = '';
   @State modelId: string = OPENCODE_DEFAULT_MODEL;
+  /** Comma/newline separated fallback model ids. */
+  @State fallbackText: string = '';
   @State systemPrompt: string = '';
   @State soulId: string = 'general';
   @State skills: SkillDoc[] = [];
@@ -154,6 +157,7 @@ export struct SettingsSheet {
     this.baseUrl = copy.baseUrl;
     this.apiKey = copy.apiKey;
     this.modelId = copy.modelId;
+    this.fallbackText = copy.fallbackModels.join(', ');
     this.systemPrompt = copy.systemPrompt;
     this.soulId = copy.soulId;
     this.enabledSkills = copy.enabledSkills.slice();
@@ -291,6 +295,7 @@ export struct SettingsSheet {
       baseUrl: normalizeBaseUrl(this.baseUrl),
       apiKey: this.apiKey.trim(),
       modelId: this.modelId.trim(),
+      fallbackModels: parseModelList(this.fallbackText),
       systemPrompt: this.systemPrompt,
       soulId: this.soulId,
       temperature: this.temperature,
@@ -909,6 +914,26 @@ export struct SettingsSheet {
                 .width('100%')
                 .margin({ top: 4 })
               }
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+
+            Column() {
+              this.fieldLabel('备用模型（按顺序重试）')
+              TextInput({ text: this.fallbackText, placeholder: '如 kimi-k3, glm-4.6（可留空）' })
+                .width('100%')
+                .height(42)
+                .fontSize(13)
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(10)
+                .onChange((value: string) => {
+                  this.fallbackText = value;
+                })
+              Text('仅当本次请求尚未产生任何文本、推理或工具调用时才会切换。')
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+                .margin({ top: 4 })
+                .width('100%')
             }
             .width('100%')
             .alignItems(HorizontalAlign.Start)

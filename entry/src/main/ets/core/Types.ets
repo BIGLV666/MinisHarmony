@@ -59,6 +59,8 @@ export interface AppSettings {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  /** Tried in order when a request fails before producing any output. */
+  fallbackModels: string[];
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
@@ -414,6 +416,7 @@ export function defaultSettings(): AppSettings {
     baseUrl: OPENCODE_GO_BASE,
     apiKey: '',
     modelId: OPENCODE_DEFAULT_MODEL,
+    fallbackModels: [],
     systemPrompt: '',
     temperature: 1.0,
     maxTokens: 8192,
@@ -462,12 +465,49 @@ export function normalizeToolNames(value: string[] | undefined): string[] {
   return names;
 }
 
+/**
+ * Split a comma/semicolon/newline separated model list typed by the user.
+ * Whitespace is trimmed and duplicates are dropped; order is preserved.
+ */
+export function parseModelList(text: string): string[] {
+  const parts: string[] = text.split(/[,\n;，；]+/);
+  const clean: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const id: string = parts[i].trim();
+    if (id.length === 0) {
+      continue;
+    }
+    clean.push(id);
+  }
+  return normalizeToolNames(clean);
+}
+
+/**
+ * Primary model followed by fallbacks, trimmed and de-duplicated. A fallback
+ * equal to the primary (or repeated) is ignored, matching "try each in order".
+ */
+export function modelChain(primary: string, fallbacks: string[]): string[] {
+  const chain: string[] = [];
+  const first: string = primary.trim();
+  if (first.length > 0) {
+    chain.push(first);
+  }
+  for (let i = 0; i < fallbacks.length; i++) {
+    const id: string = fallbacks[i].trim();
+    if (id.length > 0 && chain.indexOf(id) < 0) {
+      chain.push(id);
+    }
+  }
+  return chain;
+}
+
 export function cloneSettings(source: AppSettings): AppSettings {
   return {
     preset: source.preset,
     baseUrl: source.baseUrl,
     apiKey: source.apiKey,
     modelId: source.modelId,
+    fallbackModels: normalizeToolNames(source.fallbackModels),
     systemPrompt: source.systemPrompt,
     temperature: source.temperature,
     maxTokens: source.maxTokens,

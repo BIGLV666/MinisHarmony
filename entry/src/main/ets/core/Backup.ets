@@ -140,6 +140,7 @@ export function parseBackupSettings(text: string): AppSettings | null {
     raw.preset === 'gemini' ? raw.preset : 'opencode';
   base.baseUrl = stringOr(raw.baseUrl, base.baseUrl);
   base.modelId = stringOr(raw.modelId, base.modelId);
+  base.fallbackModels = normalizeToolNames(raw.fallbackModels);
   base.systemPrompt = stringOr(raw.systemPrompt, '');
   base.temperature = numberOr(raw.temperature, base.temperature);
   base.maxTokens = numberOr(raw.maxTokens, base.maxTokens);

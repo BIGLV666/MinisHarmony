@@ -85,6 +85,7 @@ function normalizeSettings(source: AppSettings): AppSettings {
     baseUrl: baseUrl,
     apiKey: source.apiKey !== undefined ? source.apiKey : '',
     modelId: modelId,
+    fallbackModels: normalizeToolNames(source.fallbackModels),
     systemPrompt: source.systemPrompt !== undefined ? source.systemPrompt : '',
     temperature: temperature,
     maxTokens: maxTokens,

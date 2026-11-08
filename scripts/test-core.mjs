@@ -1345,6 +1345,7 @@ test('whole-library backup strips secrets and restores non-secret settings', () 
     extraHeaders: '{"X-Key":"secret"}', extraBody: '{"seed":1}'
   }];
   settings.temperature = 0.7;
+  settings.fallbackModels = ['backup-a', 'backup-b'];
   const session = {
     meta: {
       id: 's1', title: 'T', modelId: 'kimi-k3', updatedAt: 1,
@@ -1362,6 +1363,7 @@ test('whole-library backup strips secrets and restores non-secret settings', () 
   const restored = backup.parseBackupSettings(text);
   assert.notEqual(restored, null);
   assert.equal(restored.temperature, 0.7);
+  assert.deepEqual(restored.fallbackModels, ['backup-a', 'backup-b']);
   assert.equal(restored.mcpServers.length, 1);
   assert.equal(restored.mcpServers[0].headers, '');
   assert.equal(restored.modelOverrides[0].temperature, 0.4);
@@ -1418,6 +1420,15 @@ test('encrypted backup envelope validates shape and rejects tampering', () => {
     { ...envelope, payload: 'not base64!' })), null);
   assert.equal(backupCrypto.parseEncryptedBackup(JSON.stringify(
     { ...envelope, payload: 'AAAA' })), null);
+});
+
+test('model fallback lists parse, trim and de-duplicate', () => {
+  assert.deepEqual(types.parseModelList(' a, b\nb；c ,, '), ['a', 'b', 'c']);
+  assert.deepEqual(types.parseModelList(''), []);
+  assert.deepEqual(types.modelChain('m', []), ['m']);
+  assert.deepEqual(types.modelChain('m', [' n ', 'm', 'n', '']), ['m', 'n']);
+  assert.deepEqual(types.modelChain('  ', ['x']), ['x']);
+  assert.deepEqual(types.modelChain('', []), []);
 });
 
 test('code highlighting segments cover the source without losing characters', () => {

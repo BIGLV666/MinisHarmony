@@ -11,6 +11,8 @@ import {
   TOOL_RUNNING,
   appendReasoning,
   appendText,
+  cloneSettings,
+  modelChain,
   newChatMessage,
   textOf,
   toolCallPart
@@ -101,6 +103,11 @@ export class AgentRuntime {
   /** Steer / background input, read at the next model request boundary. */
   private pendingInputs: string[] = [];
   private currentTool: string = '';
+  /** Primary + fallback models for this turn, and how many have been tried. */
+  private models: string[] = [];
+  private modelAttempt: number = 0;
+  /** Whether the current step already streamed text, reasoning or tool calls. */
+  private stepHadContent: boolean = false;
 
   constructor(
     settings: AppSettings,
@@ -173,6 +180,9 @@ export class AgentRuntime {
   private beginRun(kind: string): void {
     this.running = true;
     this.agentStartedAt = Date.now();
+    // Fallbacks are retried in order within this turn; a new turn starts over.
+    this.models = modelChain(this.settings.modelId, this.settings.fallbackModels);
+    this.modelAttempt = 0;
     this.beginAssistant();
     this.log(
       EVENT_AGENT_START, LOG_INFO, 0, '', true, 0,
@@ -247,6 +257,25 @@ export class AgentRuntime {
     this.emit();
   }
 
+  private activeModelId(): string {
+    if (this.models.length === 0) {
+      return this.settings.modelId;
+    }
+    const index: number = Math.min(this.modelAttempt, this.models.length - 1);
+    return this.models[index];
+  }
+
+  /** Settings for the current attempt; only the model id changes on fallback. */
+  private requestSettings(): AppSettings {
+    const id: string = this.activeModelId();
+    if (id === this.settings.modelId) {
+      return this.settings;
+    }
+    const copy: AppSettings = cloneSettings(this.settings);
+    copy.modelId = id;
+    return copy;
+  }
+
   private runStep(): void {
     if (this.cancelled || !this.running) {
       this.finish();
@@ -282,6 +311,7 @@ export class AgentRuntime {
     // the request that is about to be built.
     this.drainPendingInputs();
     this.currentTool = '';
+    this.stepHadContent = false;
 
     const history: ChatMessage[] = this.session.messages.slice(
       0, this.session.messages.length - 1
@@ -304,11 +334,12 @@ export class AgentRuntime {
       EVENT_MODEL_START, LOG_INFO, this.step, '', true, 0,
       'messages=' + history.length.toString() +
         ' tools=' + definitions.length.toString() +
-        ' trimmed=' + budgeted.trimmedParts.toString()
+        ' trimmed=' + budgeted.trimmedParts.toString() +
+        ' model=' + this.activeModelId()
     );
 
     const handle: ChatStreamHandle = startChatStream(
-      this.settings,
+      this.requestSettings(),
       this.session.meta.id,
       budgeted.messages,
       definitions,
@@ -352,6 +383,9 @@ export class AgentRuntime {
   ): void {
     if (!this.running || this.cancelled) {
       return;
+    }
+    if (content.length > 0 || reasoning.length > 0 || toolCalls.length > 0) {
+      this.stepHadContent = true;
     }
     appendText(assistant, content);
     appendReasoning(assistant, reasoning);
@@ -412,10 +446,31 @@ export class AgentRuntime {
     this.handle = null;
     this.clearFlush();
     assistant.streaming = false;
+    const elapsed: number = Date.now() - this.requestStartedAt;
+    const failedStep: number = this.step;
+    // A model group retries on a later model only when the failed request
+    // produced nothing; partial output would otherwise be duplicated.
+    if (!this.stepHadContent && this.modelAttempt + 1 < this.models.length) {
+      const next: string = this.models[this.modelAttempt + 1];
+      this.modelAttempt++;
+      this.step--;
+      this.accumulators.clear();
+      assistant.streaming = true;
+      this.log(
+        EVENT_MODEL_ERROR, LOG_WARN, failedStep, '', false, elapsed,
+        'fallback -> ' + next + ': ' + message
+      );
+      this.emit();
+      // Unwind the failed callback before opening the next request.
+      setTimeout(() => {
+        if (this.running && !this.cancelled) {
+          this.runStep();
+        }
+      }, 0);
+      return;
+    }
     this.log(
-      EVENT_MODEL_ERROR, LOG_ERROR, this.step, '', false,
-      Date.now() - this.requestStartedAt,
-      message
+      EVENT_MODEL_ERROR, LOG_ERROR, this.step, '', false, elapsed, message
     );
     if (textOf(assistant).length > 0) {
       appendText(assistant, '\n\n');
@@ -632,7 +687,7 @@ export class AgentRuntime {
     }
     const record: LogEvent = newLogEvent(event, level);
     record.session = sessionTag(this.session.meta.id);
-    record.model = this.settings.modelId;
+    record.model = this.activeModelId();
     record.step = step;
     record.tool = tool;
     record.ok = ok;

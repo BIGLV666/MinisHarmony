@@ -220,9 +220,14 @@ export class SandboxIsh {
       }
     }
 
-    const readyError: string = await SandboxIsh.ensureDaemon(context, rootfs);
+    const readyError: string = await SandboxIsh.ensureDaemon(context, rootfs, token);
     if (readyError.length > 0) {
       return SandboxIsh.failed(readyError);
+    }
+    // The user may have stopped while the kernel was booting.
+    if (SandboxIsh.cancelToken !== token) {
+      SandboxIsh.stopDaemon();
+      return { output: '', exitCode: -1, timedOut: false, error: '命令已取消' };
     }
 
     const id: number = ++SandboxIsh.sequence;
@@ -310,7 +315,7 @@ export class SandboxIsh {
 
   /** Boot the daemon once and wait for its readiness line. */
   private static async ensureDaemon(context: common.UIAbilityContext,
-    rootfs: string): Promise<string> {
+    rootfs: string, token: number): Promise<string> {
     if (SandboxIsh.started) {
       return '';
     }
@@ -356,6 +361,12 @@ export class SandboxIsh {
 
     const deadline: number = Date.now() + 90000;
     while (Date.now() < deadline) {
+      if (SandboxIsh.cancelToken !== token) {
+        // The user stopped while the kernel was booting; make sure the child
+        // that may have started anyway is told to exit.
+        SandboxIsh.stopDaemon();
+        return '命令已取消';
+      }
       const text: string = SandboxIsh.read(SandboxIsh.outputPath);
       const ready: number = text.indexOf(SandboxIsh.READY);
       if (ready >= 0) {

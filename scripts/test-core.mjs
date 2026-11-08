@@ -56,6 +56,7 @@ copyCore('ModelCaps');
 copyCore('ModelOverride');
 copyCore('McpProtocol');
 copyCore('Types', ['ModelOverride', 'McpProtocol']);
+copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -89,6 +90,10 @@ markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'MessagePart', 'StoredSes
 markTypeOnly('SessionParams', 'Types', ['AppSettings', 'SessionMeta', 'ThinkingLevel']);
 markTypeOnly('Types', 'ModelOverride', ['ModelOverride']);
 markTypeOnly('Types', 'McpProtocol', ['McpServerConfig']);
+markTypeOnly('Backup', 'Types', ['AppSettings', 'StoredSession']);
+markTypeOnly('Backup', 'SessionExport', ['SessionBundleEnvelope']);
+markTypeOnly('Backup', 'ModelOverride', ['ModelOverride']);
+markTypeOnly('Backup', 'McpProtocol', ['McpServerConfig']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -150,6 +155,7 @@ const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
+const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -1292,6 +1298,61 @@ test('MCP tool lists and call results flatten into model-friendly text', () => {
   assert.equal(servers.length, 1);
   assert.equal(servers[0].url, 'https://x/mcp');
   assert.equal(servers[0].name, 'A');
+});
+
+test('whole-library backup strips secrets and restores non-secret settings', () => {
+  const now = new Date(2026, 10, 8, 15, 0);
+  const settings = types.defaultSettings();
+  settings.apiKey = 'sk-secret';
+  settings.sandboxToken = 'sandbox-secret';
+  settings.mcpServers = [{
+    id: 'srv', name: 'Search', url: 'https://mcp.example/x',
+    headers: '{"Authorization":"Bearer abc"}', enabled: true
+  }];
+  settings.modelOverrides = [{
+    modelId: 'kimi-k3', temperature: 0.4, topP: 0.9, maxTokens: 0,
+    extraHeaders: '{"X-Key":"secret"}', extraBody: '{"seed":1}'
+  }];
+  settings.temperature = 0.7;
+  const session = {
+    meta: {
+      id: 's1', title: 'T', modelId: 'kimi-k3', updatedAt: 1,
+      messageCount: 1, pinned: false, archived: false
+    },
+    messages: [types.newChatMessage('m1', 'user', 'hi')]
+  };
+  const text = backup.backupJson(settings, [session], now);
+  assert.ok(text.indexOf('sk-secret') < 0);
+  assert.ok(text.indexOf('sandbox-secret') < 0);
+  assert.ok(text.indexOf('Bearer abc') < 0);
+  assert.ok(text.indexOf('secret') < 0);
+  assert.equal(backup.backupFileName(now), 'minis-backup-2026-11-08.json');
+
+  const restored = backup.parseBackupSettings(text);
+  assert.notEqual(restored, null);
+  assert.equal(restored.temperature, 0.7);
+  assert.equal(restored.mcpServers.length, 1);
+  assert.equal(restored.mcpServers[0].headers, '');
+  assert.equal(restored.modelOverrides[0].temperature, 0.4);
+  assert.equal(restored.modelOverrides[0].extraHeaders, '');
+  assert.equal(restored.apiKey, '');
+
+  const current = types.defaultSettings();
+  current.apiKey = 'current-key';
+  current.sandboxToken = 'current-token';
+  const merged = backup.mergeBackupSettings(current, restored);
+  assert.equal(merged.apiKey, 'current-key');
+  assert.equal(merged.sandboxToken, 'current-token');
+  assert.equal(merged.temperature, 0.7);
+
+  // The same file is still accepted by the session importer.
+  const imported = sessionExport.parseSessionsExport(text, () => 'new-id', now);
+  assert.equal(imported.ok, true);
+  assert.equal(imported.sessions.length, 1);
+  assert.equal(imported.sessions[0].meta.id, 'new-id');
+
+  assert.equal(backup.parseBackupSettings('{"app":"MinisHarmony"}'), null);
+  assert.equal(backup.parseBackupSettings('not json'), null);
 });
 
 test('workspace listing sorts directories first and formats sizes', () => {

@@ -38,6 +38,7 @@
 | 工作区浏览 | `WorkspaceFiles` + `WorkspaceSheet` | 只读列表/预览；复用工作区路径规则；跳过符号链接 |
 | 写入前确认 | `AgentRuntime.runTool()` + Index 弹层 | 仅写工具；拒绝作为工具错误返回；停止时结算为拒绝 |
 | 逐工具开关 | `AppSettings.disabledTools` + `isToolDisabled()` | 设置页开关；definitions/execute 双重检查；子代理继承 |
+| 整库备份 / 恢复 | `core/Backup.ets` + 侧栏入口 | 全部会话 + 设置快照；密钥与请求头写盘前剔除；恢复保留本机密钥；明文，无加密包 |
 | 会话导出 / 导入 JSON | `core/SessionExport.ets` + `service/ExportService.ets` | 版本化信封 `{app,version,exportedAt,session}`；导入时校验、重建 parts、分配新 ID，未完成工具标记为 error；多选导出为 `sessions` bundle，同一导入器兼容两种形状 |
 | Android 前台服务 / iOS background task | `service/BackgroundGuard.ets` | `dataTransfer` 长时任务，仅生成期间持有；失败静默回退 |
 | OpenMinis 生成通知 | `service/Notify.ets` + `Index` 生命周期 | 后台生成常驻通知、完成替换、前台清除；点按经 `wantAgent` 回应用；未授权时静默 |

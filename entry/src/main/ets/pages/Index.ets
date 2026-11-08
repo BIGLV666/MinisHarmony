@@ -47,6 +47,7 @@ import {
   BundleImportOutcome,
   ExportOutcome,
   importSessionsJson,
+  saveBackup,
   saveSessionBundle,
   saveSessionJson,
   saveSessionMarkdown
@@ -58,6 +59,7 @@ import { SkillStore } from '../service/SkillStore';
 import { keepScreenOn } from '../service/ScreenWake';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { McpRegistry, McpRuntime } from '../service/McpRuntime';
+import { mergeBackupSettings } from '../core/Backup';
 import { SubagentRunner } from '../service/SubagentRunner';
 import { titleFrom } from '../service/Format';
 import { ChatView } from '../components/ChatView';
@@ -436,6 +438,16 @@ struct Index {
       return;
     }
     const imported: StoredSession[] = outcome.sessions;
+    if (outcome.settings !== null) {
+      const merged: AppSettings = mergeBackupSettings(this.settings, outcome.settings);
+      this.settings = merged;
+      this.applyAppearance(merged);
+      AppLogger.setEnabled(merged.loggingEnabled);
+      LocalStore.saveSettings(merged).catch((error: Error) => {
+        this.toast('设置保存失败');
+      });
+      McpRegistry.refresh(merged.mcpServers).catch((error: Error) => {});
+    }
     this.store = imported.concat(this.store);
     this.refreshSessions();
     this.currentId = imported[0].meta.id;
@@ -443,6 +455,17 @@ struct Index {
     this.draft = '';
     this.mobileChat = true;
     this.persistSoon();
+    this.toast(outcome.message);
+  }
+
+  /** Export every session plus a secret-free settings snapshot. */
+  private async exportBackup(): Promise<void> {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const outcome: ExportOutcome = await saveBackup(context, this.settings, this.store);
     this.toast(outcome.message);
   }
 
@@ -1633,6 +1656,7 @@ struct Index {
       },
       onNew: () => this.createChat(),
       onImport: () => this.importSessionFromFile(),
+      onBackup: () => this.exportBackup(),
       onSelect: (id: string) => this.selectSession(id),
       onMore: (id: string) => this.requestActions(id),
       onSettings: () => {

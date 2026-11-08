@@ -500,6 +500,21 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 空消息。`read_image` 与用户附件共用同一条 `image_url` 通路，但开关互不影响。
 模型能力表未标记视觉时只提示，不阻止发送。
 
+## 整库备份
+
+`core/Backup.ets` 在 `sessionBundleJson()` 的信封上增加 `kind: "backup"` 与
+`settings` 快照：会话部分复用同一套序列化（流式标记归零），因此备份文件仍能被
+普通会话导入器识别。写盘前 `redactedSettings()` 清空 `apiKey`、`sandboxToken`，
+以及 `modelOverrides[].extraHeaders` 和 `mcpServers[].headers`——这些字段常放
+Bearer Token；`extraBody` 与提示词保留，因为它们是配置的一部分。
+
+恢复分两步：`parseBackupSettings()` 从文件里挑出白名单字段并交给
+`cloneSettings()` 归一化；`mergeBackupSettings()` 再用当前设置的 API Key 与
+沙箱 Token 覆盖回去。因此“恢复备份”不会把旧密钥写回设备，也不会因为备份文件
+外泄而暴露当前凭据。文件与普通会话包共用同一个导入入口：
+`parseSessionsExport()` 只看 `app/version/sessions`，额外字段被忽略。
+加密归档仍未实现，文件是明文 JSON。
+
 ## MCP 工具
 
 `McpClient` 走 MCP 的 Streamable HTTP 传输：每个 JSON-RPC 消息都 POST 到服务

@@ -2,7 +2,7 @@ import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
-import { StoredSession } from '../core/Types';
+import { AppSettings, StoredSession } from '../core/Types';
 import { exportFileName, exportMarkdown } from '../core/MarkdownExport';
 import {
   parseSessionsExport,
@@ -11,6 +11,11 @@ import {
   sessionExportJson,
   sessionJsonFileName
 } from '../core/SessionExport';
+import {
+  backupFileName,
+  backupJson,
+  parseBackupSettings
+} from '../core/Backup';
 
 const MAX_IMPORT_BYTES: number = 8 * 1024 * 1024;
 const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
@@ -75,6 +80,8 @@ export interface BundleImportOutcome {
   ok: boolean;
   message: string;
   sessions: StoredSession[];
+  /** Non-null when the file was a whole-library backup. */
+  settings: AppSettings | null;
 }
 
 /** Multi-session export: one JSON file with a `sessions` array. */
@@ -112,14 +119,14 @@ export async function importSessionsJson(
       new picker.DocumentViewPicker(context);
     const uris: string[] = await documentPicker.select(options);
     if (uris.length === 0) {
-      return { ok: false, message: '已取消导入', sessions: [] };
+      return { ok: false, message: '已取消导入', sessions: [], settings: null };
     }
     const stat = fs.statSync(uris[0]);
     if (stat.size <= 0) {
-      return { ok: false, message: '文件是空的', sessions: [] };
+      return { ok: false, message: '文件是空的', sessions: [], settings: null };
     }
     if (stat.size > MAX_IMPORT_BYTES) {
-      return { ok: false, message: '文件超过 8 MB，拒绝导入', sessions: [] };
+      return { ok: false, message: '文件超过 8 MB，拒绝导入', sessions: [], settings: null };
     }
     const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
     const file = fs.openSync(uris[0], fs.OpenMode.READ_ONLY);
@@ -131,18 +138,21 @@ export async function importSessionsJson(
     const text: string = decoder.decodeToString(new Uint8Array(buffer));
     const parsed = parseSessionsExport(text, newId, new Date());
     if (!parsed.ok || parsed.sessions.length === 0) {
-      return { ok: false, message: parsed.error, sessions: [] };
+      return { ok: false, message: parsed.error, sessions: [], settings: null };
     }
+    const settings: AppSettings | null = parseBackupSettings(text);
+    const count: number = parsed.sessions.length;
     return {
       ok: true,
-      message: parsed.sessions.length === 1
-        ? '已导入会话'
-        : '已导入 ' + parsed.sessions.length.toString() + ' 个会话',
-      sessions: parsed.sessions
+      message: settings !== null
+        ? '已恢复备份：' + count.toString() + ' 个会话与设置'
+        : (count === 1 ? '已导入会话' : '已导入 ' + count.toString() + ' 个会话'),
+      sessions: parsed.sessions,
+      settings: settings
     };
   } catch (e) {
     const error: BusinessError = e as BusinessError;
-    return { ok: false, message: '导入失败：' + error.message, sessions: [] };
+    return { ok: false, message: '导入失败：' + error.message, sessions: [], settings: null };
   }
 }
 
@@ -157,5 +167,21 @@ export async function saveSessionJson(
     'JSON|.json',
     sessionExportJson(session, now),
     '已导出 JSON'
+  );
+}
+
+/** Whole-library backup: all sessions plus settings with secrets removed. */
+export async function saveBackup(
+  context: common.UIAbilityContext,
+  settings: AppSettings,
+  sessions: StoredSession[]
+): Promise<ExportOutcome> {
+  const now: Date = new Date();
+  return saveText(
+    context,
+    backupFileName(now),
+    'JSON|.json',
+    backupJson(settings, sessions, now),
+    '已导出 ' + sessions.length.toString() + ' 个会话与设置（不含密钥）'
   );
 }

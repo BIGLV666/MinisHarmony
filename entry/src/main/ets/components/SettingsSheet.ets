@@ -37,6 +37,10 @@ import {
 } from '../core/ModelOverride';
 import { McpServerConfig, normalizeMcpServers } from '../core/McpProtocol';
 import { McpRegistry, McpServerStatus } from '../service/McpRuntime';
+import {
+  ANTHROPIC_DEFAULT_BASE,
+  ANTHROPIC_DEFAULT_MODEL
+} from '../core/AnthropicProtocol';
 
 interface ToolChoice {
   name: string;
@@ -238,6 +242,13 @@ export struct SettingsSheet {
       this.baseUrl = OPENCODE_GO_BASE;
       if (this.modelId.trim().length === 0) {
         this.modelId = OPENCODE_DEFAULT_MODEL;
+      }
+    } else if (value === 'anthropic') {
+      if (this.baseUrl.trim().length === 0 || this.baseUrl.trim() === OPENCODE_GO_BASE) {
+        this.baseUrl = ANTHROPIC_DEFAULT_BASE;
+      }
+      if (this.modelId.trim().length === 0 || this.modelId === OPENCODE_DEFAULT_MODEL) {
+        this.modelId = ANTHROPIC_DEFAULT_MODEL;
       }
     }
   }
@@ -761,9 +772,10 @@ export struct SettingsSheet {
 
         Scroll() {
           Column({ space: 16 }) {
-            this.sectionTitle('服务商', 'OpenCode Go 使用订阅 API Key；自定义可接任意 OpenAI 兼容服务')
+            this.sectionTitle('服务商', 'OpenCode Go 用订阅 Key；Anthropic 走原生 Messages API；自定义接任意 OpenAI 兼容服务')
             Row({ space: 10 }) {
               this.presetCard('OpenCode Go', '自动填写当前基址，注入会话头', 'opencode')
+              this.presetCard('Anthropic', '原生 Messages API 与工具调用', 'anthropic')
               this.presetCard('自定义', '自建中转 / 其他兼容服务', 'custom')
             }
             .width('100%')

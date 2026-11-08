@@ -60,6 +60,7 @@ copyCore('SharePayload');
 copyCore('DeepLink');
 copyCore('Types', ['ModelOverride', 'McpProtocol']);
 copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol']);
+copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 
 // ArkTS needs runtime imports for interface types; Node's type stripping
 // needs them marked `type` (interfaces have no runtime binding).
@@ -97,6 +98,10 @@ markTypeOnly('Backup', 'Types', ['AppSettings', 'StoredSession']);
 markTypeOnly('Backup', 'SessionExport', ['SessionBundleEnvelope']);
 markTypeOnly('Backup', 'ModelOverride', ['ModelOverride']);
 markTypeOnly('Backup', 'McpProtocol', ['McpServerConfig']);
+markTypeOnly('AnthropicProtocol', 'Types', ['ChatMessage']);
+markTypeOnly('AnthropicProtocol', 'ToolProtocol', ['ImageResolver']);
+markTypeOnly('AnthropicProtocol', 'ToolTypes', ['ToolDefinition']);
+markTypeOnly('AnthropicProtocol', 'SseParser', ['DeltaResult', 'ToolCallDelta']);
 
 {
   const file = join(tmp, 'ContextBudget.mts');
@@ -162,6 +167,7 @@ const highlight = await import(pathToFileURL(join(tmp, 'CodeHighlight.mts')).hre
 const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
 const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
+const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts')).href);
 
 test('OpenCode host matching is dot-anchored', () => {
   assert.equal(rules.isOpenCodeBase('https://opencode.ai/inference/go/openai/v1'), true);
@@ -1442,4 +1448,182 @@ test('workspace listing sorts directories first and formats sizes', () => {
   assert.equal(listing.formatFileSize(512), '512 B');
   assert.equal(listing.formatFileSize(2048), '2.0 KB');
   assert.equal(listing.formatFileSize(3 * 1024 * 1024), '3.0 MB');
+});
+
+function anthropicPart(kind, extra = {}) {
+  return {
+    kind,
+    text: '',
+    toolCallId: '',
+    toolName: '',
+    argumentsText: '',
+    resultText: '',
+    status: 'done',
+    isError: false,
+    mimeType: '',
+    uri: '',
+    ...extra
+  };
+}
+
+function anthropicMessage(role, parts) {
+  return {
+    id: role + '-' + Math.random().toString(16).slice(2),
+    role,
+    parts,
+    createdAt: 0,
+    streaming: false,
+    error: false,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0
+  };
+}
+
+test('Anthropic conversion emits tool_use and matching tool_result blocks', () => {
+  const history = [
+    anthropicMessage('user', [anthropicPart('text', { text: '看一下这张图' }),
+      anthropicPart('image', { uri: 'chat/a.png', mimeType: 'image/png' })]),
+    anthropicMessage('assistant', [
+      anthropicPart('text', { text: '我来读取。' }),
+      anthropicPart('tool_call', {
+        toolCallId: 'call_1', toolName: 'read_file',
+        argumentsText: '{"path":"a.txt"}', resultText: 'hello', status: 'done'
+      }),
+      anthropicPart('reasoning', { text: '内部推理应被忽略' })
+    ]),
+    anthropicMessage('user', [anthropicPart('text', { text: '继续' })])
+  ];
+  const converted = anthropic.buildAnthropicMessages(history, () =>
+    'data:image/png;base64,AAAA');
+  assert.equal(converted.messages.length, 3);
+  assert.equal(converted.messages[0].role, 'user');
+  assert.equal(converted.messages[0].content[0].type, 'text');
+  assert.equal(converted.messages[0].content[1].type, 'image');
+  assert.equal(converted.messages[0].content[1].source.media_type, 'image/png');
+  assert.equal(converted.messages[0].content[1].source.data, 'AAAA');
+
+  const assistant = converted.messages[1];
+  assert.equal(assistant.role, 'assistant');
+  assert.deepEqual(assistant.content.map((b) => b.type), ['text', 'tool_use']);
+  assert.equal(assistant.content[1].id, 'call_1');
+  assert.equal(assistant.content[1].name, 'read_file');
+  assert.deepEqual(assistant.content[1].input, { path: 'a.txt' });
+
+  const results = converted.messages[2];
+  assert.equal(results.role, 'user');
+  assert.equal(results.content[0].type, 'tool_result');
+  assert.equal(results.content[0].tool_use_id, 'call_1');
+  assert.equal(results.content[0].content[0].text, 'hello');
+  assert.equal(results.content[0].is_error, false);
+  // The following user turn merges into the same user message.
+  assert.equal(results.content[1].text, '继续');
+});
+
+test('Anthropic conversion dedupes repeated call ids and keeps system text', () => {
+  const history = [
+    anthropicMessage('system', [anthropicPart('text', { text: '摘要：此前在改设置页' })]),
+    anthropicMessage('user', [anthropicPart('text', { text: 'go' })]),
+    anthropicMessage('assistant', [
+      anthropicPart('tool_call', {
+        toolCallId: 'dup', toolName: 'a', argumentsText: '{}', resultText: 'one'
+      }),
+      anthropicPart('tool_call', {
+        toolCallId: 'dup', toolName: 'b', argumentsText: '{}', resultText: 'two'
+      })
+    ])
+  ];
+  const converted = anthropic.buildAnthropicMessages(history, null);
+  assert.equal(converted.messages.length, 3);
+  assert.equal(converted.messages[0].role, 'user');
+  assert.equal(converted.messages[0].content[0].text, '摘要：此前在改设置页');
+  assert.equal(converted.messages[0].content[1].text, 'go');
+  const uses = converted.messages[1].content;
+  assert.deepEqual(uses.map((b) => b.id), ['dup', 'dup_2']);
+  const results = converted.messages[2].content;
+  assert.deepEqual(results.map((b) => b.tool_use_id), ['dup', 'dup_2']);
+  assert.deepEqual(results.map((b) => b.content[0].text), ['one', 'two']);
+});
+
+test('Anthropic tools and request body follow Messages API shape', () => {
+  const defs = anthropic.anthropicTools([
+    {
+      name: 'read_file',
+      description: 'read',
+      parameters: { type: 'object', properties: {} },
+      schemaJson: '{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}'
+    }
+  ]);
+  assert.equal(defs[0].input_schema.required[0], 'path');
+
+  const body = anthropic.buildAnthropicBody(
+    'claude-sonnet-5-5', 4096, 'sys',
+    [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+    defs, 1.7, 0.3);
+  assert.equal(body.temperature, 1);
+  assert.equal(body.top_p, 0.3);
+  assert.equal(body.max_tokens, 4096);
+  assert.equal(body.system, 'sys');
+  assert.equal(body.stream, true);
+  assert.equal(body.tools.length, 1);
+
+  assert.equal(anthropic.anthropicMessagesUrl('https://api.anthropic.com/v1/'),
+    'https://api.anthropic.com/v1/messages');
+  assert.equal(anthropic.anthropicMessagesUrl('https://proxy/v1/messages'),
+    'https://proxy/v1/messages');
+  assert.equal(anthropic.anthropicModelsUrl('https://api.anthropic.com/v1/messages'),
+    'https://api.anthropic.com/v1/models');
+});
+
+test('Anthropic stream decoder accumulates usage and tool arguments', () => {
+  const state = anthropic.newAnthropicStreamState();
+  let delta = anthropic.parseAnthropicData(JSON.stringify({
+    type: 'message_start',
+    message: { usage: { input_tokens: 12 } }
+  }), state);
+  assert.equal(delta.usage.present, true);
+  assert.equal(delta.usage.promptTokens, 12);
+
+  delta = anthropic.parseAnthropicData(JSON.stringify({
+    type: 'content_block_start', index: 1,
+    content_block: { type: 'tool_use', id: 'toolu_1', name: 'read_file' }
+  }), state);
+  assert.deepEqual(delta.toolCalls, [
+    { index: 1, id: 'toolu_1', name: 'read_file', arguments: '' }
+  ]);
+
+  delta = anthropic.parseAnthropicData(JSON.stringify({
+    type: 'content_block_delta', index: 1,
+    delta: { type: 'input_json_delta', partial_json: '{"path":"a"}' }
+  }), state);
+  assert.equal(delta.toolCalls[0].arguments, '{"path":"a"}');
+
+  delta = anthropic.parseAnthropicData(JSON.stringify({
+    type: 'content_block_delta', index: 0,
+    delta: { type: 'text_delta', text: '好的' }
+  }), state);
+  assert.equal(delta.content, '好的');
+
+  delta = anthropic.parseAnthropicData(JSON.stringify({
+    type: 'content_block_delta', index: 0,
+    delta: { type: 'thinking_delta', thinking: '嗯' }
+  }), state);
+  assert.equal(delta.reasoning, '嗯');
+
+  delta = anthropic.parseAnthropicData(JSON.stringify({
+    type: 'message_delta',
+    delta: { stop_reason: 'tool_use' },
+    usage: { output_tokens: 7 }
+  }), state);
+  assert.equal(delta.finishReason, 'tool_calls');
+  assert.equal(delta.usage.completionTokens, 7);
+  assert.equal(delta.usage.totalTokens, 19);
+
+  delta = anthropic.parseAnthropicData(JSON.stringify({ type: 'message_stop' }), state);
+  assert.equal(delta.done, true);
+
+  delta = anthropic.parseAnthropicData(JSON.stringify({
+    type: 'error', error: { type: 'overloaded_error', message: '过载' }
+  }), anthropic.newAnthropicStreamState());
+  assert.equal(delta.error, '过载');
 });

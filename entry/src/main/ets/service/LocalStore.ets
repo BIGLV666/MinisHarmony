@@ -13,6 +13,7 @@ import {
   PART_REASONING,
   PART_TEXT,
   PART_TOOL_CALL,
+  ProviderPreset,
   SandboxMode,
   StoredSession,
   TOOL_ERROR,
@@ -54,9 +55,9 @@ interface RawPart {
 
 function normalizeSettings(source: AppSettings): AppSettings {
   const fallback: AppSettings = defaultSettings();
-  let preset: 'opencode' | 'custom' = 'opencode';
-  if (source.preset === 'custom') {
-    preset = 'custom';
+  let preset: ProviderPreset = 'opencode';
+  if (source.preset === 'custom' || source.preset === 'anthropic') {
+    preset = source.preset;
   }
   const baseUrl: string = source.baseUrl !== undefined && source.baseUrl.length > 0
     ? source.baseUrl

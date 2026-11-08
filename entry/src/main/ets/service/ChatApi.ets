@@ -29,8 +29,23 @@ import {
   shouldAttachSessionHeader,
   OPENCODE_SESSION_HEADER
 } from '../core/OpenCodeRules';
+import {
+  ANTHROPIC_VERSION,
+  AnthropicRequestBody,
+  AnthropicStreamState,
+  anthropicMessagesUrl,
+  anthropicModelsUrl,
+  anthropicTools,
+  buildAnthropicBody,
+  buildAnthropicMessages,
+  newAnthropicStreamState,
+  parseAnthropicData
+} from '../core/AnthropicProtocol';
 
 const USER_AGENT: string = 'MinisHarmony/1.0 (HarmonyOS tablet)';
+const SUMMARY_INSTRUCTION: string = '你是对话压缩器。把给出的对话压缩成简洁的中文摘要，保留：' +
+  '用户目标与约束、已确认的事实与决定、改过的文件与命令、未完成事项。' +
+  '不要编造，不要加开场白，直接输出摘要正文。';
 
 export interface ChatCallbacks {
   onDelta: (content: string, reasoning: string, toolCalls: ToolCallDelta[]) => void;
@@ -115,6 +130,24 @@ export interface SummaryResult {
   message: string;
 }
 
+interface AnthropicSummaryBlock {
+  type?: string;
+  text?: string;
+}
+
+interface AnthropicSummaryEnvelope {
+  content?: AnthropicSummaryBlock[];
+  error?: OpenAiErrorDetail;
+}
+
+interface AnthropicSummaryRequestBody {
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  system: string;
+  messages: SummaryMessage[];
+}
+
 /**
  * Handle for an in-flight stream. Cancelling destroys the HTTP request and
  * suppresses every subsequent callback; the partial answer already delivered
@@ -171,13 +204,8 @@ function httpErrorText(code: number, body: string): string {
   return detail.length > 0 ? prefix + '：' + detail : prefix;
 }
 
-function buildMessages(
-  settings: AppSettings,
-  history: ChatMessage[],
-  memoryContext: string,
-  resolveImage: ImageResolver | null
-): ApiMessage[] {
-  const messages: ApiMessage[] = toApiMessages(history, resolveImage);
+/** Soul persona + user prompt + recalled memory, in that order. */
+function buildSystemPrompt(settings: AppSettings, memoryContext: string): string {
   let systemPrompt: string = settings.systemPrompt.trim();
   const soul: string = soulPrompt(settings.soulId).trim();
   if (soul.length > 0) {
@@ -191,6 +219,17 @@ function buildMessages(
       ? systemPrompt + '\n\n' + memory
       : memory;
   }
+  return systemPrompt;
+}
+
+function buildMessages(
+  settings: AppSettings,
+  history: ChatMessage[],
+  memoryContext: string,
+  resolveImage: ImageResolver | null
+): ApiMessage[] {
+  const messages: ApiMessage[] = toApiMessages(history, resolveImage);
+  const systemPrompt: string = buildSystemPrompt(settings, memoryContext);
   if (systemPrompt.length > 0) {
     messages.unshift({ role: 'system', content: systemPrompt });
   }
@@ -222,80 +261,18 @@ function buildToolDefinitions(tools: ToolDefinition[]): ApiToolDefinition[] {
 }
 
 /**
- * Start a streaming chat completion.
- *
- * `sessionId` is the persisted conversation id. When the endpoint is
- * opencode.ai, it is sent as `x-opencode-session` on every request; for any
- * other host it is deliberately not sent.
+ * Shared SSE transport. Both OpenAI-compatible and Anthropic streams differ
+ * only in URL, headers, request body and the event decoder, so cancellation,
+ * timeouts, error-body capture and finish handling live here once.
  */
-export function startChatStream(
-  settings: AppSettings,
-  sessionId: string,
-  history: ChatMessage[],
-  tools: ToolDefinition[],
-  memoryContext: string,
+function runStream(
+  url: string,
+  headers: Record<string, string>,
+  payload: string,
+  handle: ChatStreamHandle,
   callbacks: ChatCallbacks,
-  resolveImage: ImageResolver | null = null
-): ChatStreamHandle {
-  const handle: ChatStreamHandle = new ChatStreamHandle();
-  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
-  const apiKey: string = settings.apiKey.trim();
-
-  if (baseUrl.length === 0) {
-    callbacks.onError('请先在设置中填写 API 地址');
-    return handle;
-  }
-  if (apiKey.length === 0) {
-    callbacks.onError('请先在设置中填写 API Key');
-    return handle;
-  }
-
-  const caps = capsForModel(settings.modelId);
-  const body: ChatRequestBody = {
-    model: settings.modelId,
-    messages: buildMessages(settings, history, memoryContext, resolveImage),
-    stream: true,
-    stream_options: { include_usage: true },
-    temperature: settings.temperature,
-    max_tokens: clampMaxTokens(settings.maxTokens, caps)
-  };
-  if (settings.thinkingLevel !== 'off') {
-    body.reasoning_effort = settings.thinkingLevel;
-  }
-  if (tools.length > 0) {
-    body.tools = buildToolDefinitions(tools);
-    body.tool_choice = 'auto';
-  }
-  const overrides: ModelOverride[] = settings.modelOverrides !== undefined ? settings.modelOverrides : [];
-  const override: ModelOverride | null = findModelOverride(overrides, settings.modelId);
-  if (override !== null) {
-    if (override.temperature >= 0) {
-      body.temperature = override.temperature;
-    }
-    if (override.topP >= 0) {
-      body.top_p = override.topP;
-    }
-    if (override.maxTokens > 0) {
-      body.max_tokens = clampMaxTokens(override.maxTokens, caps);
-    }
-  }
-
-  let headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'text/event-stream',
-    'Authorization': 'Bearer ' + apiKey,
-    'User-Agent': USER_AGENT
-  };
-  if (shouldAttachSessionHeader(baseUrl, sessionId)) {
-    headers[OPENCODE_SESSION_HEADER] = sessionId;
-  }
-  if (override !== null) {
-    headers = mergeExtraHeaders(headers, override.extraHeaders);
-  }
-  const payload: string = override !== null
-    ? applyExtraBody(JSON.stringify(body), override.extraBody)
-    : JSON.stringify(body);
-
+  decode: (data: string) => DeltaResult
+): void {
   const options: http.HttpRequestOptions = {
     method: http.RequestMethod.POST,
     header: headers,
@@ -349,7 +326,7 @@ export function startChatStream(
   };
 
   const consumeEvent = (event: SseEvent): void => {
-    const delta: DeltaResult = parseOpenAiData(event.data);
+    const delta: DeltaResult = decode(event.data);
     if (delta.error.length > 0) {
       streamError = delta.error;
       return;
@@ -423,7 +400,7 @@ export function startChatStream(
   });
 
   try {
-    request.requestInStream(chatCompletionsUrl(baseUrl), options, (err: BusinessError, code: number) => {
+    request.requestInStream(url, options, (err: BusinessError, code: number) => {
       if (finished || handle.isCancelled()) {
         return;
       }
@@ -445,8 +422,232 @@ export function startChatStream(
     const error: BusinessError = e as BusinessError;
     fail('无法发起请求：' + error.message);
   }
+}
 
+/**
+ * Start a streaming chat completion.
+ *
+ * `sessionId` is the persisted conversation id. When the endpoint is
+ * opencode.ai, it is sent as `x-opencode-session` on every request; for any
+ * other host it is deliberately not sent.
+ */
+export function startChatStream(
+  settings: AppSettings,
+  sessionId: string,
+  history: ChatMessage[],
+  tools: ToolDefinition[],
+  memoryContext: string,
+  callbacks: ChatCallbacks,
+  resolveImage: ImageResolver | null = null
+): ChatStreamHandle {
+  const handle: ChatStreamHandle = new ChatStreamHandle();
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const apiKey: string = settings.apiKey.trim();
+
+  if (baseUrl.length === 0) {
+    callbacks.onError('请先在设置中填写 API 地址');
+    return handle;
+  }
+  if (apiKey.length === 0) {
+    callbacks.onError('请先在设置中填写 API Key');
+    return handle;
+  }
+  if (settings.preset === 'anthropic') {
+    startAnthropicStream(
+      settings, history, tools, memoryContext, callbacks, resolveImage, handle);
+    return handle;
+  }
+
+  const caps = capsForModel(settings.modelId);
+  const body: ChatRequestBody = {
+    model: settings.modelId,
+    messages: buildMessages(settings, history, memoryContext, resolveImage),
+    stream: true,
+    stream_options: { include_usage: true },
+    temperature: settings.temperature,
+    max_tokens: clampMaxTokens(settings.maxTokens, caps)
+  };
+  if (settings.thinkingLevel !== 'off') {
+    body.reasoning_effort = settings.thinkingLevel;
+  }
+  if (tools.length > 0) {
+    body.tools = buildToolDefinitions(tools);
+    body.tool_choice = 'auto';
+  }
+  const overrides: ModelOverride[] = settings.modelOverrides !== undefined ? settings.modelOverrides : [];
+  const override: ModelOverride | null = findModelOverride(overrides, settings.modelId);
+  if (override !== null) {
+    if (override.temperature >= 0) {
+      body.temperature = override.temperature;
+    }
+    if (override.topP >= 0) {
+      body.top_p = override.topP;
+    }
+    if (override.maxTokens > 0) {
+      body.max_tokens = clampMaxTokens(override.maxTokens, caps);
+    }
+  }
+
+  let headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'text/event-stream',
+    'Authorization': 'Bearer ' + apiKey,
+    'User-Agent': USER_AGENT
+  };
+  if (shouldAttachSessionHeader(baseUrl, sessionId)) {
+    headers[OPENCODE_SESSION_HEADER] = sessionId;
+  }
+  if (override !== null) {
+    headers = mergeExtraHeaders(headers, override.extraHeaders);
+  }
+  const payload: string = override !== null
+    ? applyExtraBody(JSON.stringify(body), override.extraBody)
+    : JSON.stringify(body);
+
+  runStream(chatCompletionsUrl(baseUrl), headers, payload, handle, callbacks,
+    (data: string): DeltaResult => parseOpenAiData(data));
   return handle;
+}
+
+/**
+ * Anthropic Messages API path. The request shape differs enough (top-level
+ * system, tool_use/tool_result blocks, x-api-key) that only the SSE transport
+ * is shared with the OpenAI path.
+ *
+ * `thinkingLevel` is intentionally not mapped: extended thinking needs a
+ * token budget and forbids temperature, which the generic setting does not
+ * express. Users can add it through a per-model extra body instead.
+ */
+function startAnthropicStream(
+  settings: AppSettings,
+  history: ChatMessage[],
+  tools: ToolDefinition[],
+  memoryContext: string,
+  callbacks: ChatCallbacks,
+  resolveImage: ImageResolver | null,
+  handle: ChatStreamHandle
+): void {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const apiKey: string = settings.apiKey.trim();
+  if (baseUrl.length === 0) {
+    callbacks.onError('请先在设置中填写 API 地址');
+    return;
+  }
+  if (apiKey.length === 0) {
+    callbacks.onError('请先在设置中填写 API Key');
+    return;
+  }
+  const caps = capsForModel(settings.modelId);
+  let temperature: number = settings.temperature;
+  let topP: number = 0;
+  let maxTokens: number = clampMaxTokens(settings.maxTokens, caps);
+  const overrides: ModelOverride[] = settings.modelOverrides !== undefined ? settings.modelOverrides : [];
+  const override: ModelOverride | null = findModelOverride(overrides, settings.modelId);
+  if (override !== null) {
+    if (override.temperature >= 0) {
+      temperature = override.temperature;
+    }
+    if (override.topP >= 0) {
+      topP = override.topP;
+    }
+    if (override.maxTokens > 0) {
+      maxTokens = clampMaxTokens(override.maxTokens, caps);
+    }
+  }
+
+  const parts = buildAnthropicMessages(history, resolveImage);
+  const body: AnthropicRequestBody = buildAnthropicBody(
+    settings.modelId,
+    maxTokens,
+    buildSystemPrompt(settings, memoryContext),
+    parts.messages,
+    anthropicTools(tools),
+    temperature,
+    topP
+  );
+
+  let headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'text/event-stream',
+    'x-api-key': apiKey,
+    'anthropic-version': ANTHROPIC_VERSION,
+    'User-Agent': USER_AGENT
+  };
+  if (override !== null) {
+    headers = mergeExtraHeaders(headers, override.extraHeaders);
+  }
+  const payload: string = override !== null
+    ? applyExtraBody(JSON.stringify(body), override.extraBody)
+    : JSON.stringify(body);
+
+  const state: AnthropicStreamState = newAnthropicStreamState();
+  runStream(anthropicMessagesUrl(baseUrl), headers, payload, handle, callbacks,
+    (data: string): DeltaResult => parseAnthropicData(data, state));
+}
+
+/** Non-streaming `/compact` request for the Messages API. */
+async function summarizeAnthropic(
+  settings: AppSettings,
+  transcript: string
+): Promise<SummaryResult> {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const body: AnthropicSummaryRequestBody = {
+    model: settings.modelId,
+    max_tokens: 1500,
+    temperature: 0.2,
+    system: SUMMARY_INSTRUCTION,
+    messages: [{ role: 'user', content: transcript }]
+  };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'x-api-key': settings.apiKey.trim(),
+    'anthropic-version': ANTHROPIC_VERSION,
+    'User-Agent': USER_AGENT
+  };
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.POST,
+    header: headers,
+    extraData: JSON.stringify(body),
+    connectTimeout: 20000,
+    readTimeout: 180000,
+    usingCache: false,
+    expectDataType: http.HttpDataType.STRING
+  };
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(
+      anthropicMessagesUrl(baseUrl), options
+    );
+    const raw: string = response.result as string;
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      return {
+        ok: false,
+        text: '',
+        message: httpErrorText(response.responseCode, raw)
+      };
+    }
+    const envelope: AnthropicSummaryEnvelope = JSON.parse(raw) as AnthropicSummaryEnvelope;
+    let text: string = '';
+    if (envelope.content !== undefined) {
+      for (let i = 0; i < envelope.content.length; i++) {
+        const block: AnthropicSummaryBlock = envelope.content[i];
+        if (block.type === 'text' && block.text !== undefined) {
+          text += block.text;
+        }
+      }
+    }
+    text = text.trim();
+    if (text.length === 0) {
+      return { ok: false, text: '', message: '模型没有返回摘要' };
+    }
+    return { ok: true, text: text, message: '已生成摘要' };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return { ok: false, text: '', message: describeNetworkError(error) };
+  } finally {
+    request.destroy();
+  }
 }
 
 /**
@@ -472,15 +673,16 @@ export async function summarizeConversation(
   if (transcript.trim().length === 0) {
     return { ok: false, text: '', message: '没有可压缩的内容' };
   }
+  if (settings.preset === 'anthropic') {
+    return await summarizeAnthropic(settings, transcript);
+  }
 
   const body: SummaryRequestBody = {
     model: settings.modelId,
     messages: [
       {
         role: 'system',
-        content: '你是对话压缩器。把给出的对话压缩成简洁的中文摘要，保留：' +
-          '用户目标与约束、已确认的事实与决定、改过的文件与命令、未完成事项。' +
-          '不要编造，不要加开场白，直接输出摘要正文。'
+        content: SUMMARY_INSTRUCTION
       },
       {
         role: 'user',
@@ -550,10 +752,63 @@ export async function summarizeConversation(
  * gateway's models path (`/zen/go/v1/models` for the canonical base) rather
  * than the inference path.
  */
+async function fetchAnthropicModelIds(settings: AppSettings): Promise<ModelsResult> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    'x-api-key': settings.apiKey.trim(),
+    'anthropic-version': ANTHROPIC_VERSION,
+    'User-Agent': USER_AGENT
+  };
+  const options: http.HttpRequestOptions = {
+    method: http.RequestMethod.GET,
+    header: headers,
+    connectTimeout: 15000,
+    readTimeout: 30000,
+    usingCache: false,
+    expectDataType: http.HttpDataType.STRING
+  };
+  const request: http.HttpRequest = http.createHttp();
+  try {
+    const response: http.HttpResponse = await request.request(
+      anthropicModelsUrl(settings.baseUrl) + '?limit=1000', options);
+    const raw: string = response.result as string;
+    if (response.responseCode < 200 || response.responseCode >= 300) {
+      return {
+        ok: false,
+        models: [],
+        message: httpErrorText(response.responseCode, raw)
+      };
+    }
+    const envelope: ModelsEnvelope = JSON.parse(raw) as ModelsEnvelope;
+    const list: string[] = [];
+    if (envelope.data !== undefined) {
+      for (let i = 0; i < envelope.data.length; i++) {
+        const entry: ModelEntry = envelope.data[i];
+        if (entry.id !== undefined && entry.id.length > 0 && list.indexOf(entry.id) < 0) {
+          list.push(entry.id);
+        }
+      }
+    }
+    list.sort();
+    if (list.length === 0) {
+      return { ok: true, models: [], message: '连接成功，但服务没有返回模型列表' };
+    }
+    return { ok: true, models: list, message: '连接成功，发现 ' + list.length + ' 个模型' };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return { ok: false, models: [], message: describeNetworkError(error) };
+  } finally {
+    request.destroy();
+  }
+}
+
 export async function fetchModelIds(settings: AppSettings): Promise<ModelsResult> {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   if (baseUrl.length === 0) {
     return { ok: false, models: [], message: '请先填写 API 地址' };
+  }
+  if (settings.preset === 'anthropic') {
+    return await fetchAnthropicModelIds(settings);
   }
   const headers: Record<string, string> = {
     'Accept': 'application/json',

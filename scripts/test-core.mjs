@@ -277,10 +277,28 @@ test('OpenAI chunk decoding covers content, reasoning, finish and DONE', () => {
 test('OpenAI error chunks and error bodies are surfaced', () => {
   const delta = sse.parseOpenAiData('{"error":{"message":"bad model"}}');
   assert.equal(delta.error, 'bad model');
+  assert.equal(sse.parseErrorMessage('{"error":null,"message":"plain"}'), 'plain');
   assert.equal(sse.parseErrorMessage('{"error":{"message":"missing x-opencode-session"}}'), 'missing x-opencode-session');
   assert.equal(sse.parseErrorMessage('{"message":"plain"}'), 'plain');
   assert.equal(sse.parseErrorMessage('upstream exploded'), 'upstream exploded');
   assert.equal(sse.parseErrorMessage(''), '');
+});
+
+test('OpenAI null usage/choices fields do not crash the parser', () => {
+  let delta = sse.parseOpenAiData('{"usage":null,"choices":[{"delta":{"content":"hi"}}]}');
+  assert.equal(delta.content, 'hi');
+  assert.equal(delta.usage.present, false);
+  delta = sse.parseOpenAiData('{"usage":null,"choices":[]}');
+  assert.equal(delta.usage.present, false);
+  delta = sse.parseOpenAiData('{"choices":null,"usage":{"prompt_tokens":1}}');
+  assert.equal(delta.usage.promptTokens, 1);
+  assert.equal(delta.content, '');
+  delta = sse.parseOpenAiData('{"choices":[null]}');
+  assert.equal(delta.content, '');
+  delta = sse.parseOpenAiData('{"choices":[{"delta":null}]}');
+  assert.equal(delta.content, '');
+  delta = sse.parseOpenAiData('{"error":null}');
+  assert.equal(delta.error, '');
 });
 
 test('Markdown block parsing', () => {

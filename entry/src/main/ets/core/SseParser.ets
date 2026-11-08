@@ -174,14 +174,15 @@ export function parseOpenAiData(data: string): DeltaResult {
   } catch (e) {
     return result;
   }
-  if (chunk.error !== undefined) {
+  if (chunk.error !== undefined && chunk.error !== null) {
     result.error = chunk.error.message !== undefined ? chunk.error.message : '服务端返回错误';
     result.done = true;
     return result;
   }
   // Usage arrives on a final chunk whose `choices` array is empty when the
-  // request sets `stream_options.include_usage`.
-  if (chunk.usage !== undefined) {
+  // request sets `stream_options.include_usage`. Some providers send
+  // `"usage": null` on intermediate chunks, which must not be dereferenced.
+  if (chunk.usage !== undefined && chunk.usage !== null) {
     const prompt: number = chunk.usage.prompt_tokens !== undefined
       ? chunk.usage.prompt_tokens
       : 0;
@@ -198,14 +199,17 @@ export function parseOpenAiData(data: string): DeltaResult {
       present: true
     };
   }
-  if (chunk.choices === undefined || chunk.choices.length === 0) {
+  if (chunk.choices === undefined || chunk.choices === null || chunk.choices.length === 0) {
     return result;
   }
   const choice: OpenAiChoice = chunk.choices[0];
+  if (choice === undefined || choice === null) {
+    return result;
+  }
   if (choice.finish_reason !== undefined) {
     result.finishReason = choice.finish_reason;
   }
-  if (choice.delta === undefined) {
+  if (choice.delta === undefined || choice.delta === null) {
     return result;
   }
   const delta: OpenAiDelta = choice.delta;
@@ -217,9 +221,12 @@ export function parseOpenAiData(data: string): DeltaResult {
   } else if (delta.reasoning !== undefined) {
     result.reasoning = delta.reasoning;
   }
-  if (delta.tool_calls !== undefined) {
+  if (delta.tool_calls !== undefined && delta.tool_calls !== null) {
     for (let i = 0; i < delta.tool_calls.length; i++) {
       const item: OpenAiToolCallDelta = delta.tool_calls[i];
+      if (item === undefined || item === null) {
+        continue;
+      }
       let index: number = 0;
       if (item.index !== undefined) {
         index = item.index;
@@ -230,7 +237,7 @@ export function parseOpenAiData(data: string): DeltaResult {
       if (item.id !== undefined) {
         id = item.id;
       }
-      if (item.function !== undefined) {
+      if (item.function !== undefined && item.function !== null) {
         if (item.function.name !== undefined) {
           name = item.function.name;
         }
@@ -257,7 +264,8 @@ export function parseErrorMessage(raw: string): string {
   }
   try {
     const envelope: ErrorEnvelope = JSON.parse(text) as ErrorEnvelope;
-    if (envelope.error !== undefined && envelope.error.message !== undefined) {
+    if (envelope.error !== undefined && envelope.error !== null &&
+      envelope.error.message !== undefined) {
       return envelope.error.message;
     }
     if (envelope.message !== undefined) {

@@ -34,8 +34,17 @@ export struct ChatView {
   };
   onEdit: (id: string) => void = (id: string) => {
   };
+  onRewind: (id: string) => void = (id: string) => {
+  };
 
   private scroller: Scroller = new Scroller();
+
+  private lastMessageId(): string {
+    if (this.messages.length === 0) {
+      return '';
+    }
+    return this.messages[this.messages.length - 1].id;
+  }
 
   /** Only the final assistant answer can be regenerated. */
   private lastAssistantId(): string {
@@ -304,8 +313,10 @@ export struct ChatView {
                   message: message,
                   canRegenerate: message.id === this.lastAssistantId(),
                   canEdit: message.id === this.lastUserId(),
+                  canRewind: !this.streaming && message.id !== this.lastMessageId(),
                   onRegenerate: () => this.onRegenerate(),
-                  onEdit: () => this.onEdit(message.id)
+                  onEdit: () => this.onEdit(message.id),
+                  onRewind: () => this.onRewind(message.id)
                 })
               }
             }, (message: ChatMessage) => messageKey(message))

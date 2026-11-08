@@ -211,7 +211,8 @@ guest 内的命令或文件操作即可。AgentRuntime、ChatApi、UI 和设置�
   },
   "sessions": [
     {
-      "meta": { "id": "uuid", "title": "…", "updatedAt": 0, "modelId": "…", "messageCount": 2 },
+      "meta": { "id": "uuid", "title": "…", "updatedAt": 0, "modelId": "…",
+                "messageCount": 2, "pinned": false, "archived": false },
       "messages": [
         {
           "id": "uuid",

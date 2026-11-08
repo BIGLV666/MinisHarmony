@@ -185,7 +185,9 @@ function normalizeSession(source: StoredSession): StoredSession | null {
         : '新对话',
       updatedAt: source.meta.updatedAt !== undefined ? source.meta.updatedAt : 0,
       modelId: source.meta.modelId !== undefined ? source.meta.modelId : '',
-      messageCount: messages.length
+      messageCount: messages.length,
+      pinned: source.meta.pinned === true,
+      archived: source.meta.archived === true
     },
     messages: messages
   };

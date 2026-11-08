@@ -504,3 +504,26 @@ test('tool catalogue exposes file_edit with a safe schema', () => {
   assert.deepEqual(owner.parameters.required, ['path', 'old_string', 'new_string']);
   assert.equal(owner.parameters.properties.replace_all.type, 'boolean');
 });
+
+test('pinned sessions sort above recency and archive state is independent', () => {
+  const meta = (id, updatedAt, pinned, archived) => ({
+    id, title: id, updatedAt, modelId: 'm', messageCount: 0, pinned, archived
+  });
+  const sorted = types.sortSessionMetas([
+    meta('old-pinned', 10, true, false),
+    meta('new', 300, false, false),
+    meta('mid', 200, false, true)
+  ]);
+  assert.deepEqual(sorted.map((item) => item.id), ['old-pinned', 'new', 'mid']);
+});
+
+test('rewind keeps the checkpoint and rejects last or missing ids', () => {
+  const a = types.newChatMessage('a', 'user', 'first');
+  const b = types.newChatMessage('b', 'assistant', 'answer');
+  const c = types.newChatMessage('c', 'user', 'second');
+  const kept = types.rewindMessages([a, b, c], 'a');
+  assert.deepEqual(kept.map((message) => message.id), ['a']);
+  assert.equal(types.rewindMessages([a, b, c], 'c'), null);
+  assert.equal(types.rewindMessages([a, b, c], 'missing'), null);
+  assert.equal(types.rewindMessages([a], 'a'), null);
+});

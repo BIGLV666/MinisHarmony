@@ -10,7 +10,9 @@ import {
   cloneSettings,
   defaultSettings,
   newChatMessage,
+  rewindMessages,
   searchableText,
+  sortSessionMetas,
   textOf,
   textPart
 } from '../core/Types';
@@ -44,6 +46,8 @@ struct Index {
   @State showModels: boolean = false;
   @State deleteId: string = '';
   @State actionId: string = '';
+  @State rewindId: string = '';
+  @State showArchived: boolean = false;
   @State ready: boolean = false;
   @State editing: boolean = false;
   @State editId: string = '';
@@ -106,8 +110,7 @@ struct Index {
 
   private buildMetaList(): SessionMeta[] {
     const metas: SessionMeta[] = this.store.map((session: StoredSession): SessionMeta => session.meta);
-    metas.sort((a: SessionMeta, b: SessionMeta): number => b.updatedAt - a.updatedAt);
-    return metas;
+    return sortSessionMetas(metas);
   }
 
   private buildSearchIndex(): SessionSearchEntry[] {
@@ -124,7 +127,7 @@ struct Index {
 
   /** Metadata list plus the full-text index; use on non-hot paths only. */
   private refreshSessions(): void {
-    this.refreshSessions();
+    this.sessions = this.buildMetaList();
     this.searchEntries = this.buildSearchIndex();
   }
 
@@ -147,7 +150,9 @@ struct Index {
       title: '新对话',
       updatedAt: Date.now(),
       modelId: this.settings.modelId,
-      messageCount: 0
+      messageCount: 0,
+      pinned: false,
+      archived: false
     };
     const session: StoredSession = { meta: meta, messages: [] };
     this.store = [session].concat(this.store);
@@ -184,6 +189,90 @@ struct Index {
     this.actionId = id;
   }
 
+  private actionPinned(): boolean {
+    const session: StoredSession | null = this.findSession(this.actionId);
+    return session !== null && session.meta.pinned;
+  }
+
+  private actionArchived(): boolean {
+    const session: StoredSession | null = this.findSession(this.actionId);
+    return session !== null && session.meta.archived;
+  }
+
+  private togglePin(): void {
+    const session: StoredSession | null = this.findSession(this.actionId);
+    this.actionId = '';
+    if (session === null) {
+      return;
+    }
+    session.meta.pinned = !session.meta.pinned;
+    this.refreshSessions();
+    this.persistSoon();
+    this.toast(session.meta.pinned ? '已置顶' : '已取消置顶');
+  }
+
+  private toggleArchive(): void {
+    const session: StoredSession | null = this.findSession(this.actionId);
+    this.actionId = '';
+    if (session === null) {
+      return;
+    }
+    session.meta.archived = !session.meta.archived;
+    if (!session.meta.archived && !this.showArchived) {
+      this.showArchived = true;
+    }
+    this.refreshSessions();
+    this.persistSoon();
+    this.toast(session.meta.archived ? '已归档' : '已取消归档');
+  }
+
+  /**
+   * Rewind to an earlier message: everything after it is dropped, the message
+   * itself is kept as the new end of the conversation. The user can then edit
+   * it or send a new turn from that checkpoint.
+   */
+  private requestRewind(id: string): void {
+    if (this.streaming) {
+      this.toast('请先停止当前生成');
+      return;
+    }
+    this.rewindId = id;
+  }
+
+  private rewindCount(): number {
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return 0;
+    }
+    for (let i = 0; i < session.messages.length; i++) {
+      if (session.messages[i].id === this.rewindId) {
+        return session.messages.length - i - 1;
+      }
+    }
+    return 0;
+  }
+
+  private performRewind(): void {
+    const id: string = this.rewindId;
+    this.rewindId = '';
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return;
+    }
+    const trimmed: ChatMessage[] | null =
+      rewindMessages(session.messages, id);
+    if (trimmed === null) {
+      return;
+    }
+    session.messages = trimmed;
+    session.meta.messageCount = trimmed.length;
+    session.meta.updatedAt = Date.now();
+    this.messages = trimmed.slice();
+    this.refreshSessions();
+    this.persistSoon();
+    this.toast('已回退到该消息');
+  }
+
   /** Deep-copy a session into a new id, keeping its messages and tool results. */
   private forkSession(id: string): void {
     const source: StoredSession | null = this.findSession(id);
@@ -200,7 +289,9 @@ struct Index {
       title: source.meta.title + ' 副本',
       updatedAt: Date.now(),
       modelId: source.meta.modelId,
-      messageCount: source.messages.length
+      messageCount: source.messages.length,
+      pinned: false,
+      archived: false
     };
     const copied: ChatMessage[] =
       JSON.parse(JSON.stringify(source.messages)) as ChatMessage[];
@@ -563,6 +654,22 @@ struct Index {
           .fontColor($r('app.color.text_primary'))
           .width('100%')
         Column({ space: 4 }) {
+          Text(this.actionPinned() ? '取消置顶' : '置顶')
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => this.togglePin())
+          Text(this.actionArchived() ? '取消归档' : '归档')
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => this.toggleArchive())
           Text('复制为新会话')
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
@@ -728,12 +835,71 @@ struct Index {
   }
 
   @Builder
+  rewindDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+        .onClick(() => {
+          this.rewindId = '';
+        })
+      Column({ space: 12 }) {
+        Text('回退到这条消息？')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+        Text('其后的 ' + this.rewindCount().toString() +
+          ' 条消息（含工具结果）会被删除，当前消息保留。可用「编辑」修改后再发送。')
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .lineHeight(18)
+        Row({ space: 10 }) {
+          Button('取消', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
+            .onClick(() => {
+              this.rewindId = '';
+            })
+          Button('回退', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(40)
+            .fontSize(13)
+            .fontColor($r('app.color.on_accent'))
+            .backgroundColor($r('app.color.accent'))
+            .borderRadius(11)
+            .onClick(() => this.performRewind())
+        }
+        .width('100%')
+        .margin({ top: 4 })
+      }
+      .width('84%')
+      .constraintSize({ maxWidth: 400 })
+      .padding(20)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
   sidebar() {
     SidebarView({
       sessions: this.sessions,
       searchEntries: this.searchEntries,
       currentId: this.currentId,
       query: $query,
+      showArchived: this.showArchived,
+      onToggleArchived: () => {
+        this.showArchived = !this.showArchived;
+      },
       onNew: () => this.createChat(),
       onSelect: (id: string) => this.selectSession(id),
       onMore: (id: string) => this.requestActions(id),
@@ -766,7 +932,8 @@ struct Index {
       },
       onNew: () => this.createChat(),
       onRegenerate: () => this.regenerateLast(),
-      onEdit: (id: string) => this.beginEdit(id)
+      onEdit: (id: string) => this.beginEdit(id),
+      onRewind: (id: string) => this.requestRewind(id)
     })
   }
 
@@ -814,6 +981,10 @@ struct Index {
 
       if (this.editing) {
         this.editDialog()
+      }
+
+      if (this.rewindId.length > 0) {
+        this.rewindDialog()
       }
 
       if (this.showSettings) {

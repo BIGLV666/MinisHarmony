@@ -29,9 +29,13 @@ export struct MessageBubble {
   @State openToolId: string = '';
   @Prop canRegenerate: boolean = false;
   @Prop canEdit: boolean = false;
+  /** Earlier messages offer a checkpoint; the latest one has nothing to trim. */
+  @Prop canRewind: boolean = false;
   onRegenerate: () => void = () => {
   };
   onEdit: () => void = () => {
+  };
+  onRewind: () => void = () => {
   };
 
   private isUser(): boolean {
@@ -236,6 +240,13 @@ export struct MessageBubble {
             .opacity(0.82)
             .onClick(() => this.onEdit())
         }
+        if (this.canRewind) {
+          Text('回到这里')
+            .fontSize(10)
+            .fontColor($r('app.color.on_accent'))
+            .opacity(0.82)
+            .onClick(() => this.onRewind())
+        }
         Blank()
         Text(formatRelative(this.message.createdAt))
           .fontSize(10)
@@ -294,10 +305,16 @@ export struct MessageBubble {
             .onClick(() => this.copy())
         }
         if (this.canRegenerate) {
-          Text('重新生成')
+          Text(this.message.error ? '重试' : '重新生成')
             .fontSize(11)
             .fontColor($r('app.color.accent'))
             .onClick(() => this.onRegenerate())
+        }
+        if (this.canRewind) {
+          Text('回到这里')
+            .fontSize(11)
+            .fontColor($r('app.color.text_tertiary'))
+            .onClick(() => this.onRewind())
         }
       }
     }

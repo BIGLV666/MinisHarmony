@@ -6,7 +6,10 @@ export struct SidebarView {
   @Prop sessions: SessionMeta[] = [];
   @Prop searchEntries: SessionSearchEntry[] = [];
   @Prop currentId: string = '';
+  @Prop showArchived: boolean = false;
   @Link query: string;
+  onToggleArchived: () => void = () => {
+  };
   onNew: () => void = () => {
   };
   onSelect: (id: string) => void = (id: string) => {
@@ -25,15 +28,30 @@ export struct SidebarView {
     return '';
   }
 
+  private archivedCount(): number {
+    let count: number = 0;
+    for (let i = 0; i < this.sessions.length; i++) {
+      if (this.sessions[i].archived) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Archived sessions stay out of the default list but remain searchable:
+   * search is how users retrieve an archived conversation they forgot about.
+   */
   private filtered(): SessionMeta[] {
     const keyword: string = this.query.trim().toLowerCase();
-    if (keyword.length === 0) {
-      return this.sessions;
-    }
     const result: SessionMeta[] = [];
     for (let i = 0; i < this.sessions.length; i++) {
       const item: SessionMeta = this.sessions[i];
-      if (item.title.toLowerCase().indexOf(keyword) >= 0 ||
+      if (keyword.length === 0) {
+        if (!item.archived || this.showArchived) {
+          result.push(item);
+        }
+      } else if (item.title.toLowerCase().indexOf(keyword) >= 0 ||
         item.modelId.toLowerCase().indexOf(keyword) >= 0 ||
         this.blobFor(item.id).indexOf(keyword) >= 0) {
         result.push(item);
@@ -77,13 +95,28 @@ export struct SidebarView {
   @Builder
   sessionRow(item: SessionMeta) {
     Column({ space: 4 }) {
-      Text(item.title)
-        .fontSize(14)
-        .fontWeight(this.currentId === item.id ? FontWeight.Medium : FontWeight.Normal)
-        .fontColor(this.currentId === item.id ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .width('100%')
+      Row({ space: 5 }) {
+        if (item.pinned) {
+          Text('📌')
+            .fontSize(10)
+        }
+        Text(item.title)
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontWeight(this.currentId === item.id ? FontWeight.Medium : FontWeight.Normal)
+          .fontColor(this.currentId === item.id ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (item.archived) {
+          Text('归档')
+            .fontSize(9)
+            .fontColor($r('app.color.text_tertiary'))
+            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+            .backgroundColor($r('app.color.surface'))
+            .borderRadius(4)
+        }
+      }
+      .width('100%')
       Row({ space: 5 }) {
         Text(modelName(item.modelId))
           .fontSize(10)
@@ -142,6 +175,22 @@ export struct SidebarView {
           this.query = value;
         })
 
+      if (this.archivedCount() > 0) {
+        Row({ space: 4 }) {
+          Text(this.showArchived ? '隐藏已归档' : '显示已归档')
+            .fontSize(11)
+            .fontColor($r('app.color.text_tertiary'))
+          if (!this.showArchived) {
+            Text('(' + this.archivedCount().toString() + ')')
+              .fontSize(11)
+              .fontColor($r('app.color.text_tertiary'))
+          }
+        }
+        .width('100%')
+        .padding({ left: 4, right: 4 })
+        .onClick(() => this.onToggleArchived())
+      }
+
       if (this.filtered().length === 0) {
         Column({ space: 6 }) {
           Text(this.sessions.length === 0 ? '还没有对话' : '没有匹配的对话')
@@ -161,7 +210,8 @@ export struct SidebarView {
               this.sessionRow(item)
             }
           }, (item: SessionMeta) => item.id + ':' + item.title + ':' + item.updatedAt + ':' +
-            item.modelId + ':' + (this.currentId === item.id ? '1' : '0'))
+            item.modelId + ':' + (this.currentId === item.id ? '1' : '0') + ':' +
+            (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : ''))
         }
         .layoutWeight(1)
         .width('100%')

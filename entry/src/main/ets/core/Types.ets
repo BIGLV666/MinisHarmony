@@ -103,11 +103,43 @@ export interface SessionMeta {
   updatedAt: number;
   modelId: string;
   messageCount: number;
+  /** Pinned sessions sort above everything else in the sidebar. */
+  pinned: boolean;
+  /** Archived sessions are hidden unless the sidebar toggle is on. */
+  archived: boolean;
 }
 
 export interface StoredSession {
   meta: SessionMeta;
   messages: ChatMessage[];
+}
+
+/** Pinned conversations first, then most recently updated. */
+export function sortSessionMetas(metas: SessionMeta[]): SessionMeta[] {
+  metas.sort((a: SessionMeta, b: SessionMeta): number => {
+    if (a.pinned !== b.pinned) {
+      return a.pinned ? -1 : 1;
+    }
+    return b.updatedAt - a.updatedAt;
+  });
+  return metas;
+}
+
+/**
+ * Keep the transcript through `messageId` and drop everything after it.
+ * Returns null when the id is missing or is already the last message, so the
+ * caller can leave the session untouched.
+ */
+export function rewindMessages(messages: ChatMessage[], messageId: string): ChatMessage[] | null {
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].id === messageId) {
+      if (i >= messages.length - 1) {
+        return null;
+      }
+      return messages.slice(0, i + 1);
+    }
+  }
+  return null;
 }
 
 /** Pre-computed lowercase blob used by sidebar full-text search. */

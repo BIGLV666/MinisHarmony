@@ -145,6 +145,12 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('city', 'string', '可选城市名；省略时使用设备定位。'),
     field('days', 'number', 'forecast 的天数，默认 3，最大 7。')
   ];
+  const shellFields: FieldEntry[] = [
+    field('command', 'string',
+      '要执行的 shell 命令。由 /bin/sh 执行，可以使用管道、重定向和多行脚本。'),
+    field('timeout', 'number',
+      '最长执行秒数，默认 900，最大 3600。超时会重启沙箱并丢弃未完成的命令。')
+  ];
   const noFields: FieldEntry[] = [];
 
   const definitions: ToolDefinition[] = [
@@ -183,6 +189,14 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'search_text',
       description: '在工作区文本文件中搜索字符串，返回 文件:行号:内容。默认跳过二进制、依赖和构建目录。',
       parameters: parametersOf(searchFields, ['query'])
+    },
+    {
+      name: 'shell_execute',
+      description: '在本机的 Linux 沙箱（Alpine）中执行 shell 命令，返回 stdout+stderr 与退出码。' +
+        '同一个会话共享一个常驻 shell，cd、环境变量会保留到下一次调用。工作区挂载在 ' +
+        '/var/minis/workspace，记忆目录挂载在 /var/minis/memory，用它们读写用户文件。' +
+        '沙箱内可能没有外网；需要联网取数据请用 fetch_url。',
+      parameters: parametersOf(shellFields, ['command'])
     },
     {
       name: 'fetch_url',

@@ -16,7 +16,7 @@ import { common } from '@kit.AbilityKit';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { SandboxProbe } from '../service/SandboxProbe';
-import { SandboxIsh } from '../service/SandboxIsh';
+import { SandboxIsh, SandboxOptions, SandboxRunResult } from '../service/SandboxIsh';
 import {
   ACCENT_PRESETS,
   AccentPreset,
@@ -957,8 +957,16 @@ export struct SettingsSheet {
     this.ishReport = '正在启动 iSH 内核…';
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      this.ishReport = await SandboxIsh.run(context,
-        'echo hello-from-ish; uname -a; id; cat /etc/alpine-release');
+      const options: SandboxOptions = {
+        workspace: context.filesDir + '/workspace',
+        memory: context.filesDir + '/memory'
+      };
+      const result: SandboxRunResult = await SandboxIsh.run(context,
+        'echo hello-from-ish; uname -a; id; cat /etc/alpine-release', 180000, options);
+      const exit: string = '[exit=' + result.exitCode.toString() + ']';
+      this.ishReport = result.error.length > 0
+        ? result.error + '\n' + result.output + '\n' + exit
+        : result.output + '\n' + exit;
     } catch (e) {
       const error: Error = e as Error;
       this.ishReport = '沙箱启动失败：' + error.message;

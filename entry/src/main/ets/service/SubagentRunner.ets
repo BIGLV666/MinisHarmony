@@ -7,7 +7,7 @@ import {
   cloneSettings,
   textOf
 } from '../core/Types';
-import { SubagentHandler, SubagentRequest, ToolResult } from '../core/ToolTypes';
+import { ShellHandler, SubagentHandler, SubagentRequest, ToolResult } from '../core/ToolTypes';
 import {
   BACKGROUND_PREFIX,
   SubagentJobRecord,
@@ -60,6 +60,8 @@ interface LiveJob {
   depth: number;
   onChild: ((session: StoredSession) => void) | null;
   deliver: ((parentSessionId: string, text: string) => void) | null;
+  /** Shared shell handler; null in remote mode or after a restored job. */
+  shell: ShellHandler | null;
 }
 
 function finalAnswer(messages: ChatMessage[]): string {
@@ -105,9 +107,15 @@ export class SubagentRunner implements SubagentHandler {
   private depth: number;
   private onChild: ((session: StoredSession) => void) | null;
   private deliver: ((parentSessionId: string, text: string) => void) | null;
+  private shell: ShellHandler | null;
 
   private static jobs: Map<string, LiveJob> = new Map<string, LiveJob>();
   private static active: number = 0;
+  /**
+   * Handler installed by the UI for jobs restored from disk, which cannot
+   * remember the one captured at delegation time.
+   */
+  private static defaultShell: ShellHandler | null = null;
   /** Serializes preference writes so a slower earlier save cannot win. */
   private static saveChain: Promise<void> = Promise.resolve();
 
@@ -118,7 +126,8 @@ export class SubagentRunner implements SubagentHandler {
     parentSessionId: string,
     depth: number = 0,
     onChild: ((session: StoredSession) => void) | null = null,
-    deliver: ((parentSessionId: string, text: string) => void) | null = null
+    deliver: ((parentSessionId: string, text: string) => void) | null = null,
+    shell: ShellHandler | null = null
   ) {
     this.settings = settings;
     this.root = workspaceRoot;
@@ -127,6 +136,11 @@ export class SubagentRunner implements SubagentHandler {
     this.depth = depth;
     this.onChild = onChild;
     this.deliver = deliver;
+    this.shell = shell;
+  }
+
+  static setShell(shell: ShellHandler | null): void {
+    SubagentRunner.defaultShell = shell;
   }
 
   /**
@@ -161,7 +175,8 @@ export class SubagentRunner implements SubagentHandler {
         allowWrite: false,
         depth: 0,
         onChild: null,
-        deliver: null
+        deliver: null,
+        shell: null
       };
       SubagentRunner.jobs.set(record.id, job);
     }
@@ -249,6 +264,9 @@ export class SubagentRunner implements SubagentHandler {
       childSettings.modelId, Date.now());
     const wait: boolean = request.wait || this.depth > 0;
     const minutes: number = clampMinutes(request.maxMinutes);
+    const shell: ShellHandler | null = this.shell !== null
+      ? this.shell
+      : SubagentRunner.defaultShell;
     const job: LiveJob = {
       record: record,
       runtime: null,
@@ -266,7 +284,8 @@ export class SubagentRunner implements SubagentHandler {
       allowWrite: this.allowWrite,
       depth: this.depth + 1,
       onChild: this.onChild,
-      deliver: this.deliver
+      deliver: this.deliver,
+      shell: shell
     };
     SubagentRunner.jobs.set(id, job);
     SubagentRunner.saveActive();
@@ -311,7 +330,7 @@ export class SubagentRunner implements SubagentHandler {
     const nextRunner: SubagentRunner | null = nextDepth < MAX_SUBAGENT_DEPTH
       ? new SubagentRunner(
         settings, job.root, job.allowWrite, childId, nextDepth,
-        job.onChild, job.deliver)
+        job.onChild, job.deliver, job.shell)
       : null;
     const tools: LocalToolRuntime = new LocalToolRuntime(
       job.root,
@@ -322,7 +341,9 @@ export class SubagentRunner implements SubagentHandler {
       settings.disabledTools,
       settings.clipboardToolsEnabled,
       null,
-      settings.imageGenEnabled ? new SettingsImageGen(settings) : null
+      settings.imageGenEnabled ? new SettingsImageGen(settings) : null,
+      null,
+      job.shell !== null ? job.shell : SubagentRunner.defaultShell
     );
 
     const runtime: AgentRuntime = new AgentRuntime(

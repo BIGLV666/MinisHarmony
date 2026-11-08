@@ -7,15 +7,22 @@
  * kernel loads and interprets guest ELF images itself, and the guest's stdio
  * is attached to host pipes/files through iSH's adhoc realfs descriptors.
  *
- * Wire format (request file, one key=value per line):
+ * Host directory request (written once, one key=value per line):
  *   rootfs=<dir containing meta.db and data/>
- *   output=<file that receives stdout+stderr>
- *   timeout_ms=<optional, default 30000>
- *   command=<shell command line, last field>
+ *   output=<file that receives stdout+stderr, appended for the daemon's life>
+ *   commands=<file the app rewrites per command>
+ *   workspace=<optional host dir mounted at /var/minis/workspace>
+ *   memory=<optional host dir mounted at /var/minis/memory>
  *
- * The guest runs `/bin/sh -c <command>`. When the shell exits, the exit status
- * is appended to the output file and the child process exits. ArkTS starts
- * this with childProcessManager.startNativeChildProcess(
+ * The guest keeps one `/bin/sh` alive as PID 1 and reads a script stream from
+ * stdin. Each command file is `id=<n>\n<command text>`; the harness feeds
+ *   { <command>
+ *   }; printf "\n[sandbox exit=%d id=<n>]\n" "$?"
+ * into the shell, so shell state (cwd, variables) survives between calls and
+ * the exit marker is written by the shell itself. The guest's PID 1 must never
+ * exit: when it does, iSH tears down the whole native process.
+ *
+ * ArkTS starts this with childProcessManager.startNativeChildProcess(
  *   'libishsandbox.so:Main', { entryParams: <request path> }).
  */
 
@@ -49,6 +56,8 @@ struct task;
 extern const struct fs_ops fakefs;
 extern const struct fs_ops procfs;
 extern const struct fs_ops devptsfs;
+/* fs/mount.c: passthrough to a host directory, used for user mounts. */
+extern const struct fs_ops realfs;
 extern __thread struct task *current;
 extern void (*exit_hook)(struct task *task, int code);
 
@@ -99,8 +108,9 @@ constexpr size_t kMaxCommand = 16 * 1024;
 struct Request {
     char rootfs[512];
     char output[512];
-    char command[kMaxCommand];
-    int timeoutMs;
+    char commands[512];
+    char workspace[512];
+    char memory[512];
 };
 
 sem_t g_exitSem;
@@ -161,7 +171,6 @@ bool parseRequest(const char *path, Request *request) {
         free(text);
         return false;
     }
-    request->timeoutMs = 30000;
     char *cursor = text;
     while (cursor != nullptr && *cursor != '\0') {
         char *line = cursor;
@@ -176,15 +185,17 @@ bool parseRequest(const char *path, Request *request) {
             snprintf(request->rootfs, sizeof(request->rootfs), "%s", line + 7);
         } else if (strncmp(line, "output=", 7) == 0) {
             snprintf(request->output, sizeof(request->output), "%s", line + 7);
-        } else if (strncmp(line, "timeout_ms=", 11) == 0) {
-            request->timeoutMs = atoi(line + 11);
-        } else if (strncmp(line, "command=", 8) == 0) {
-            snprintf(request->command, sizeof(request->command), "%s", line + 8);
+        } else if (strncmp(line, "commands=", 9) == 0) {
+            snprintf(request->commands, sizeof(request->commands), "%s", line + 9);
+        } else if (strncmp(line, "workspace=", 10) == 0) {
+            snprintf(request->workspace, sizeof(request->workspace), "%s", line + 10);
+        } else if (strncmp(line, "memory=", 7) == 0) {
+            snprintf(request->memory, sizeof(request->memory), "%s", line + 7);
         }
     }
     free(text);
     return request->rootfs[0] != '\0' && request->output[0] != '\0' &&
-           request->command[0] != '\0';
+           request->commands[0] != '\0';
 }
 
 /** Attach guest stdio to the output file before the guest process starts. */
@@ -252,7 +263,85 @@ size_t appendArg(char *buffer, size_t capacity, size_t pos, const char *arg) {
     return pos + length;
 }
 
-int run(Request *request) {
+/** Host fd feeding the guest shell's stdin, held open for the daemon's life. */
+int g_commandWrite = -1;
+
+/** Mount one host directory into the guest, creating the mount point. */
+void mountGuestDir(const char *host, const char *point) {
+    if (host[0] == '\0') {
+        return;
+    }
+    generic_mkdirat(kAtPwd, "/var", 0755);
+    generic_mkdirat(kAtPwd, "/var/minis", 0755);
+    generic_mkdirat(kAtPwd, point, 0755);
+    int err = do_mount(&realfs, host, point, "", 0);
+    if (err < 0) {
+        fail("mount_realfs", err);
+    }
+}
+
+bool writeAll(int fd, const char *data, size_t length) {
+    while (length > 0) {
+        ssize_t written = write(fd, data, length);
+        if (written < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+        data += written;
+        length -= (size_t)written;
+    }
+    return true;
+}
+
+struct Command {
+    long id;
+    size_t length;
+    char text[kMaxCommand];
+};
+
+/**
+ * Read `id=<n>\n<command text>`. The app replaces the file atomically, so a
+ * prefix that does not parse yet (or a missing file) just means "no command".
+ */
+bool readCommand(const char *path, Command *command) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        return false;
+    }
+    char buffer[kMaxCommand + 64];
+    ssize_t used = 0;
+    while (used < (ssize_t)sizeof(buffer) - 1) {
+        ssize_t n = read(fd, buffer + used, sizeof(buffer) - 1 - (size_t)used);
+        if (n <= 0) {
+            break;
+        }
+        used += n;
+    }
+    close(fd);
+    buffer[used] = '\0';
+    char *newline = strchr(buffer, '\n');
+    if (newline == nullptr || strncmp(buffer, "id=", 3) != 0) {
+        return false;
+    }
+    char *end = nullptr;
+    long id = strtol(buffer + 3, &end, 10);
+    if (end == buffer + 3) {
+        return false;
+    }
+    size_t length = (size_t)used - (size_t)(newline + 1 - buffer);
+    if (length == 0 || length >= sizeof(command->text)) {
+        return false;
+    }
+    memcpy(command->text, newline + 1, length);
+    command->text[length] = '\0';
+    command->length = length;
+    command->id = id;
+    return true;
+}
+
+int serve(Request *request) {
     char rootData[600];
     snprintf(rootData, sizeof(rootData), "%s/data", request->rootfs);
 
@@ -272,6 +361,10 @@ int run(Request *request) {
 
     do_mount(&procfs, "proc", "/proc", "", 0);
     do_mount(&devptsfs, "devpts", "/dev/pts", "", 0);
+    // User mounts are live host directories: the app's workspace and memory
+    // directory are the same files the file tools already work on.
+    mountGuestDir(request->workspace, "/var/minis/workspace");
+    mountGuestDir(request->memory, "/var/minis/memory");
 
     err = become_new_init_child();
     if (err < 0) {
@@ -285,12 +378,11 @@ int run(Request *request) {
         return err;
     }
 
-    char argvBuffer[kMaxCommand + 64];
+    // No -c: the shell reads a script stream from stdin, which keeps PID 1
+    // (and with it the whole native process) alive between commands.
+    char argvBuffer[64];
     size_t argvPos = 0;
     argvPos = appendArg(argvBuffer, sizeof(argvBuffer), argvPos, "/bin/sh");
-    argvPos = appendArg(argvBuffer, sizeof(argvBuffer), argvPos, "-c");
-    argvPos = appendArg(argvBuffer, sizeof(argvBuffer), argvPos,
-                        request->command);
     argvBuffer[argvPos] = '\0';
     argvBuffer[argvPos + 1] = '\0';
 
@@ -308,7 +400,7 @@ int run(Request *request) {
     envpBuffer[envpPos] = '\0';
     envpBuffer[envpPos + 1] = '\0';
 
-    err = do_execve("/bin/sh", 3, argvBuffer, envpBuffer);
+    err = do_execve("/bin/sh", 1, argvBuffer, envpBuffer);
     if (err < 0) {
         fail("do_execve", err);
         return err;
@@ -323,31 +415,45 @@ int run(Request *request) {
         return err;
     }
 
-    struct timespec deadline;
-    clock_gettime(CLOCK_REALTIME, &deadline);
-    int timeout = request->timeoutMs > 0 ? request->timeoutMs : 30000;
-    deadline.tv_sec += timeout / 1000;
-    deadline.tv_nsec += (long)(timeout % 1000) * 1000000L;
-    if (deadline.tv_nsec >= 1000000000L) {
-        deadline.tv_sec += 1;
-        deadline.tv_nsec -= 1000000000L;
-    }
-
-    while (sem_timedwait(&g_exitSem, &deadline) != 0 && errno == EINTR) {
-    }
-
-    /*
-     * fd 1 is the same open file description as the guest's stdout, so this
-     * lands after whatever the command printed.
-     */
-    if (g_exitCode >= 0 || g_exitSignal != 0) {
-        dprintf(STDOUT_FILENO, "\n[sandbox exit=%d signal=%d]\n",
-                g_exitCode, g_exitSignal);
-    } else {
-        dprintf(STDOUT_FILENO, "\n[sandbox timeout after %d ms]\n", timeout);
-    }
+    dprintf(STDOUT_FILENO, "[sandbox ready]\n");
     fsync(STDOUT_FILENO);
-    return 0;
+
+    long lastId = 0;
+    while (true) {
+        Command command = {};
+        if (!readCommand(request->commands, &command)) {
+            struct timespec pause = {0, 80 * 1000 * 1000};
+            nanosleep(&pause, nullptr);
+            continue;
+        }
+        if (command.id < 0) {
+            dprintf(STDOUT_FILENO, "[sandbox stopped]\n");
+            fsync(STDOUT_FILENO);
+            return 0;
+        }
+        if (command.id <= lastId) {
+            struct timespec pause = {0, 80 * 1000 * 1000};
+            nanosleep(&pause, nullptr);
+            continue;
+        }
+        lastId = command.id;
+
+        // The shell prints the marker itself: when PID 1 exits iSH tears the
+        // process down before the harness can append anything.
+        char suffix[192];
+        int suffixLength = snprintf(suffix, sizeof(suffix),
+            "\n}; __minis_status=$?; printf \"\\n[sandbox exit=%%d id=%ld]\\n\""
+            " \"$__minis_status\"\n", command.id);
+        if (suffixLength <= 0 ||
+            !writeAll(g_commandWrite, "{ ", 2) ||
+            !writeAll(g_commandWrite, command.text, command.length) ||
+            !writeAll(g_commandWrite, suffix, (size_t)suffixLength)) {
+            dprintf(STDOUT_FILENO, "[sandbox] cannot feed command %ld\n",
+                    command.id);
+            fsync(STDOUT_FILENO);
+            return -1;
+        }
+    }
 }
 
 } // namespace
@@ -378,7 +484,16 @@ extern "C" __attribute__((visibility("default"))) void Main(
         _exit(2);
     }
 
-    int err = run(&request);
+    // attachStdio points stdin at /dev/null; replace it with the read end of
+    // the pipe the harness keeps open and writes command scripts into.
+    int stdinPipe[2];
+    if (pipe(stdinPipe) < 0 || dup2(stdinPipe[0], STDIN_FILENO) < 0) {
+        _exit(2);
+    }
+    close(stdinPipe[0]);
+    g_commandWrite = stdinPipe[1];
+
+    int err = serve(&request);
     sem_destroy(&g_exitSem);
     _exit(err < 0 ? 1 : 0);
 }

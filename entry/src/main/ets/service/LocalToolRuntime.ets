@@ -7,6 +7,7 @@ import {
   DeviceToolsHandler,
   ImageGenHandler,
   ImageGenRequest,
+  ShellHandler,
   SubagentHandler,
   SubagentRequest,
   ToolDefinition,
@@ -175,6 +176,7 @@ export class LocalToolRuntime implements ToolRuntime {
   private browser: BrowserHandler | null;
   private imageGen: ImageGenHandler | null;
   private device: DeviceToolsHandler | null;
+  private shell: ShellHandler | null;
   private imageCache: Map<string, string> = new Map();
 
   constructor(
@@ -187,7 +189,8 @@ export class LocalToolRuntime implements ToolRuntime {
     clipboardEnabled: boolean = false,
     browser: BrowserHandler | null = null,
     imageGen: ImageGenHandler | null = null,
-    device: DeviceToolsHandler | null = null
+    device: DeviceToolsHandler | null = null,
+    shell: ShellHandler | null = null
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
@@ -199,6 +202,7 @@ export class LocalToolRuntime implements ToolRuntime {
     this.browser = browser;
     this.imageGen = imageGen;
     this.device = device;
+    this.shell = shell;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -242,6 +246,9 @@ export class LocalToolRuntime implements ToolRuntime {
         continue;
       }
       if (name === 'generate_image' && this.imageGen === null) {
+        continue;
+      }
+      if (name === 'shell_execute' && this.shell === null) {
         continue;
       }
       if (name === 'calendar' || name === 'contacts' ||
@@ -299,6 +306,12 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'search_text') {
         return this.searchText(argumentsJson);
+      }
+      if (name === 'shell_execute') {
+        if (this.shell === null) {
+          return { ok: false, content: '本地 Linux 沙箱尚未就绪。' };
+        }
+        return await this.shell.execute(argumentsJson);
       }
       if (name === 'fetch_url') {
         return await this.fetchUrl(argumentsJson);

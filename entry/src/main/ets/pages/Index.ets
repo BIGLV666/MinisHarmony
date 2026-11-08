@@ -69,6 +69,7 @@ import { BACKUP_MIN_PASSWORD, isEncryptedBackup } from '../core/BackupCrypto';
 import { decryptBackupText, DecryptOutcome } from '../service/BackupCrypto';
 import { SettingsImageGen } from '../service/ImageGen';
 import { DeviceTools } from '../service/DeviceTools';
+import { ShellTool } from '../service/ShellTool';
 import { OAuthService } from '../service/OAuth';
 import { ScreenshotOutcome, saveShareCard } from '../service/Screenshot';
 import { shareCardFileName } from '../core/ShareCard';
@@ -1847,6 +1848,11 @@ struct Index {
         settings.disabledTools
       );
     } else {
+      // One handler per runtime: it owns nothing but the context and paths,
+      // and SandboxIsh itself is a process-wide singleton daemon.
+      const shell: ShellTool = new ShellTool(
+        getContext(this) as common.UIAbilityContext);
+      SubagentRunner.setShell(shell);
       base = new LocalToolRuntime(
         this.workspaceRoot,
         settings.allowWriteTools,
@@ -1860,13 +1866,15 @@ struct Index {
           0,
           (session: StoredSession) => this.adoptSubagentSession(session),
           (parentSessionId: string, text: string) =>
-            this.deliverSubagentResult(parentSessionId, text)
+            this.deliverSubagentResult(parentSessionId, text),
+          shell
         ),
         settings.disabledTools,
         settings.clipboardToolsEnabled,
         this.browserTool,
         settings.imageGenEnabled ? new SettingsImageGen(settings) : null,
-        new DeviceTools(getContext(this) as common.UIAbilityContext, settings)
+        new DeviceTools(getContext(this) as common.UIAbilityContext, settings),
+        shell
       );
     }
     return new McpRuntime(base, settings.disabledTools);

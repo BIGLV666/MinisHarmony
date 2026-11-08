@@ -89,6 +89,15 @@ export interface BrowserHandler {
 }
 
 /**
+ * Optional capability behind `shell_execute`. Implemented by ShellTool, which
+ * owns the local iSH sandbox session; the runtime only advertises the tool
+ * when a handler is supplied.
+ */
+export interface ShellHandler {
+  execute(argumentsJson: string): Promise<ToolResult>;
+}
+
+/**
  * Device-data tools (calendar / contacts / location / weather). Each tool is
  * advertised only when the handler both exists and reports it enabled, so the
  * user's per-capability switches remove it from the model's toolbox entirely.

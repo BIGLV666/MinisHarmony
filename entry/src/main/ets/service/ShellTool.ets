@@ -1,0 +1,73 @@
+import { common } from '@kit.AbilityKit';
+import { ShellHandler, ToolResult } from '../core/ToolTypes';
+import { truncateText } from '../core/Workspace';
+import { SandboxIsh, SandboxOptions, SandboxRunResult } from './SandboxIsh';
+
+/** Matches OpenMinis: one shell call may return at most this much text. */
+const MAX_SHELL_CHARS: number = 20000;
+/** OpenMinis defaults to 15 minutes and refuses anything above an hour. */
+const DEFAULT_TIMEOUT_SECONDS: number = 900;
+const MAX_TIMEOUT_SECONDS: number = 3600;
+const MIN_TIMEOUT_SECONDS: number = 5;
+
+interface ShellArgs {
+  command?: string;
+  timeout?: number;
+}
+
+/**
+ * `shell_execute` for the local runtime. The sandbox itself lives in
+ * SandboxIsh; this class only validates arguments, bounds the timeout and
+ * formats the result the model reads back.
+ *
+ * Commands share one guest shell, so shell state (cwd, exported variables,
+ * background jobs) carries over between calls. That matches OpenMinis, where
+ * `shell_execute` is the general escape hatch whenever a file tool is not
+ * enough: building, running scripts, inspecting binaries.
+ */
+export class ShellTool implements ShellHandler {
+  private context: common.UIAbilityContext;
+  private options: SandboxOptions;
+
+  constructor(context: common.UIAbilityContext) {
+    this.context = context;
+    this.options = {
+      workspace: context.filesDir + '/workspace',
+      memory: context.filesDir + '/memory'
+    };
+  }
+
+  async execute(argumentsJson: string): Promise<ToolResult> {
+    let args: ShellArgs;
+    try {
+      args = JSON.parse(argumentsJson) as ShellArgs;
+    } catch (e) {
+      return { ok: false, content: '参数不是合法 JSON。' };
+    }
+    const command: string = args.command !== undefined ? args.command : '';
+    if (command.trim().length === 0) {
+      return { ok: false, content: 'command 不能为空。' };
+    }
+    const requested: number = args.timeout === undefined || Number.isNaN(args.timeout)
+      ? DEFAULT_TIMEOUT_SECONDS
+      : Math.floor(args.timeout);
+    const seconds: number = Math.max(MIN_TIMEOUT_SECONDS,
+      Math.min(MAX_TIMEOUT_SECONDS, requested));
+
+    const result: SandboxRunResult = await SandboxIsh.run(
+      this.context, command, seconds * 1000, this.options);
+
+    const parts: string[] = [];
+    if (result.error.length > 0) {
+      parts.push(result.error);
+    }
+    if (result.output.length > 0) {
+      parts.push(result.output);
+    }
+    parts.push('[exit=' + result.exitCode.toString() + ']');
+    return {
+      ok: result.error.length === 0 && !result.timedOut,
+      content: truncateText(parts.join('\n'), MAX_SHELL_CHARS)
+    };
+  }
+}

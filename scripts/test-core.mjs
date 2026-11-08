@@ -43,6 +43,7 @@ copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
 copyCore('ToolProtocol', ['Types']);
 copyCore('Workspace');
+copyCore('Terminal');
 copyCore('EventLog');
 copyCore('EditPatch');
 copyCore('Memory');
@@ -165,6 +166,7 @@ const md = await import(pathToFileURL(join(tmp, 'Markdown.mts')).href);
 const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
+const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
 const log = await import(pathToFileURL(join(tmp, 'EventLog.mts')).href);
 const edit = await import(pathToFileURL(join(tmp, 'EditPatch.mts')).href);
 const catalog = await import(pathToFileURL(join(tmp, 'ToolCatalog.mts')).href);
@@ -2668,4 +2670,57 @@ test('JWT claims and payload segment extraction', () => {
   assert.equal(oauth.jwtPayloadSegment('a.b.c'), 'b');
   assert.equal(oauth.jwtPayloadSegment('nodots'), '');
   assert.equal(oauth.jwtClaimsFromPayloadJson('bad').chatgptAccountId, '');
+});
+
+test('truncateMiddle keeps both ends and counts the omission', () => {
+  assert.equal(terminal.truncateMiddle('abc', 10), 'abc');
+  const text = 'HEAD' + 'x'.repeat(100) + 'TAIL';
+  const cut = terminal.truncateMiddle(text, 20);
+  assert.ok(cut.startsWith('HEAD'));
+  assert.ok(cut.endsWith('TAIL'));
+  assert.ok(cut.includes('88 characters omitted'));
+  assert.equal(terminal.truncateMiddle('abc', 0), 'abc');
+});
+
+test('sanitizeTerminal strips ANSI colours and OSC sequences', () => {
+  assert.equal(
+    terminal.sanitizeTerminal('\x1B[31merror\x1B[0m: bad'),
+    'error: bad');
+  assert.equal(
+    terminal.sanitizeTerminal('\x1B]0;title\x07visible'),
+    'visible');
+  assert.equal(
+    terminal.sanitizeTerminal('a\x1B[Kb'),
+    'ab');
+});
+
+test('sanitizeTerminal folds carriage-return overwrites like a terminal', () => {
+  // Each \r moves to column 0; a shorter write leaves the old tail visible.
+  assert.equal(terminal.sanitizeTerminal('AAAA\rBB'), 'BBAA');
+  assert.equal(terminal.sanitizeTerminal('progress 50%\rdone'), 'doneress 50%');
+  // ESC[K erases to the end of the line before the next write.
+  assert.equal(
+    terminal.sanitizeTerminal('Downloading 50%\r\x1B[KDone'),
+    'Done');
+  // Escapes take no columns when the cursor is simulated.
+  assert.equal(
+    terminal.sanitizeTerminal('\x1B[32mOK\x1B[0m\rfine'),
+    'fine');
+});
+
+test('sanitizeTerminal drops control bytes and blank-line runs', () => {
+  assert.equal(
+    terminal.sanitizeTerminal('a\x00b\x07c'),
+    'abc');
+  assert.equal(
+    terminal.sanitizeTerminal('one\n\n\n\ntwo\n'),
+    'one\n\ntwo');
+  assert.equal(terminal.sanitizeTerminal(''), '');
+});
+
+test('sanitizeTerminal bounds huge input before rewriting', () => {
+  const huge = 'a'.repeat(500000);
+  const cleaned = terminal.sanitizeTerminal(huge);
+  assert.ok(cleaned.length < 401000, 'output stays near the pre-trim cap');
+  assert.ok(cleaned.includes('characters omitted'));
 });

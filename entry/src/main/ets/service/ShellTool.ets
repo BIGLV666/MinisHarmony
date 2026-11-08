@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { ShellHandler, ToolResult } from '../core/ToolTypes';
-import { truncateText } from '../core/Workspace';
+import { sanitizeTerminal, truncateMiddle } from '../core/Terminal';
 import { SandboxIsh, SandboxOptions, SandboxRunResult } from './SandboxIsh';
 
 /** Matches OpenMinis: one shell call may return at most this much text. */
@@ -57,17 +57,21 @@ export class ShellTool implements ShellHandler {
     const result: SandboxRunResult = await SandboxIsh.run(
       this.context, command, seconds * 1000, this.options);
 
+    // ANSI colours and `\r` progress rewrites are noise for the model; the
+    // error at the end of a build log matters more than its head.
+    const output: string = sanitizeTerminal(result.output);
     const parts: string[] = [];
     if (result.error.length > 0) {
       parts.push(result.error);
     }
-    if (result.output.length > 0) {
-      parts.push(result.output);
+    if (output.length > 0) {
+      parts.push(output);
     }
-    parts.push('[exit=' + result.exitCode.toString() + ']');
+    const body: string = truncateMiddle(parts.join('\n'), MAX_SHELL_CHARS);
+    const exit: string = '[exit=' + result.exitCode.toString() + ']';
     return {
       ok: result.error.length === 0 && !result.timedOut,
-      content: truncateText(parts.join('\n'), MAX_SHELL_CHARS)
+      content: body.length > 0 ? body + '\n' + exit : exit
     };
   }
 }

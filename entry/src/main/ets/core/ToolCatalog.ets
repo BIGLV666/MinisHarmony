@@ -159,6 +159,12 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('timeout', 'number',
       t('最长执行秒数，默认 900，最大 3600。超时会重启沙箱并丢弃未完成的命令。'))
   ];
+  const pythonFields: FieldEntry[] = [
+    field('code', 'string',
+      t('要执行的 Python 3 代码。常驻解释器执行，变量、函数和已导入的模块会保留到后续调用。')),
+    field('timeout', 'number',
+      t('最长执行秒数，默认 120，最大 900。超时会终止解释器，下一条请求会自动重启。'))
+  ];
   const noFields: FieldEntry[] = [];
 
   const definitions: ToolDefinition[] = [
@@ -204,8 +210,17 @@ export function builtinToolDefinitions(): ToolDefinition[] {
         t('同一个会话共享一个常驻 shell，cd、环境变量会保留到下一次调用。工作区挂载在 ') +
         t('/var/minis/workspace，记忆目录挂载在 /var/minis/memory，聊天附件（图片等）在 ') +
         t('/var/minis/attachments，导入的技能在 /var/minis/skills，用它们读写用户文件。') +
-        t('沙箱内可能没有外网；需要联网取数据请用 fetch_url。'),
+        t('沙箱可以访问网络（与 App 共用网络连接），可用 curl、wget、git、pip、npm 等工具；') +
+        t('已预装 Node.js 22 与 npm。'),
       parameters: parametersOf(shellFields, ['command'])
+    },
+    {
+      name: 'python_execute',
+      description: t('在本机沙箱的常驻 Python 3 解释器中执行代码，返回 stdout+stderr 与退出码。') +
+        t('解释器在多次调用之间保持存活，导入的模块和定义的变量会保留，因此比每次启动 python3 快得多；') +
+        t('工作目录是 /var/minis/workspace，可以直接读写用户文件，也可以访问网络。') +
+        t('只适合短小的计算/数据处理脚本；长时间运行的命令请用 shell_execute。'),
+      parameters: parametersOf(pythonFields, ['code'])
     },
     {
       name: 'fetch_url',

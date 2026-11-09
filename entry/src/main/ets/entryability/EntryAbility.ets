@@ -79,6 +79,17 @@ export default class EntryAbility extends UIAbility {
     // exercises musl, OpenSSL and SQLite from the offline package set.
     const third: string = 'python3 -c "import ssl, sqlite3, sys; ' +
       'print(\'python\', sys.version.split()[0])"; echo python_exit=$?';
+    // Node is a 47 MB V8 binary under Asbestos; a cold start is the most
+    // demanding thing the guest runs. npm proves the CA bundle and the
+    // node_modules tree survived packing.
+    const fourth: string = 'node --version; echo node_exit=$?; ' +
+      'npm --version; echo npm_exit=$?';
+    // iSH has no slirp: guest sockets are forwarded to the host, so DNS and a
+    // raw TCP connect exercise the whole path without depending on a proxy.
+    const fifth: string = 'python3 -c "import socket; ' +
+      'print(\'dns\', socket.gethostbyname(\'example.com\')); ' +
+      's = socket.create_connection((\'1.1.1.1\', 443), 15); ' +
+      'print(\'tcp\', s.getpeername()); s.close()"; echo net_exit=$?';
     SandboxIsh.run(this.context, first, 180000, options).then((one: SandboxRunResult) => {
       this.logIsh('ISH1', one.output, one.exitCode, Date.now() - began);
       return SandboxIsh.run(this.context, second, 60000, options);
@@ -87,6 +98,12 @@ export default class EntryAbility extends UIAbility {
       return SandboxIsh.run(this.context, third, 120000, options);
     }).then((three: SandboxRunResult) => {
       this.logIsh('ISH3', three.output, three.exitCode, Date.now() - began);
+      return SandboxIsh.run(this.context, fourth, 240000, options);
+    }).then((four: SandboxRunResult) => {
+      this.logIsh('ISH4', four.output, four.exitCode, Date.now() - began);
+      return SandboxIsh.run(this.context, fifth, 120000, options);
+    }).then((five: SandboxRunResult) => {
+      this.logIsh('ISH5', five.output, five.exitCode, Date.now() - began);
       hilog.info(DOMAIN, TAG, 'ISH END total=%{public}dms',
         Date.now() - began);
     }).catch((error: Error) => {

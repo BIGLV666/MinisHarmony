@@ -102,8 +102,18 @@ export interface BrowserHandler {
  * owns the local iSH sandbox session; the runtime only advertises the tool
  * when a handler is supplied.
  */
-export interface ShellHandler {
+export interface ShellHandler extends PythonHandler {
   execute(argumentsJson: string,
+    onProgress?: (text: string) => void): Promise<ToolResult>;
+}
+
+/**
+ * Optional capability behind `python_execute`. Implemented by PythonService,
+ * which keeps one resident interpreter inside the local sandbox; the runtime
+ * only advertises the tool when a handler is supplied.
+ */
+export interface PythonHandler {
+  executePython(argumentsJson: string,
     onProgress?: (text: string) => void): Promise<ToolResult>;
 }
 

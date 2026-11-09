@@ -62,7 +62,7 @@ export class SandboxIsh {
    * previously extracted tree, so without this an upgrade would keep running
    * the old rootfs (for example one without Python).
    */
-  private static readonly ROOTFS_VERSION: string = '2';
+  private static readonly ROOTFS_VERSION: string = '3';
   private static readonly LEGACY_ROOTFS: string = '/data/local/tmp/minis-ish-rootfs';
   private static readonly READY: string = '[sandbox ready]';
   /**
@@ -87,6 +87,12 @@ export class SandboxIsh {
   private static readonly HEAD_BYTES: number = 64 * 1024;
 
   private static started: boolean = false;
+  /**
+   * Bumped on every daemon start and stop. Long-lived helpers inside the guest
+   * (the resident Python interpreter, for example) belong to one daemon
+   * generation; when it changes they are gone and must be restarted.
+   */
+  private static generation: number = 0;
   private static startError: string = '';
   private static startFailure: string = '';
   private static consumed: number = 0;
@@ -445,6 +451,7 @@ export class SandboxIsh {
       if (ready >= 0) {
         SandboxIsh.consumed = ready + SandboxIsh.READY.length;
         SandboxIsh.started = true;
+        SandboxIsh.generation++;
         return '';
       }
       // Any other [sandbox] line is a boot failure; surface it verbatim.
@@ -482,8 +489,14 @@ export class SandboxIsh {
     }
   }
 
+  /** Current daemon generation; see `generation`. */
+  static daemonGeneration(): number {
+    return SandboxIsh.generation;
+  }
+
   private static stopDaemon(): void {
     SandboxIsh.started = false;
+    SandboxIsh.generation++;
     SandboxIsh.consumed = 0;
     if (SandboxIsh.commandPath.length > 0) {
       SandboxIsh.writeText(SandboxIsh.commandPath, 'id=-1\nstop');

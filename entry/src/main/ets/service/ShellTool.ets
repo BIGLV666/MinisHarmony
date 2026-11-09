@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
-import { ShellHandler, ToolResult } from '../core/ToolTypes';
+import { PythonHandler, ShellHandler, ToolResult } from '../core/ToolTypes';
 import { sanitizeTerminal, truncateMiddle } from '../core/Terminal';
+import { PythonService } from './PythonService';
 import { SandboxIsh, SandboxOptions, SandboxRunResult } from './SandboxIsh';
 import { t } from '../core/I18n';
 
@@ -28,7 +29,7 @@ interface ShellArgs {
  * `shell_execute` is the general escape hatch whenever a file tool is not
  * enough: building, running scripts, inspecting binaries.
  */
-export class ShellTool implements ShellHandler {
+export class ShellTool implements ShellHandler, PythonHandler {
   private context: common.UIAbilityContext;
   private options: SandboxOptions;
 
@@ -94,5 +95,15 @@ export class ShellTool implements ShellHandler {
       ok: result.error.length === 0 && !result.timedOut,
       content: body.length > 0 ? body + '\n' + exit : exit
     };
+  }
+
+  /**
+   * `python_execute` shares the sandbox with the shell, so it lives on the
+   * same handler object but delegates to the resident interpreter in
+   * PythonService (one interpreter per daemon, one request at a time).
+   */
+  async executePython(argumentsJson: string,
+    onProgress?: (text: string) => void): Promise<ToolResult> {
+    return PythonService.executePython(this.context, argumentsJson, onProgress);
   }
 }

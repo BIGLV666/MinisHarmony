@@ -134,6 +134,7 @@ const TOOL_CHOICES: ToolChoice[] = [
   { name: 'write_file', label: '写文件' },
   { name: 'file_edit', label: '精确编辑' },
   { name: 'shell_execute', label: 'Linux 沙箱' },
+  { name: 'python_execute', label: 'Python 解释器' },
   { name: 'fetch_url', label: '抓取网页' },
   { name: 'now', label: '当前时间' },
   { name: 'subagent_task', label: '子代理' }
@@ -1395,7 +1396,7 @@ export struct SettingsSheet {
       // the wait is the one-time extraction rather than the kernel boot.
       this.ishReport = status.ready
         ? t('正在启动 iSH 内核…')
-        : t('首次使用：正在解压 rootfs（约 15 MB），可能需要十几秒…');
+        : t('首次使用：正在解压 rootfs（约 40 MB），可能需要几十秒…');
       const options: SandboxOptions = {
         workspace: context.filesDir + '/workspace',
         memory: context.filesDir + '/memory',
@@ -3181,7 +3182,7 @@ export struct SettingsSheet {
                     Text(t('写入前逐次确认'))
                       .fontSize(12)
                       .fontColor($r('app.color.text_primary'))
-                    Text(t('每次 write_file / file_edit / shell_execute 执行前弹窗，可选择允许或拒绝；拒绝会作为错误结果返回给模型。'))
+                    Text(t('每次 write_file / file_edit / shell_execute / python_execute 执行前弹窗，可选择允许或拒绝；拒绝会作为错误结果返回给模型。'))
                       .fontSize(10)
                       .fontColor($r('app.color.text_tertiary'))
                       .lineHeight(14)

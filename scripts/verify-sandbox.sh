@@ -4,10 +4,12 @@
 #   scripts/verify-sandbox.sh             # app must already be installed
 #   scripts/verify-sandbox.sh --install   # build, sign and install first
 #
-# The app's ISH smoke runs three commands through the persistent daemon:
+# The app's ISH smoke runs five commands through the persistent daemon:
 #   ISH1  kernel boot, fakefs, /bin/sh          (hello-from-ish, uname, id)
 #   ISH2  same shell: cd and exported variable   (pwd=/tmp, smoke=kept)
 #   ISH3  preinstalled Python with C extensions  (python 3.12, ssl, sqlite3)
+#   ISH4  preinstalled Node.js and npm           (node_exit=0, npm_exit=0)
+#   ISH5  guest network via host sockets         (DNS + TCP, net_exit=0)
 # ISH2 only passes if the shell survived between calls; ISH END carries the
 # total wall time.
 #
@@ -91,6 +93,9 @@ check 'ISH2|pwd=/tmp'
 check 'ISH2|smoke=kept'
 check 'ISH3|python 3.12'
 check 'ISH3|python_exit=0'
+check 'ISH4|node_exit=0'
+check 'ISH4|npm_exit=0'
+check 'ISH5|net_exit=0'
 check 'ISH END'
 
 total="$(grep -o 'total=[0-9]*ms' "$LOG" | tail -1)"

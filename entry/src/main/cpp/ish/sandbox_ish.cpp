@@ -238,6 +238,13 @@ int attachStdio(const char *output) {
 int createDeviceNodes() {
     generic_mkdirat(kAtPwd, "/dev", 0755);
     generic_mkdirat(kAtPwd, "/dev/pts", 0755);
+    /*
+     * Python's multiprocessing and several C libraries look for shared-memory
+     * objects under /dev/shm. iSH has no tmpfs for it, but an ordinary
+     * world-writable directory on the fakefs is enough for the semaphore and
+     * shared-memory files those libraries create.
+     */
+    generic_mkdirat(kAtPwd, "/dev/shm", 01777);
 
     struct Node {
         const char *path;

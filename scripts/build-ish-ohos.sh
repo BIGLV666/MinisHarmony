@@ -19,12 +19,17 @@
 #   scripts/build-ish-ohos.sh --rootfs        # also prepare the Alpine fakefs
 #   scripts/build-ish-ohos.sh --rootfs --push # ... and push it to the tablet
 #   scripts/build-ish-ohos.sh --bundle-rootfs # ... and refresh rawfile/ish-rootfs.zip
+#   scripts/build-ish-ohos.sh --rootfs-only   # refresh only the rootfs zip (no SDK needed)
 #   scripts/build-ish-ohos.sh --no-python     # build a rootfs without Python 3
+#   scripts/build-ish-ohos.sh --no-node       # build a rootfs without Node.js / npm
 #   scripts/build-ish-ohos.sh --clean         # remove the build directory first
 #
-# The rootfs includes Python 3 by default: the guest cannot download packages
-# (iSH has no network), so `--rootfs` unpacks the pinned Alpine package set
-# from scripts/ish-rootfs-python.py before rebuilding meta.db.
+# The rootfs includes Python 3, Node.js 22 + npm, a CA bundle, DNS/hosts
+# files and /dev/shm by default: the guest cannot run `apk add` against a
+# package mirror, so `--rootfs` unpacks pinned Alpine package sets from
+# scripts/ish-rootfs-python.py and scripts/ish-rootfs-node.py before
+# rebuilding meta.db. `--rootfs-only` skips the native library build, so it
+# only needs curl, zip, python3 and sha256sum on the host.
 #
 # Environment overrides:
 #   ISH_SRC        iSH checkout (default /home/biglv/project/OpenMinis/deps/ish)
@@ -63,6 +68,8 @@ DEVICE_ROOTFS=${DEVICE_ROOTFS:-/data/local/tmp/minis-ish-rootfs}
 DO_ROOTFS=0
 DO_PUSH=0
 DO_BUNDLE=0
+DO_NODE=1
+DO_NATIVE=1
 DO_CLEAN=0
 DO_PYTHON=1
 
@@ -76,7 +83,9 @@ while [ $# -gt 0 ]; do
         --rootfs) DO_ROOTFS=1 ;;
         --push) DO_ROOTFS=1; DO_PUSH=1 ;;
         --bundle-rootfs) DO_ROOTFS=1; DO_BUNDLE=1 ;;
+        --rootfs-only) DO_ROOTFS=1; DO_BUNDLE=1; DO_NATIVE=0 ;;
         --no-python) DO_PYTHON=0 ;;
+        --no-node) DO_NODE=0 ;;
         --clean) DO_CLEAN=1 ;;
         -h|--help) usage 0 ;;
         *) echo "unknown argument: $1" >&2; usage 1 ;;
@@ -110,12 +119,16 @@ NM=$NDK_BIN/llvm-nm
 
 log "Checking tools"
 [ -d "$ISH_SRC" ] || die "iSH source not found: $ISH_SRC (set ISH_SRC)"
-[ -x "$CC" ] || die "OHOS clang not found: $CC (set OHOS_NDK)"
-[ -x "$CXX" ] || die "OHOS clang++ not found: $CXX"
-[ -x "$AR" ] || die "llvm-ar not found: $AR"
-command -v "$MESON" >/dev/null || die "meson not found (set MESON)"
-command -v "$NINJA" >/dev/null || die "ninja not found (set NINJA)"
-command -v patch >/dev/null || die "patch not found"
+if [ "$DO_NATIVE" = 1 ]; then
+    # Only the native build needs the cross toolchain; rebuilding the rootfs
+    # archive is a pure host-side operation.
+    [ -x "$CC" ] || die "OHOS clang not found: $CC (set OHOS_NDK)"
+    [ -x "$CXX" ] || die "OHOS clang++ not found: $CXX"
+    [ -x "$AR" ] || die "llvm-ar not found: $AR"
+    command -v "$MESON" >/dev/null || die "meson not found (set MESON)"
+    command -v "$NINJA" >/dev/null || die "ninja not found (set NINJA)"
+    command -v patch >/dev/null || die "patch not found"
+fi
 command -v curl >/dev/null || die "curl not found"
 command -v unzip >/dev/null || die "unzip not found"
 command -v sha256sum >/dev/null || die "sha256sum not found"
@@ -137,6 +150,8 @@ DEPS=$BUILD_DIR/deps
 BUILD=$BUILD_DIR/build
 CACHE=$BUILD_DIR/cache
 mkdir -p "$DEPS" "$CACHE"
+
+if [ "$DO_NATIVE" = 1 ]; then
 
 log "Staging iSH source"
 rm -rf "$SRC"
@@ -224,6 +239,12 @@ main_symbol=$("$NM" -D --defined-only "$OUT_LIB" | grep -w Main || true)
 [ -n "$main_symbol" ] || die "Main is not exported from $OUT_LIB"
 printf '  %s (%s bytes)\n' "$OUT_LIB" "$(stat -c %s "$OUT_LIB")"
 
+else
+    # Rootfs-only builds read create_fakefs.py straight from the source
+    # checkout; nothing else from the native build is needed.
+    SRC=$ISH_SRC
+fi
+
 prepare_rootfs() {
     log "Preparing Alpine $ALPINE_VERSION fakefs rootfs"
     local tarball=${ALPINE_TARBALL:-$CACHE/$ALPINE_NAME.tar.gz}
@@ -244,6 +265,27 @@ prepare_rootfs() {
         python3 -I "$ROOT/scripts/ish-rootfs-python.py" \
             --data "$root/data" --cache "$CACHE/python-apks"
     fi
+
+    if [ "$DO_NODE" = 1 ]; then
+        log "Adding Node.js 22, npm and the CA bundle to the rootfs"
+        python3 -I "$ROOT/scripts/ish-rootfs-node.py" \
+            --data "$root/data" --cache "$CACHE/node-apks"
+    fi
+
+    # The guest reaches the network through the host's sockets (iSH forwards
+    # AF_INET calls), so name resolution only needs a resolver and a hosts
+    # file. Public DNS servers are used because the tablet's resolver may
+    # listen on a loopback address the guest cannot see.
+    mkdir -p "$root/data/etc"
+    cat > "$root/data/etc/resolv.conf" <<'RESOLV'
+nameserver 223.5.5.5
+nameserver 1.1.1.1
+RESOLV
+    cat > "$root/data/etc/hosts" <<'HOSTS'
+127.0.0.1 localhost minis
+::1 localhost ip6-localhost ip6-loopback
+HOSTS
+    chmod a+r "$root/data/etc/resolv.conf" "$root/data/etc/hosts"
 
     # fakefs reads guest modes from the real tree, so import before relaxing
     # the host permissions.

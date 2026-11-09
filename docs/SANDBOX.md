@@ -95,9 +95,29 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   `apk` 的已安装数据库不包含这些包（无网络时也不会用它），这是已知取舍。
   应用侧用 `filesDir/ish-rootfs/.minis-version` 标记 rootfs 版本，升级安装
   时旧 rootfs 会被重新解压，否则新 HAP 仍会跑旧文件系统。
-- **隔离边界**：iSH 内核本身是边界：guest 只能看见 rootfs 和显式挂载的目录。
-  当前 iSH 构建没有 slirp 网卡，guest 内没有外网；需要联网的数据由宿主
-  `fetch_url` 获取，设置页文案不承诺沙箱内可联网。
+- **常驻 Python 工具**：`python_execute` 不是在每次调用时起 `python3 -c`，
+  而是在 guest 内保留一个 `python3 -u -S -E` 服务进程
+  （`rawfile/minis_py_srv.py`）。ArkTS 把 `id=<n>\n<代码>` 原子写入
+  `/var/minis/workspace/.minis-py/req.txt`，服务进程 `exec` 后向 `out.txt`
+  追加 `__MINIS_DONE__ <id> <ms> <status>`；应用每 25 ms 只看文件大小，
+  变化才读。平板实测热请求 14–28 ms，变量与已导入模块跨调用保留；
+  首次导入 `traceback` 约 4.5 秒，因此只有出错时才导入。请求 id 用
+  `.minis-py/seq.txt` 持久化递增，进程重启也不会重放旧请求。
+  `mkdir -p /dev/shm` 让 `multiprocessing` 可用；超时会 `kill -9`
+  服务进程，`SandboxIsh.daemonGeneration()` 变化时在跑的请求立即返回。
+- **预装 Node.js 22 与 npm**：`scripts/ish-rootfs-node.py` 按版本与 SHA-256
+  下载 `nodejs 22.23.4-r0`、`npm 10.9.1-r0` 及其依赖（icu、nghttp2、c-ares、
+  simdjson/simdutf、brotli、zstd、ada-libs 等），并从 ca-certificates 的
+  PEM 文件拼出 `/etc/ssl/certs/ca-certificates.crt`（apk 的 post-install
+  脚本不会在构建时运行）。iSH 的 fork 会在 `exec` 时自动给名为 `node`
+  的程序注入 `--jitless --no-lazy`，所以 Alpine 原版二进制无需包装脚本。
+- **网络**：iSH 构建没有 slirp 网卡，但 `fs/sock.c` 把 guest 的
+  AF_INET/AF_LOCAL socket 调用转发给**宿主**的 `socket()`，因此 guest 直接
+  使用 App 的网络连接（`ohos.permission.INTERNET` 已声明）。构建时写入
+  `/etc/resolv.conf`（223.5.5.5、1.1.1.1）与 `/etc/hosts`，guests 的
+  `getaddrinfo` / curl / pip / npm 都能解析域名。
+- **隔离边界**：iSH 内核本身是边界：guest 只能看见 rootfs 和显式挂载的
+  目录；网络出口与 App 相同，受系统网络权限和用户网络策略约束。
 - **生命周期**：每个应用进程一个常驻沙箱内核（`SandboxIsh` 单例），`/bin/sh`
   作为 PID 1 从 stdin 管道读命令，`cd`、环境变量在多次调用之间保留。
   首屏加载完成 2 秒后后台预热内核（`SandboxIsh.warm()`），命令超时、用户
@@ -184,7 +204,7 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
 | `mmap` 固定地址/大地址空间被拒 | M2 | 调整 iSH 内存布局参数 |
 | pthread / futex / signal 行为差异 | M2/M4 | 打平台补丁（`platform/linux.c` 已有 Linux 宿主层） |
 | SQLite 在应用沙箱的锁/WAL | M2 | 改 journal 模式或只读 rootfs + 可写 overlay |
-| Alpine rootfs 体积（含 Python 约 15 MB 压缩、39 MB 展开） | M1/M4 | 已离线预装 Python；如需减重可再拆出独立 zip，首次使用时解包 |
+| Alpine rootfs 体积（含 Python/Node 约 38 MB 压缩、113 MB 展开） | M1/M4 | 已离线预装 Python 与 Node；如需减重可再拆出独立 zip，首次使用时解包 |
 | GPLv2 合规 | 发布前 | 附源码与许可，提供获取方式 |
 
 ## 5. 构建与复现
@@ -238,7 +258,7 @@ $HDC shell aa start -a EntryAbility -b app.minis.client --ps sandboxProbe true
 sleep 10
 $HDC shell hilog -x -T MinisHarmony | grep PROBE
 
-# 启动 iSH 并跑冒烟命令（内核/连续两条命令/Python 三组）
+# 启动 iSH 并跑冒烟命令（内核/连续两条命令/Python/Node/联网 五组）
 $HDC shell aa start -a EntryAbility -b app.minis.client --ps sandboxIsh true
 sleep 15
 $HDC shell hilog -x -T MinisHarmony | grep ISH
@@ -251,7 +271,8 @@ scripts/verify-sandbox.sh --install   # 已安装时去掉 --install
 ```
 
 脚本检查 `ISH1|hello-from-ish`、`ISH1|3.21.3`、`ISH2|pwd=/tmp`、
-`ISH2|smoke=kept`、`ISH3|python 3.12` 与 `ISH END`，失败时打印应用回传的
+`ISH2|smoke=kept`、`ISH3|python 3.12`、`ISH4|node_exit=0`、
+`ISH4|npm_exit=0`、`ISH5|net_exit=0` 与 `ISH END`，失败时打印应用回传的
 原始日志；需要平板已连接（`hdc list targets` 非空）。
 
 也可以直接在平板上点：设置 → 工具与沙箱 → 启动 Linux 沙箱；输出面板

@@ -227,7 +227,7 @@ export class LocalToolRuntime implements ToolRuntime {
       // The sandbox shell can write any mounted directory, so it needs the
       // same explicit opt-in as the file writers.
       const writeTool: boolean = name === 'write_file' || name === 'file_edit' ||
-        name === 'shell_execute';
+        name === 'shell_execute' || name === 'python_execute';
       const memoryTool: boolean = name === 'memory_write' || name === 'memory_get';
       if (writeTool && !this.allowWrite) {
         continue;
@@ -255,6 +255,9 @@ export class LocalToolRuntime implements ToolRuntime {
         continue;
       }
       if (name === 'shell_execute' && this.shell === null) {
+        continue;
+      }
+      if (name === 'python_execute' && this.shell === null) {
         continue;
       }
       if (name === 'calendar' || name === 'contacts' ||
@@ -325,6 +328,18 @@ export class LocalToolRuntime implements ToolRuntime {
           };
         }
         return await this.shell.execute(argumentsJson, onProgress);
+      }
+      if (name === 'python_execute') {
+        if (this.shell === null) {
+          return { ok: false, content: t('本地 Linux 沙箱尚未就绪。') };
+        }
+        if (!this.allowWrite) {
+          return {
+            ok: false,
+            content: t('Python 执行需要先在设置中开启「允许写入工作区文件」。')
+          };
+        }
+        return await this.shell.executePython(argumentsJson, onProgress);
       }
       if (name === 'fetch_url') {
         return await this.fetchUrl(argumentsJson);

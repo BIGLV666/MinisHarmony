@@ -58,12 +58,36 @@ iSH 以 GPL-2.0 分发。按 GPLv2 第 3 条，分发包含 iSH 二进制的 HAP
 `--apk-dir` 参数从 <https://dl-cdn.alpinelinux.org/alpine/v3.21/main/aarch64>
 重新下载后解包查看。
 
-## 4. 平台库
+## 4. 离线预装的 Node.js 与 npm
+
+`scripts/ish-rootfs-node.py` 固定版本与 SHA-256 拉取 Alpine 3.21 的
+Node.js 22.23.4、npm 10.9.1 及依赖（npm 来自 `community/aarch64`，其余来自
+`main/aarch64`）并解包进 rootfs：
+
+| 包 | 许可证 |
+| --- | --- |
+| nodejs 22.23.4 | MIT |
+| npm 10.9.1 | Artistic-2.0 |
+| ca-certificates 20261020 | MPL-2.0 AND MIT |
+| ada-libs 2.9.2（Ada URL 解析器） | Apache-2.0 OR MIT |
+| icu-libs / icu-data-en 74.2 | ICU |
+| nghttp2-libs 1.69.0 | MIT |
+| c-ares 1.34.9 | MIT |
+| simdjson 3.10.1 | Apache-2.0 |
+| simdutf 5.6.3 | MIT OR Apache-2.0 |
+| brotli-libs 1.1.1 | MIT |
+| zstd-libs 1.5.6 | BSD-3-Clause OR GPL-2.0 |
+
+`/etc/ssl/certs/ca-certificates.crt` 由该包内的 118 张根证书 PEM 在构建时
+拼接生成（apk 的 post-install 脚本不会运行）。各包完整许可证文本随上游
+`.apk` 提供，可用脚本的 `--cache` 目录重新下载后解包查看。
+
+## 5. 平台库
 
 `libishsandbox.so` 与 ArkTS 侧代码在运行时链接 HarmonyOS / OpenHarmony 系统库
 （`libc++`、`libhilog`、`libace_napi` 等），这些库随系统提供，本项目不分发。
 
-## 5. 参考实现
+## 6. 参考实现
 
 OpenMinis（GPLv3）与 dsh-Go（AGPL-3.0）仅用于参考公开行为与产品设计，本仓库
 没有复制它们的源代码；如需合并请自行评估许可证兼容性。

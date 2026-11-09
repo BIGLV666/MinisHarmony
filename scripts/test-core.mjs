@@ -2591,6 +2591,19 @@ test('event and contact formatting stays compact', () => {
     ['1', '2', '3', '4'], ['x', 'y', 'z']), '李四 · 1 / 2 / 3 · x / y');
 });
 
+test('python_execute schema advertises code and a bounded timeout', () => {
+  const tools = catalog.builtinToolDefinitions();
+  const tool = tools.find((item) => item.name === 'python_execute');
+  assert.notEqual(tool, undefined);
+  assert.deepEqual(tool.parameters.required, ['code']);
+  assert.equal(tool.parameters.properties.code.type, 'string');
+  assert.equal(tool.parameters.properties.timeout.type, 'number');
+  // The description must tell the model that state survives between calls;
+  // otherwise it will re-import modules on every request.
+  assert.match(tool.description, /常驻/);
+  assert.match(tool.parameters.properties.timeout.description, /120/);
+});
+
 test('device tool schema advertises the four capabilities', () => {
   const tools = catalog.builtinToolDefinitions();
   for (const name of ['calendar', 'contacts', 'location', 'weather']) {

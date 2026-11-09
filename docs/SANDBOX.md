@@ -110,7 +110,9 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   simdjson/simdutf、brotli、zstd、ada-libs 等），并从 ca-certificates 的
   PEM 文件拼出 `/etc/ssl/certs/ca-certificates.crt`（apk 的 post-install
   脚本不会在构建时运行）。iSH 的 fork 会在 `exec` 时自动给名为 `node`
-  的程序注入 `--jitless --no-lazy`，所以 Alpine 原版二进制无需包装脚本。
+  的程序注入 `--jitless --no-lazy`，所以 Alpine 原版二进制无需包装脚本；
+  fork 的 `/lib/wasm-polyfill.js` 与 `/lib/fetch-polyfill.js` 也一并预装，
+  存在时内核才会注入对应的 `--require`（WebAssembly 与 fetch() 需要）。
 - **网络**：iSH 构建没有 slirp 网卡，但 `fs/sock.c` 把 guest 的
   AF_INET/AF_LOCAL socket 调用转发给**宿主**的 `socket()`，因此 guest 直接
   使用 App 的网络连接（`ohos.permission.INTERNET` 已声明）。构建时写入

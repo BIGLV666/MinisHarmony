@@ -272,6 +272,18 @@ prepare_rootfs() {
             --data "$root/data" --cache "$CACHE/node-apks"
     fi
 
+    # iSH's Node support injects `--require=/lib/*.js` only when the shim
+    # exists: wasm-polyfill provides WebAssembly under emulation and
+    # fetch-polyfill implements fetch() through native http/https. Ship the
+    # fork's copies, exactly as its own rootfs patch bundle does.
+    local patches=$ISH_SRC/app/RootfsPatch.bundle/files/lib
+    if [ -d "$patches" ]; then
+        mkdir -p "$root/data/lib"
+        cp "$patches"/*.js "$root/data/lib/"
+    else
+        log "warning: $patches missing; node will run without wasm/fetch shims"
+    fi
+
     # The guest reaches the network through the host's sockets (iSH forwards
     # AF_INET calls), so name resolution only needs a resolver and a hosts
     # file. Public DNS servers are used because the tablet's resolver may

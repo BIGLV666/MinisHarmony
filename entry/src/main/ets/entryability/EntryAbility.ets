@@ -83,7 +83,8 @@ export default class EntryAbility extends UIAbility {
     // demanding thing the guest runs. npm proves the CA bundle and the
     // node_modules tree survived packing.
     const fourth: string = 'node --version; echo node_exit=$?; ' +
-      'npm --version; echo npm_exit=$?';
+      'npm --version; echo npm_exit=$?; ' +
+      'git --version; echo git_exit=$?';
     // iSH has no slirp: guest sockets are forwarded to the host, so DNS and a
     // raw TCP connect exercise the whole path without depending on a proxy.
     const fifth: string = 'python3 -c "import socket; ' +

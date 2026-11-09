@@ -87,12 +87,14 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   `data_local_tmp` 的 SELinux 限制，应用也天然拥有 rootfs 的读写权限。
   workspace、memory、attachments、skills 都已映射进 guest 的 `/var/minis/*`
   （skills 是导入的 `.md` 文件，脚本可以直接读取）。
-- **预装 Python 3**：minirootfs 只有 busybox + apk，而 guest 没有网络，
-  运行期无法 `apk add`。因此 `scripts/ish-rootfs-python.py` 在构建时按固定
+- **预装 Python 3**：minirootfs 只有 busybox + apk。虽然现在 guest 可以联网、
+  理论上能 `apk add`，但离线或镜像不可达时运行期装不了包，所以
+  `scripts/ish-rootfs-python.py` 在构建时按固定
   版本与 SHA-256 下载 Python 3.12.16 及 17 个依赖（musl、openssl、sqlite、
   readline 等，约 13.5 MB 压缩 / 39 MB 展开），直接解包进 rootfs 目录，
   再由 `create_fakefs.py` 重建 `meta.db`。zip 从 3.8 MB 增至 15 MB。
-  `apk` 的已安装数据库不包含这些包（无网络时也不会用它），这是已知取舍。
+  `apk` 的已安装数据库不包含这些包，用 `apk` 查询或升级时看不到它们，
+  这是已知取舍。
   应用侧用 `filesDir/ish-rootfs/.minis-version` 标记 rootfs 版本，升级安装
   时旧 rootfs 会被重新解压，否则新 HAP 仍会跑旧文件系统。
 - **常驻 Python 工具**：`python_execute` 不是在每次调用时起 `python3 -c`，
@@ -113,11 +115,16 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   的程序注入 `--jitless --no-lazy`，所以 Alpine 原版二进制无需包装脚本；
   fork 的 `/lib/wasm-polyfill.js` 与 `/lib/fetch-polyfill.js` 也一并预装，
   存在时内核才会注入对应的 `--require`（WebAssembly 与 fetch() 需要）。
+- **预装 git**：`scripts/ish-rootfs-git.py` 固定 `git 2.47.3-r0`、`libcurl
+  8.14.1-r3`、`pcre2`、`libidn2`、`libpsl`、`libunistring` 与
+  `ca-certificates-bundle` 的 SHA-256，解包进 rootfs；`git-remote-https`
+  随包提供，https 克隆与推送走上面同一条宿主 socket 通道并校验证书。
+  rootfs 现为 4707 个文件、zip 43 MB、展开后约 123 MB。
 - **网络**：iSH 构建没有 slirp 网卡，但 `fs/sock.c` 把 guest 的
   AF_INET/AF_LOCAL socket 调用转发给**宿主**的 `socket()`，因此 guest 直接
   使用 App 的网络连接（`ohos.permission.INTERNET` 已声明）。构建时写入
   `/etc/resolv.conf`（223.5.5.5、1.1.1.1）与 `/etc/hosts`，guests 的
-  `getaddrinfo` / curl / pip / npm 都能解析域名。
+  `getaddrinfo` / curl / pip / npm / git 都能解析域名。
 - **隔离边界**：iSH 内核本身是边界：guest 只能看见 rootfs 和显式挂载的
   目录；网络出口与 App 相同，受系统网络权限和用户网络策略约束。
 - **生命周期**：每个应用进程一个常驻沙箱内核（`SandboxIsh` 单例），`/bin/sh`
@@ -206,7 +213,7 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
 | `mmap` 固定地址/大地址空间被拒 | M2 | 调整 iSH 内存布局参数 |
 | pthread / futex / signal 行为差异 | M2/M4 | 打平台补丁（`platform/linux.c` 已有 Linux 宿主层） |
 | SQLite 在应用沙箱的锁/WAL | M2 | 改 journal 模式或只读 rootfs + 可写 overlay |
-| Alpine rootfs 体积（含 Python/Node 约 38 MB 压缩、113 MB 展开） | M1/M4 | 已离线预装 Python 与 Node；如需减重可再拆出独立 zip，首次使用时解包 |
+| Alpine rootfs 体积（含 Python/Node/git 约 43 MB 压缩、123 MB 展开） | M1/M4 | 已离线预装 Python、Node 与 git；如需减重可再拆出独立 zip，首次使用时解包 |
 | GPLv2 合规 | 发布前 | 附源码与许可，提供获取方式 |
 
 ## 5. 构建与复现
@@ -260,7 +267,7 @@ $HDC shell aa start -a EntryAbility -b app.minis.client --ps sandboxProbe true
 sleep 10
 $HDC shell hilog -x -T MinisHarmony | grep PROBE
 
-# 启动 iSH 并跑冒烟命令（内核/连续两条命令/Python/Node/联网 五组）
+# 启动 iSH 并跑冒烟命令（内核/连续两条命令/Python/Node+git/联网 五组）
 $HDC shell aa start -a EntryAbility -b app.minis.client --ps sandboxIsh true
 sleep 15
 $HDC shell hilog -x -T MinisHarmony | grep ISH
@@ -274,7 +281,7 @@ scripts/verify-sandbox.sh --install   # 已安装时去掉 --install
 
 脚本检查 `ISH1|hello-from-ish`、`ISH1|3.21.3`、`ISH2|pwd=/tmp`、
 `ISH2|smoke=kept`、`ISH3|python 3.12`、`ISH4|node_exit=0`、
-`ISH4|npm_exit=0`、`ISH5|net_exit=0` 与 `ISH END`，失败时打印应用回传的
+`ISH4|npm_exit=0`、`ISH4|git_exit=0`、`ISH5|net_exit=0` 与 `ISH END`，失败时打印应用回传的
 原始日志；需要平板已连接（`hdc list targets` 非空）。
 
 也可以直接在平板上点：设置 → 工具与沙箱 → 启动 Linux 沙箱；输出面板

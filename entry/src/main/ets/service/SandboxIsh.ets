@@ -62,7 +62,7 @@ export class SandboxIsh {
    * previously extracted tree, so without this an upgrade would keep running
    * the old rootfs (for example one without Python).
    */
-  private static readonly ROOTFS_VERSION: string = '3';
+  private static readonly ROOTFS_VERSION: string = '4';
   private static readonly LEGACY_ROOTFS: string = '/data/local/tmp/minis-ish-rootfs';
   private static readonly READY: string = '[sandbox ready]';
   /**

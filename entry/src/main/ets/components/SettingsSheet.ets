@@ -1396,7 +1396,7 @@ export struct SettingsSheet {
       // the wait is the one-time extraction rather than the kernel boot.
       this.ishReport = status.ready
         ? t('正在启动 iSH 内核…')
-        : t('首次使用：正在解压 rootfs（约 40 MB），可能需要几十秒…');
+        : t('首次使用：正在解压 rootfs（约 45 MB），可能需要几十秒…');
       const options: SandboxOptions = {
         workspace: context.filesDir + '/workspace',
         memory: context.filesDir + '/memory',

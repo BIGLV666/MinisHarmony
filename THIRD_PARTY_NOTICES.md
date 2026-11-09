@@ -82,12 +82,31 @@ Node.js 22.23.4、npm 10.9.1 及依赖（npm 来自 `community/aarch64`，其余
 拼接生成（apk 的 post-install 脚本不会运行）。各包完整许可证文本随上游
 `.apk` 提供，可用脚本的 `--cache` 目录重新下载后解包查看。
 
-## 5. 平台库
+## 5. 离线预装的 git
+
+`scripts/ish-rootfs-git.py` 以相同方式固定版本与 SHA-256，把 git 及其依赖
+解包进 rootfs（含 libcurl，因此 https 远端与证书校验证可用）：
+
+| 包 | 许可证 |
+| --- | --- |
+| git 2.47.3 | GPL-2.0-only |
+| libcurl 8.14.1 | curl |
+| pcre2 10.43 | BSD-3-Clause |
+| libidn2 2.3.7 | LGPL-3.0-or-later |
+| libpsl 0.21.5 | MIT |
+| libunistring 1.2 | LGPL-3.0-or-later |
+| ca-certificates-bundle 20261020 | MPL-2.0 AND MIT |
+
+git 为 GPLv2，分发包含 git 二进制的 HAP 时同样需要提供对应源码获取方式：
+<https://git.kernel.org/pub/scm/git/git.git>（标签 `v2.47.3`），或从 Alpine
+`main/aarch64` 的 `git-2.47.3-r0.apk` 重新解包核对。
+
+## 6. 平台库
 
 `libishsandbox.so` 与 ArkTS 侧代码在运行时链接 HarmonyOS / OpenHarmony 系统库
 （`libc++`、`libhilog`、`libace_napi` 等），这些库随系统提供，本项目不分发。
 
-## 6. 参考实现
+## 7. 参考实现
 
 OpenMinis（GPLv3）与 dsh-Go（AGPL-3.0）仅用于参考公开行为与产品设计，本仓库
 没有复制它们的源代码；如需合并请自行评估许可证兼容性。

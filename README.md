@@ -374,5 +374,8 @@ OHOS_BASE_SDK_HOME=<sdk 根目录> \
 
 本项目以 [MIT](LICENSE) 发布。
 
+随 HAP 分发的第三方组件（iSH 沙箱内核 GPL-2.0、Alpine rootfs、预装 Python 运行时）
+及其许可证与源码获取方式见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 OpenMinis 以 GPLv3 发布，dsh-Go 以 AGPL-3.0 发布。本项目只参考了它们的公开行为与
 产品设计，没有复制其源代码；如果你要把本项目与上述代码合并，请自行评估许可证兼容性。

@@ -105,8 +105,9 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   「命令已取消」，排队中的调用不受影响、下一条命令重新启动内核。
 - **安全**：工具仍受 `toolsEnabled`、`allowWriteTools`、逐工具开关约束；
   guest 内不能访问应用私有目录以外的宿主路径（fakefs 只挂载显式目录）。
-- **许可**：iSH 为 GPLv2，随应用分发时需要保留版权与源码获取方式；在
-  `THIRD_PARTY_LICENSES` 中登记。
+- **许可**：iSH 为 GPLv2，随应用分发时需要保留版权与源码获取方式；已在
+  仓库根目录 `THIRD_PARTY_NOTICES.md` 登记 iSH、Alpine rootfs 与离线 Python
+  包，并写明对应源码的获取/重建方式。
 
 ## 3. 里程碑
 
@@ -146,6 +147,10 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       `python_exit=0`；流式回答中点「停止」立刻中断；`seq 1 200000` 的输出
       被头尾截断（中间 `[... 380037 characters omitted ...]`，保留约 20048 字符），
       模型能据此判断输出不完整。
+      2026-11-09 生命周期实测：启动后 `ps` 可见
+      `app.minis.client:Native_libishsandbox0`；按 Home 切后台 20 秒后它仍常驻
+      （下次命令免冷启动）；`aa force-stop app.minis.client` 后 3 秒再查 `ps`，
+      相关进程 0 条，native child 随应用进程一起回收，没有孤儿内核。
       长输出：应用只在输出文件大小变化时重新读取，先只读末尾 256 KB 找
       结束标记（标记总是 shell 最后打印的行），命中后才整读一次；超过
       4 MB 放慢轮询。会话累计输出超过 24 MB 时在命令之间主动停一次

@@ -20,7 +20,13 @@ export default class EntryFormAbility extends FormExtensionAbility {
   }
 
   onAddForm(want: Want): formBindingData.FormBindingData {
-    I18nService.init(this.context);
+    try {
+      // The card extension runs in its own process, so the catalog has to be
+      // loaded here too; a failure only costs the fallback text.
+      I18nService.init(this.context);
+    } catch (e) {
+      // Keep going: the snapshot below is still worth showing.
+    }
     const formId: string = this.formIdOf(want);
     WidgetBridge.registerForm(this.context, formId);
     const snapshot: WidgetSnapshot = WidgetBridge.loadSync(this.context);

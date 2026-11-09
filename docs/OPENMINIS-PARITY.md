@@ -74,7 +74,7 @@ OpenMinis 的内置工具（逐字）：`shell_execute`、`file_read`、`file_wr
 | - [x] | 搜索文本 | 通过 shell `grep` | `search_text` | — |
 | - [x] | HTTP 抓取 | 浏览器引擎 `fetch` | `fetch_url` | — |
 | - [x] | 当前时间 | 通过 shell `date` | `now` | — |
-| - [~] | Shell 命令 | `shell_execute {command, timeout}`，默认 900 秒、上限 3600 秒 | 本机 `shell_execute`：iSH 常驻 shell（`cd`、环境变量跨调用保留），工作区与记忆目录 realfs 挂载，应用侧串行队列；完成检测只扫输出末尾 256 KB，命中后整读一次；会话输出过 24 MB 在命令间轮转 daemon；超时/用户停止停 daemon 并立即返回已打印内容（末尾 512 KB）；输出经 `core/Terminal.ets` 去 ANSI/OSC、折叠 `\r`、头尾截断到 20000 字符；运行中每 700 ms 把清洗后的末尾 4000 字符推到工具卡片「实时输出」（折叠状态也显示最后 4 行，对齐 OpenMinis 的 live sheet），停止时标注输出不完整；受「允许写入工作区文件」、逐工具开关与逐次确认约束；主代理与子代理共用；远程模式由远端执行。**待平板实机二连命令冒烟** | P0 |
+| - [x] | Shell 命令 | `shell_execute {command, timeout}`，默认 900 秒、上限 3600 秒 | 本机 `shell_execute`：iSH 常驻 shell（`cd`、环境变量跨调用保留），工作区与记忆目录 realfs 挂载，应用侧串行队列；完成检测只扫输出末尾 256 KB，命中后整读一次；会话输出过 24 MB 在命令间轮转 daemon；超时/用户停止停 daemon 并立即返回已打印内容（末尾 512 KB）；输出经 `core/Terminal.ets` 去 ANSI/OSC、折叠 `\r`、头尾截断到 20000 字符；运行中每 700 ms 把清洗后的末尾 4000 字符推到工具卡片「实时输出」（折叠状态也显示最后 4 行，对齐 OpenMinis 的 live sheet），停止时标注输出不完整；受「允许写入工作区文件」、逐工具开关与逐次确认约束；主代理与子代理共用；远程模式由远端执行。**实机 2026-11-09 验证：三条命令连跑 5.9 秒，`pwd` 与 `MINIS_SMOKE=kept` 跨调用保留；会话内模型调用 `uname -a; id` 返回 `4.20.69-ish aarch64`、`uid=0(root)`、`[exit=0]`；20 万行输出按头尾截断并标注省略；流式期间「停止」立即生效** | P0 |
 | - [x] | 读图片 / 视觉 | `read_image` 注入视觉上下文 | `read_image` 读取工作区图片，工具消息后追加合成 user 图片消息；本机模式、默认关闭 | P1 |
 | - [x] | 浏览器自动化 | `browser_use` 22 动作 | ArkWeb 子集：隐藏 Web 视图常驻，`browser_use` 支持 open / click / type / text / html / eval / back / forward / reload / wait / title / url；页面加载最多等 20 秒，返回内容截断；远程沙箱模式不暴露 | P2 |
 | - [x] | 持久记忆 | `memory_write` / `memory_get` | `filesDir/memory`，每日文件 + GLOBAL.md，关键词检索 | P1 |

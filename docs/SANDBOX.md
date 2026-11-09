@@ -128,18 +128,24 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       `printf "[sandbox exit=%d]" "$?"`，不依赖进程收尾；第二次实机冒烟
       输出以 `[sandbox exit=0]` 结束，应用在约 20 秒内返回。guest 超时
       60 秒、应用侧轮询 150 秒作为兜底。）
-- [ ] M3 工具接入：本机模式新增 `shell_execute`，超时/输出上限/取消；
+- [x] M3 工具接入：本机模式新增 `shell_execute`，超时/输出上限/取消；
       工作区与记忆目录挂载。
       （2026-11-08 已实现：常驻 daemon 客户端、`ShellTool`、目录 realfs 挂载、
       输出上限 20000 字符、默认 900 秒 / 上限 3600 秒、超时停 daemon；
       主代理与子代理共用同一 handler，HAP 与核心单测通过。
-      **待平板实机**跑 `--ps sandboxIsh true` 的两条连续命令冒烟：第二条应看到
-      第一条设置的 `$MINIS_SMOKE` 和 `pwd=/tmp`，且总耗时明显低于两次冷启动。）
-- [ ] M4 稳定性：连续命令、并发、长输出、Python/Node 冒烟；
+      2026-11-09 平板实机：`--ps sandboxIsh true` 连续执行两条命令，第一条
+      `cd /tmp; export MINIS_SMOKE=kept; ...`，第二条读到 `pwd=/tmp`、`smoke=kept`，
+      三条命令总计 5.9 秒，证明内核只冷启动一次。会话中直接让模型调用
+      `shell_execute` 执行 `uname -a; id; echo result=42`，工具卡片原样回传
+      `Linux localhost 4.20.69-ish ... aarch64`、`uid=0(root)`、`[exit=0]`。）
+- [x] M4 稳定性：连续命令、并发、长输出、Python/Node 冒烟；
       应用退后台与子进程回收。
       （2026-11-08 已把 Python 3.12.16 与依赖离线预装进 rootfs，构建可复现
-      `scripts/ish-rootfs-python.py`；`python3 -c` 冒烟与连续命令仍需平板。
-      Node 未预装，按需再评估。
+      `scripts/ish-rootfs-python.py`；Node 未预装，按需再评估。
+      2026-11-09 平板实机：`python3 -c "import ssl, sqlite3"` 输出 3.12 且
+      `python_exit=0`；流式回答中点「停止」立刻中断；`seq 1 200000` 的输出
+      被头尾截断（中间 `[... 380037 characters omitted ...]`，保留约 20048 字符），
+      模型能据此判断输出不完整。
       长输出：应用只在输出文件大小变化时重新读取，先只读末尾 256 KB 找
       结束标记（标记总是 shell 最后打印的行），命中后才整读一次；超过
       4 MB 放慢轮询。会话累计输出超过 24 MB 时在命令之间主动停一次
@@ -148,12 +154,16 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
       返回给模型的文本经 `core/Terminal.ets` 清洗（去 ANSI/OSC、折叠
       `\r` 覆写、去控制字符、合并空行）后按 20000 字符头尾截断。并发
       请求在应用侧排队，共用同一个 guest shell。）
-- [ ] M5 体验：设置页沙箱状态、首次解压进度、磁盘占用、重置 rootfs。
+- [x] M5 体验：设置页沙箱状态、首次解压进度、磁盘占用、重置 rootfs。
       （2026-11-08 已加：设置页「沙箱状态」行显示已就绪/需重新解压/尚未解压、
       rootfs 占用与「内核常驻」状态；「重置」需两次点击确认，调用
       `SandboxIsh.reset` 停 daemon 后删除 rootfs，下次使用重新解压。
       `zlib.decompressFile` 没有进度回调，解压期间只显示一次性提示，没有百分比。
-      实机视觉与交互待验。）
+      2026-11-09 平板实机：设置页显示「已启动，内核常驻 · 占用 40.1 MB」；
+      「运行内核自检」输出 pid、uid、内核版本与 `system_sh/spawn_system_sh/
+      libs_exec/data_exec = 13 (Permission denied)`、`CapEff=0`、`Seccomp=2`；
+      「启动 Linux 沙箱」在应用内输出 `hello-from-ish`、`uid=0(root)`、
+      `3.21.3`、`[exit=0]`，并提供「复制输出」。）
 
 ## 4. 移植风险
 

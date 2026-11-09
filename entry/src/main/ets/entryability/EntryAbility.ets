@@ -72,7 +72,7 @@ export default class EntryAbility extends UIAbility {
     };
     const first: string = 'cd /tmp; export MINIS_SMOKE=kept; ' +
       'echo hello-from-ish; uname -a; id; cat /etc/alpine-release';
-    const second: string = 'pwd; echo smoke=$MINIS_SMOKE; ' +
+    const second: string = 'echo pwd=$(pwd); echo smoke=$MINIS_SMOKE; ' +
       'echo workspace=$(ls /var/minis/workspace | wc -l) entries';
     // The preinstalled Python is only useful if its C extensions load, which
     // exercises musl, OpenSSL and SQLite from the offline package set.

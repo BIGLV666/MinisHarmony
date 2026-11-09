@@ -1921,6 +1921,8 @@ export struct SettingsSheet {
                     I18nService.setLanguage(context, language.code);
                     this.language = language.code;
                     this.onToast(t('语言已切换'));
+                    // Index watches i18nVersion and rebuilds the whole page
+                    // subtree, so no restart is needed here.
                   })
               }, (language: I18nLanguage) => language.code)
             }

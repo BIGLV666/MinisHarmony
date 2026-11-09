@@ -933,7 +933,8 @@ test('event log serializes JSONL with a short session tag', () => {
   assert.equal(log.logFileName(date), 'events-2026-11-07.jsonl');
 
   const viewed = log.formatEventLine(line);
-  assert.match(viewed, /11-08 \d\d:\d\d:\d\d model_done/);
+  // newLogEvent stamps Date.now(), so assert the shape, not today's date.
+  assert.match(viewed, /\d\d-\d\d \d\d:\d\d:\d\d model_done/);
   assert.match(viewed, /42ms/);
   assert.match(viewed, /req=ab12cd34/);
   assert.equal(log.formatEventLine('garbage'), 'garbage');

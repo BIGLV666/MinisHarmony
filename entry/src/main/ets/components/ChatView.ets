@@ -26,6 +26,8 @@ export struct ChatView {
   @Prop modelId: string = '';
   @Prop title: string = t('新对话');
   @Prop isWide: boolean = true;
+  /** False when recreated by a language rebuild, which must not pop the keyboard. */
+  @Prop autoFocusComposer: boolean = true;
   @Prop hasKey: boolean = false;
   /** Enter submits instead of inserting a newline (physical + soft keyboard). */
   @Prop enterToSend: boolean = false;
@@ -126,6 +128,9 @@ export struct ChatView {
   }
 
   aboutToAppear(): void {
+    if (!this.autoFocusComposer) {
+      return;
+    }
     // Focus after the first layout pass so the keyboard follows the composer.
     setTimeout(() => {
       try {

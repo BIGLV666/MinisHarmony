@@ -134,7 +134,13 @@ interface CompactUndo {
 @Entry
 @Component
 struct Index {
-  @StorageProp('i18nVersion') i18nVersion: number = 0;
+  @StorageProp('i18nVersion') @Watch('onI18nChanged') i18nVersion: number = 0;
+  /**
+   * Flipped by onI18nChanged so the whole page subtree is destroyed
+   * and built again: ArkUI only refreshes nodes whose bindings
+   * changed, and t() lookups are not bindings.
+   */
+  @State i18nEpoch: number = 0;
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
   @StorageProp('pendingShareText') @Watch('onSharedText') sharedText: string = '';
@@ -2750,6 +2756,8 @@ struct Index {
       modelId: this.effectiveModelId(),
       title: this.currentTitle(),
       isWide: this.isWide,
+      // A language switch rebuilds the page; do not pop the keyboard then.
+      autoFocusComposer: this.i18nEpoch === 0,
       hasKey: this.settings.apiKey.trim().length > 0,
       enterToSend: this.settings.enterToSend,
       canThink: this.canSetThinking(),
@@ -2803,6 +2811,37 @@ struct Index {
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
+      // The two branches are identical on purpose: ArkUI treats them
+      // as different branches, so changing i18nEpoch rebuilds every
+      // descendant instead of reusing cached t() text.
+      if (this.i18nEpoch % 2 === 0) {
+        this.pageBody()
+      } else {
+        this.pageBody()
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.bg'))
+    .onAreaChange((oldValue: Area, newValue: Area) => {
+      const width: number = Number.parseFloat(newValue.width.toString());
+      if (!Number.isNaN(width) && width > 0) {
+        this.isWide = width >= 840;
+      }
+    })
+    .bindContentCover($$this.showBrowser, this.browserOverlay())
+  }
+
+  onI18nChanged(): void {
+    // Defer past the click handler: the language sheet is part of the
+    // subtree about to be recreated.
+    setTimeout(() => {
+      this.i18nEpoch++;
+    }, 60);
+  }
+
+  @Builder
+  pageBody() {
       if (this.ready) {
         HiddenBrowser()
       }
@@ -2943,16 +2982,5 @@ struct Index {
       if (this.locked) {
         this.lockScreen()
       }
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.bg'))
-    .onAreaChange((oldValue: Area, newValue: Area) => {
-      const width: number = Number.parseFloat(newValue.width.toString());
-      if (!Number.isNaN(width) && width > 0) {
-        this.isWide = width >= 840;
-      }
-    })
-    .bindContentCover($$this.showBrowser, this.browserOverlay())
   }
 }

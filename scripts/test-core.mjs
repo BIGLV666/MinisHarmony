@@ -895,6 +895,23 @@ test('agent turn budget is clamped to a safe range', () => {
   assert.equal(settings.loggingEnabled, false);
 });
 
+test('context budget accepts 600k and 1M characters', () => {
+  assert.equal(types.MIN_CONTEXT_BUDGET_CHARS, 4000);
+  assert.equal(types.MAX_CONTEXT_BUDGET_CHARS, 2000000);
+  assert.equal(types.clampContextBudget(60000), 60000);
+  assert.equal(types.clampContextBudget(600000), 600000);
+  assert.equal(types.clampContextBudget(1000000), 1000000);
+  assert.equal(types.clampContextBudget(2000000), 2000000);
+  assert.equal(types.clampContextBudget(2000001), 2000000);
+  assert.equal(types.clampContextBudget(3999), 4000);
+  assert.equal(types.clampContextBudget(12345.9), 12345);
+  assert.equal(types.clampContextBudget(Number.NaN), 60000);
+  const settings = types.defaultSettings();
+  assert.equal(settings.contextBudgetChars, 60000);
+  const restored = types.cloneSettings({ contextBudgetChars: 1000000 });
+  assert.equal(restored.contextBudgetChars, 1000000);
+});
+
 test('event log redacts credentials and stays single-line', () => {
   const raw = 'auth Bearer abc.def-123 sk-live_ABCDEFG token=secret123\nnext line';
   const redacted = log.redactSecrets(raw);

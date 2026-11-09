@@ -184,7 +184,12 @@ export const MAX_MAX_AGENT_TURNS: number = 1000;
 
 export const DEFAULT_CONTEXT_BUDGET_CHARS: number = 60000;
 export const MIN_CONTEXT_BUDGET_CHARS: number = 4000;
-export const MAX_CONTEXT_BUDGET_CHARS: number = 400000;
+/**
+ * The budget is in characters, so 2,000,000 is roughly 500k–700k tokens.
+ * Anything larger than that no current model accepts; the old 400k cap was
+ * below what users of 1M-token models need (600k/1M were silently clamped).
+ */
+export const MAX_CONTEXT_BUDGET_CHARS: number = 2000000;
 
 export const DEFAULT_AUTO_COMPACT_PERCENT: number = 80;
 export const MIN_AUTO_COMPACT_PERCENT: number = 50;

@@ -636,6 +636,37 @@ export struct SettingsSheet {
     return Math.floor(parsed);
   }
 
+  /** Human-readable form of the budget that save() will actually store. */
+  private budgetSummary(): string {
+    const text: string = this.contextBudgetText.trim();
+    if (text.length === 0) {
+      return t('请输入字符数，范围 4000–2000000');
+    }
+    const raw: number = Number(text);
+    if (Number.isNaN(raw) || !Number.isFinite(raw)) {
+      return t('请输入数字，范围 4000–2000000');
+    }
+    const effective: number = clampContextBudget(raw);
+    let summary: string = t('实际保存 ') + effective.toString() + t(' 字符');
+    if (effective >= 10000) {
+      const wan: number = Math.round(effective / 1000) / 10;
+      summary += t('（约 ') + wan.toString() + t(' 万字符）');
+    }
+    if (Math.floor(raw) !== effective) {
+      summary += t('，已按范围调整');
+    }
+    return summary;
+  }
+
+  private budgetAdjusted(): boolean {
+    const text: string = this.contextBudgetText.trim();
+    const raw: number = Number(text);
+    if (text.length === 0 || Number.isNaN(raw) || !Number.isFinite(raw)) {
+      return true;
+    }
+    return Math.floor(raw) !== clampContextBudget(raw);
+  }
+
   private draftSettings(): AppSettings {
     const next: AppSettings = {
       preset: this.preset,
@@ -2483,13 +2514,32 @@ export struct SettingsSheet {
                   .onChange((value: string) => {
                     this.contextBudgetText = value;
                   })
+                  .onBlur(() => {
+                    // Show the value that will actually be saved; otherwise an
+                    // out-of-range entry silently comes back as a different
+                    // number the next time the sheet opens.
+                    const text: string = this.contextBudgetText.trim();
+                    const parsed: number = Number(text);
+                    if (text.length === 0 || Number.isNaN(parsed) || !Number.isFinite(parsed)) {
+                      this.contextBudgetText = this.settings.contextBudgetChars.toString();
+                      return;
+                    }
+                    this.contextBudgetText = clampContextBudget(parsed).toString();
+                  })
                 Text(t('字符'))
                   .fontSize(10)
                   .fontColor($r('app.color.text_tertiary'))
               }
               .width('100%')
 
-              Text(t('默认 60000。估算请求超过预算时，较早的工具结果会在发送前被截断；界面与已保存的记录不受影响。可用 /compact 让模型生成摘要。'))
+              Text(this.budgetSummary())
+                .fontSize(9)
+                .fontColor(this.budgetAdjusted() ?
+                  $r('app.color.danger') : $r('app.color.text_tertiary'))
+                .lineHeight(14)
+                .width('100%')
+
+              Text(t('默认 60000（6 万字符），可填 4000–2000000。估算请求超过预算时，较早的工具结果会在发送前被截断；界面与已保存的记录不受影响。可用 /compact 让模型生成摘要。'))
                 .fontSize(9)
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)

@@ -14,7 +14,13 @@ const MAX_PREVIEW_CHARS: number = 4000;
 const DEFAULT_TIMEOUT_SECONDS: number = 120;
 const MAX_TIMEOUT_SECONDS: number = 900;
 const MIN_TIMEOUT_SECONDS: number = 5;
-/** A cold daemon boot plus the interpreter start fits comfortably here. */
+/**
+ * The first python call may also be the first sandbox use: that call extracts
+ * the 38 MB rootfs, boots the kernel and then starts the interpreter. Give
+ * the boot command the same budget as the shell smoke (180 s); the ready
+ * poll afterwards only covers the interpreter itself.
+ */
+const BOOT_TIMEOUT_MS: number = 180000;
 const START_TIMEOUT_MS: number = 45000;
 const KILL_TIMEOUT_MS: number = 15000;
 const POLL_MS: number = 25;
@@ -242,7 +248,7 @@ export class PythonService {
       skills: context.filesDir + '/skills'
     };
     const boot = await SandboxIsh.run(context, PythonService.START_COMMAND,
-      60000, options);
+      BOOT_TIMEOUT_MS, options);
     if (boot.error.length > 0) {
       return t('无法启动 Python 服务：') + boot.error;
     }

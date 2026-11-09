@@ -100,6 +100,12 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   `fetch_url` 获取，设置页文案不承诺沙箱内可联网。
 - **生命周期**：每个应用进程一个常驻沙箱内核（`SandboxIsh` 单例），`/bin/sh`
   作为 PID 1 从 stdin 管道读命令，`cd`、环境变量在多次调用之间保留。
+  首屏加载完成 2 秒后后台预热内核（`SandboxIsh.warm()`），命令超时、用户
+  「停止」或输出轮转停掉 daemon 后 300–800 ms 内也会自动重启，下一条命令
+  不必再付内核启动的时间；rootfs 尚未解压时预热不触发，避免替用户偷偷
+  解包。自检探针里的 `unshare` 实测会被 seccomp 以 SIGSYS 杀掉并让系统记一条
+  native crash，默认改为直接报告已知结论；只有显式传
+  `--ps sandboxProbeDeep true` 才做真机实测。
   应用侧命令队列串行执行；超时或用户点「停止」都无法在 guest 内中断，
   直接停掉整个 daemon（`SandboxIsh.cancel()`），在跑的调用立刻返回
   「命令已取消」，排队中的调用不受影响、下一条命令重新启动内核。

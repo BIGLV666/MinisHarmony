@@ -41,7 +41,8 @@ export default class EntryAbility extends UIAbility {
     if (flag !== true && flag !== 'true' && flag !== 1) {
       return;
     }
-    SandboxProbe.run(this.context).then((report: string) => {
+    const deep = want.parameters !== undefined ? want.parameters['sandboxProbeDeep'] : undefined;
+    SandboxProbe.run(this.context, deep === true || deep === 'true' || deep === 1).then((report: string) => {
       const lines: string[] = report.split('\n');
       hilog.info(DOMAIN, TAG, 'PROBE BEGIN');
       for (let i = 0; i < lines.length; i++) {
@@ -110,6 +111,12 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, TAG, 'Content loaded');
+      // Boot the sandbox once the first screen is up, so the first shell
+      // command does not also pay the kernel start. Warm() is a no-op until
+      // the rootfs has been extracted once, so a fresh install is unaffected.
+      setTimeout((): void => {
+        SandboxIsh.warm(this.context);
+      }, 2000);
     });
   }
 

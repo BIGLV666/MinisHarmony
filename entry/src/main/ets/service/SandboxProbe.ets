@@ -11,13 +11,15 @@ import { t } from '../core/I18n';
  * the API only reports the pid, not process exit.
  */
 export class SandboxProbe {
-  static async run(context: common.UIAbilityContext): Promise<string> {
+  static async run(context: common.UIAbilityContext, deep: boolean = false): Promise<string> {
     const reportPath: string = context.filesDir + '/sandbox-probe.txt';
     SandboxProbe.remove(reportPath);
     try {
       await childProcessManager.startNativeChildProcess(
         'libsandboxprobe.so:Main',
-        { entryParams: reportPath }
+        // The unshare test is killed by seccomp (SIGSYS), which the system
+        // records as a native crash; only run it when explicitly requested.
+        { entryParams: deep ? reportPath + '|deep' : reportPath }
       );
     } catch (e) {
       const error: BusinessError = e as BusinessError;

@@ -100,6 +100,10 @@ export class SandboxIsh {
   private static busy: number = 0;
   /** Bumped by cancel(): an in-flight execute compares it and returns early. */
   private static cancelToken: number = 0;
+  /** Last UI context, so a stopped daemon can be rebooted ahead of the next call. */
+  private static lastContext: common.UIAbilityContext | null = null;
+  private static warming: Promise<void> | null = null;
+  private static warmTimer: number = -1;
 
   /**
    * Run one command. Calls are serialized: the guest has a single shell and a
@@ -138,7 +142,50 @@ export class SandboxIsh {
     SandboxIsh.cancelToken++;
     if (SandboxIsh.busy > 0) {
       SandboxIsh.stopDaemon();
+      // The next command would otherwise pay the kernel boot again.
+      SandboxIsh.warmSoon(800);
     }
+  }
+
+  /**
+   * Boot the kernel ahead of the first shell call. Stopping a command kills
+   * the daemon, and a fresh app process starts without one, so the first
+   * command of a session paid the boot on top of its own latency. Warming
+   * removes that pause without unpacking the rootfs behind the user's back:
+   * a machine that has never run a command still extracts on first use.
+   */
+  static warm(context: common.UIAbilityContext): void {
+    if (SandboxIsh.started || SandboxIsh.warming !== null) {
+      return;
+    }
+    const local: string = context.filesDir + '/' + SandboxIsh.ROOTFS_DIR;
+    if (!SandboxIsh.hasMetaDb(local) ||
+      SandboxIsh.read(local + '/.minis-version') !== SandboxIsh.ROOTFS_VERSION) {
+      return;
+    }
+    SandboxIsh.lastContext = context;
+    SandboxIsh.warming = (async (): Promise<void> => {
+      try {
+        await SandboxIsh.ensureDaemon(context, local, SandboxIsh.cancelToken);
+      } catch (e) {
+        // A failed warm-up is not a command failure; the next run retries.
+      } finally {
+        SandboxIsh.warming = null;
+      }
+    })();
+  }
+
+  /** Schedule a warm-up once a stopped daemon has had time to exit. */
+  static warmSoon(delayMs: number = 600): void {
+    const context: common.UIAbilityContext | null = SandboxIsh.lastContext;
+    if (context === null || SandboxIsh.warmTimer !== -1 || SandboxIsh.warming !== null) {
+      return;
+    }
+    const cached: common.UIAbilityContext = context;
+    SandboxIsh.warmTimer = setTimeout((): void => {
+      SandboxIsh.warmTimer = -1;
+      SandboxIsh.warm(cached);
+    }, delayMs);
   }
 
   /**
@@ -211,6 +258,12 @@ export class SandboxIsh {
     timeoutMs: number, options: SandboxOptions,
     onProgress?: (text: string) => void): Promise<SandboxRunResult> {
     const token: number = SandboxIsh.cancelToken;
+    SandboxIsh.lastContext = context;
+    const warming: Promise<void> | null = SandboxIsh.warming;
+    if (warming !== null) {
+      // Never race a warm-up into a second daemon.
+      await warming;
+    }
     if (SandboxIsh.options.workspace.length === 0) {
       SandboxIsh.options = options;
     }
@@ -257,6 +310,7 @@ export class SandboxIsh {
       if (size > SandboxIsh.MAX_OUTPUT_BYTES) {
         const head: string = SandboxIsh.readHead(SandboxIsh.outputPath);
         SandboxIsh.stopDaemon();
+        SandboxIsh.warmSoon(300);
         return {
           output: head,
           exitCode: -1,
@@ -287,6 +341,7 @@ export class SandboxIsh {
             // one kernel restart instead of failing a command later.
             if (size > SandboxIsh.MAX_SESSION_OUTPUT_BYTES) {
               SandboxIsh.stopDaemon();
+              SandboxIsh.warmSoon(300);
             }
             return { output: output, exitCode: marker.code, timedOut: false, error: '' };
           }
@@ -315,6 +370,7 @@ export class SandboxIsh {
       partial = text.length > start ? text.substring(start) : '';
     }
     SandboxIsh.stopDaemon();
+    SandboxIsh.warmSoon(300);
     return {
       output: partial,
       exitCode: -1,

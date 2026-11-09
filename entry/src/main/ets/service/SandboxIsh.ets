@@ -104,6 +104,12 @@ export class SandboxIsh {
   /** Commands share one shell, so they also share one queue. */
   private static queue: Promise<void> = Promise.resolve();
   private static busy: number = 0;
+  /**
+   * Long-lived guest helpers (the resident Python interpreter) that are
+   * mid-request. They do not go through `run()`, so `busy` stays zero; the
+   * count lets cancel() know the daemon still has work to abort.
+   */
+  private static helpers: number = 0;
   /** Bumped by cancel(): an in-flight execute compares it and returns early. */
   private static cancelToken: number = 0;
   /** Last UI context, so a stopped daemon can be rebooted ahead of the next call. */
@@ -146,10 +152,25 @@ export class SandboxIsh {
    */
   static cancel(): void {
     SandboxIsh.cancelToken++;
-    if (SandboxIsh.busy > 0) {
+    if (SandboxIsh.busy > 0 || SandboxIsh.helpers > 0) {
       SandboxIsh.stopDaemon();
       // The next command would otherwise pay the kernel boot again.
       SandboxIsh.warmSoon(800);
+    }
+  }
+
+  /**
+   * Mark a long-lived guest helper as busy for this daemon generation.
+   * PythonService calls these around one request so the user's Stop kills
+   * the interpreter instead of waiting for the tool timeout.
+   */
+  static beginHelper(): void {
+    SandboxIsh.helpers++;
+  }
+
+  static endHelper(): void {
+    if (SandboxIsh.helpers > 0) {
+      SandboxIsh.helpers--;
     }
   }
 

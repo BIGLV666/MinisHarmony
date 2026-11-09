@@ -89,9 +89,11 @@ export class PythonService {
       release = resolve;
     });
     await previous;
+    SandboxIsh.beginHelper();
     try {
       return await PythonService.runOnce(context, code, seconds, onProgress);
     } finally {
+      SandboxIsh.endHelper();
       release();
     }
   }

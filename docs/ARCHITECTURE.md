@@ -356,6 +356,23 @@ chunk 里返回 `usage`，且该 chunk 常常是 `choices: []` —— `SseParser
 `transcriptForSummary()` 对工具参数/结果分别按 300 / 600 字符裁剪，总长上限
 24000 字符，避免摘要请求本身超限。
 
+## 自动会话标题
+
+会话标题先由 `titleFrom()` 取首条用户消息第一行（26 字内）作为即时占位。每轮
+生成结束后，`Index.maybeAutoTitle()` 检查标题是否仍是这个派生值（或「新对话」），
+是则异步请求一次模型标题；`titleJobs` 记录已请求的会话，避免每轮重复。
+
+- 提示词由 `ChatApi.titleInstruction()` 给出，要求 ≤20 字、只输出标题本身；
+- 请求复用非流式摘要通道 `requestModelText()`：按 `preset` 走 OpenAI 兼容 /
+  Anthropic / Gemini / Codex，`max_tokens` 200，OpenCode 会话头保持不变；
+- `core/SessionTitle.ets` 负责纯逻辑：`cleanTitle()` 去引号、「标题：」/`Title:`
+  前缀与句末标点，超过 20 字截断加省略号；`titleTranscript()` 只取首轮用户+
+  助手文本（各 600 字），超过 8 条消息再补最近一条助手消息（300 字）；失败轮
+  （`error`）不算回答；
+- 成功写 `SessionMeta.title` 并持久化，失败**静默**保留派生标题，离线不受影响；
+- 会话操作菜单可「重新生成标题」，手动请求会显示进度、失败原因与成功提示；
+  编辑首条用户消息会清掉 `titleJobs` 记录，下一轮重新生成。
+
 ## 持久记忆
 
 记忆是**本机**能力，默认关闭，开启后：

@@ -78,6 +78,16 @@ function summaryInstruction(): string {
     t('不要编造，不要加开场白，直接输出摘要正文。');
 }
 
+/**
+ * Title request for the sidebar. Deliberately tiny (one short line), so the
+ * answer can be used verbatim after `cleanTitle()` strips quotes/punctuation.
+ */
+function titleInstruction(): string {
+  return t('根据给出的对话起一个会话标题。') +
+    t('要求：不超过20个字，只输出标题本身，不要引号、句号、前缀或解释；') +
+    t('优先概括用户想完成的事情，用用户使用的语言。');
+}
+
 export interface ChatCallbacks {
   onDelta: (content: string, reasoning: string, toolCalls: ToolCallDelta[]) => void;
   onUsage: (usage: TokenUsage) => void;
@@ -941,13 +951,15 @@ function startGeminiStream(
 /** Non-streaming `/compact` request for Gemini. */
 async function summarizeGemini(
   settings: AppSettings,
-  transcript: string
+  transcript: string,
+  instruction: string,
+  maxOutputTokens: number
 ): Promise<SummaryResult> {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const body: GeminiRequestBody = {
     contents: [{ role: 'user', parts: [{ text: transcript }] }],
-    systemInstruction: { parts: [{ text: summaryInstruction() }] },
-    generationConfig: { maxOutputTokens: 1500, temperature: 0.2 }
+    systemInstruction: { parts: [{ text: instruction }] },
+    generationConfig: { maxOutputTokens: maxOutputTokens, temperature: 0.2 }
   };
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -1006,14 +1018,16 @@ async function summarizeGemini(
 /** Non-streaming `/compact` request for the Messages API. */
 async function summarizeAnthropic(
   settings: AppSettings,
-  transcript: string
+  transcript: string,
+  instruction: string,
+  maxTokens: number
 ): Promise<SummaryResult> {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const body: AnthropicSummaryRequestBody = {
     model: settings.modelId,
-    max_tokens: 1500,
+    max_tokens: maxTokens,
     temperature: 0.2,
-    system: summaryInstruction(),
+    system: instruction,
     messages: [{ role: 'user', content: transcript }]
   };
   const headers: Record<string, string> =
@@ -1066,12 +1080,13 @@ async function summarizeAnthropic(
 /** Non-streaming `/compact` request for the Responses API. */
 async function summarizeResponses(
   settings: AppSettings,
-  transcript: string
+  transcript: string,
+  instruction: string
 ): Promise<SummaryResult> {
   const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
   const body: ResponsesSummaryRequest = {
     model: settings.modelId,
-    instructions: summaryInstruction(),
+    instructions: instruction,
     input: [{ role: 'user', content: transcript }],
     stream: false,
     store: false
@@ -1138,33 +1153,78 @@ export async function summarizeConversation(
   sessionId: string,
   transcript: string
 ): Promise<SummaryResult> {
-  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
-  const apiKey: string = settings.apiKey.trim();
-  if (baseUrl.length === 0) {
-    return { ok: false, text: '', message: t('请先在设置中填写 API 地址') };
+  const problem: string = modelTextProblem(settings, transcript, t('没有可压缩的内容'));
+  if (problem.length > 0) {
+    return { ok: false, text: '', message: problem };
   }
-  if (apiKey.length === 0 && bearerToken(settings).length === 0) {
-    return { ok: false, text: '', message: t('请先在设置中填写 API Key，或登录服务商账号') };
+  return await requestModelText(
+    settings, sessionId, transcript, summaryInstruction(), 1500);
+}
+
+/**
+ * Ask the model for a short sidebar title after the first settled turn.
+ *
+ * Reuses the summary transport (protocol-specific non-streaming request) but
+ * with a different instruction and a tiny output budget.
+ */
+export async function generateSessionTitle(
+  settings: AppSettings,
+  sessionId: string,
+  transcript: string
+): Promise<SummaryResult> {
+  const problem: string = modelTextProblem(settings, transcript, t('没有可命名的内容'));
+  if (problem.length > 0) {
+    return { ok: false, text: '', message: problem };
+  }
+  return await requestModelText(
+    settings, sessionId, transcript, titleInstruction(), 200);
+}
+
+/** Empty string when the request is usable; otherwise a user-facing reason. */
+function modelTextProblem(
+  settings: AppSettings,
+  transcript: string,
+  emptyReason: string
+): string {
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  if (baseUrl.length === 0) {
+    return t('请先在设置中填写 API 地址');
+  }
+  if (settings.apiKey.trim().length === 0 && bearerToken(settings).length === 0) {
+    return t('请先在设置中填写 API Key，或登录服务商账号');
   }
   if (transcript.trim().length === 0) {
-    return { ok: false, text: '', message: t('没有可压缩的内容') };
+    return emptyReason;
   }
+  return '';
+}
+
+/** One non-streaming request routed by the configured protocol. */
+async function requestModelText(
+  settings: AppSettings,
+  sessionId: string,
+  transcript: string,
+  instruction: string,
+  maxTokens: number
+): Promise<SummaryResult> {
   if (settings.preset === 'anthropic') {
-    return await summarizeAnthropic(settings, transcript);
+    return await summarizeAnthropic(settings, transcript, instruction, maxTokens);
   }
   if (settings.preset === 'gemini') {
-    return await summarizeGemini(settings, transcript);
+    return await summarizeGemini(settings, transcript, instruction, maxTokens);
   }
   if (settings.preset === 'codex') {
-    return await summarizeResponses(settings, transcript);
+    return await summarizeResponses(settings, transcript, instruction);
   }
 
+  const baseUrl: string = normalizeBaseUrl(settings.baseUrl);
+  const apiKey: string = settings.apiKey.trim();
   const body: SummaryRequestBody = {
     model: settings.modelId,
     messages: [
       {
         role: 'system',
-        content: summaryInstruction()
+        content: instruction
       },
       {
         role: 'user',
@@ -1173,7 +1233,7 @@ export async function summarizeConversation(
     ],
     stream: false,
     temperature: 0.2,
-    max_tokens: 1500
+    max_tokens: maxTokens
   };
 
   const headers: Record<string, string> = settings.preset === 'copilot'

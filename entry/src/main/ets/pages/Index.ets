@@ -57,7 +57,13 @@ import {
   transcriptForSummary
 } from '../core/ContextBudget';
 import { AgentRuntime } from '../service/AgentRuntime';
-import { SummaryResult, summarizeConversation } from '../service/ChatApi';
+import { SummaryResult, generateSessionTitle, summarizeConversation } from '../service/ChatApi';
+import {
+  cleanTitle,
+  firstUserText,
+  hasAnswer,
+  titleTranscript
+} from '../core/SessionTitle';
 import { AppLogger } from '../service/AppLogger';
 import { CrashLog } from '../service/CrashLog';
 import { saveDiagnostics } from '../service/Diagnostics';
@@ -213,6 +219,8 @@ struct Index {
   @State deleteId: string = '';
   @State actionId: string = '';
   @State paramsId: string = '';
+  /** Session ids whose title request already ran (in-memory; avoids repeats). */
+  private titleJobs: string[] = [];
   @State paramModel: string = '';
   @State paramThinking: string = '';
   @State paramPrompt: string = '';
@@ -769,6 +777,77 @@ struct Index {
   private currentTitle(): string {
     const session: StoredSession | null = this.findSession(this.currentId);
     return session === null ? t('新对话') : session.meta.title;
+  }
+
+  /**
+   * After a settled turn, replace the derived first-line title with a model
+   * title. Runs once per session and silently keeps the derived title when the
+   * request fails, so offline use is unaffected.
+   */
+  private maybeAutoTitle(session: StoredSession): void {
+    if (this.titleJobs.indexOf(session.meta.id) >= 0 || !hasAnswer(session.messages)) {
+      return;
+    }
+    const first: string = firstUserText(session.messages);
+    const derived: string = first.length > 0 ? titleFrom(first) : t('图片对话');
+    const current: string = session.meta.title;
+    if (current.length > 0 && current !== derived && current !== t('新对话')) {
+      return;
+    }
+    this.requestTitle(session, false);
+  }
+
+  private forgetTitle(sessionId: string): void {
+    const at: number = this.titleJobs.indexOf(sessionId);
+    if (at >= 0) {
+      this.titleJobs.splice(at, 1);
+    }
+  }
+
+  /** Ask the model for a title; `manual` also reports failures to the user. */
+  private async requestTitle(session: StoredSession, manual: boolean): Promise<void> {
+    if (this.titleJobs.indexOf(session.meta.id) >= 0) {
+      if (!manual) {
+        return;
+      }
+      this.forgetTitle(session.meta.id);
+    }
+    const transcript: string = titleTranscript(session.messages);
+    if (transcript.length === 0) {
+      if (manual) {
+        this.toast(t('对话还太短，无法生成标题'));
+      }
+      return;
+    }
+    this.titleJobs.push(session.meta.id);
+    if (manual) {
+      this.toast(t('正在生成标题…'));
+    }
+    const settings: AppSettings =
+      await OAuthService.decorate(effectiveSettings(this.settings, session.meta));
+    const result: SummaryResult = await generateSessionTitle(
+      settings, session.meta.id, transcript);
+    if (!result.ok) {
+      this.forgetTitle(session.meta.id);
+      if (manual) {
+        this.toast(t('标题生成失败：') + result.message);
+      }
+      return;
+    }
+    const title: string = cleanTitle(result.text);
+    if (title.length === 0) {
+      this.forgetTitle(session.meta.id);
+      if (manual) {
+        this.toast(t('标题生成失败：模型返回了空标题'));
+      }
+      return;
+    }
+    session.meta.title = title;
+    this.refreshSessions();
+    this.persistSoon();
+    if (manual) {
+      this.toast(t('已更新标题'));
+    }
   }
 
   /** Model actually used for the current conversation (override wins). */
@@ -1921,6 +2000,7 @@ struct Index {
           this.agent = null;
           this.searchEntries = this.buildSearchIndex();
           this.finishTaskRun(session);
+          this.maybeAutoTitle(session);
           this.scheduleAutoSync();
           BackgroundGuard.end().catch((error: Error) => {});
           keepScreenOn(getContext(this) as common.UIAbilityContext, false)
@@ -2039,6 +2119,7 @@ struct Index {
     message.createdAt = Date.now();
     if (index === 0) {
       session.meta.title = titleFrom(text);
+      this.forgetTitle(session.meta.id);
     }
     this.editing = false;
     this.editId = '';
@@ -2642,6 +2723,20 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.openSessionParams(this.actionId))
+          Text(t('重新生成标题'))
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => {
+              const session: StoredSession | null = this.findSession(this.actionId);
+              this.actionId = '';
+              if (session !== null) {
+                this.requestTitle(session, true);
+              }
+            })
           Text(t('导出为 Markdown'))
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))

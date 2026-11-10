@@ -41,6 +41,11 @@ function copyCore(name, deps = []) {
       "import { MAX_SESSION_FOLDERS, SessionFolder, SessionMeta } from './Types.mts';",
       "import { MAX_SESSION_FOLDERS } from './Types.mts';");
   }
+  if (name === 'SessionTitle') {
+    source = source.replace(
+      "import { ChatMessage, textOf } from './Types.mts';",
+      "import { textOf } from './Types.mts';");
+  }
   writeFileSync(join(tmp, `${name}.mts`), source);
 }
 
@@ -56,6 +61,7 @@ copyCore('Types');
 copyCore('PromptQueue', ['Types']);
 copyCore('SessionFolder', ['Types']);
 copyCore('BrowserHistory');
+copyCore('SessionTitle', ['Types']);
 copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -197,6 +203,7 @@ const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
 const promptQueue = await import(pathToFileURL(join(tmp, 'PromptQueue.mts')).href);
 const folders = await import(pathToFileURL(join(tmp, 'SessionFolder.mts')).href);
 const browserHistory = await import(pathToFileURL(join(tmp, 'BrowserHistory.mts')).href);
+const sessionTitle = await import(pathToFileURL(join(tmp, 'SessionTitle.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
@@ -3649,4 +3656,64 @@ test('browser download sizes format compactly', () => {
   assert.equal(browserHistory.formatBytes(512), '512 B');
   assert.equal(browserHistory.formatBytes(2048), '2.0 KB');
   assert.equal(browserHistory.formatBytes(5 * 1024 * 1024), '5.0 MB');
+});
+
+function titleMessage(role, text, error = false) {
+  return {
+    id: role + '-' + text.length,
+    role,
+    parts: [{ kind: 'text', text }],
+    createdAt: 0,
+    error
+  };
+}
+
+test('session titles clean wrappers, prefixes and length', () => {
+  assert.equal(sessionTitle.cleanTitle('「重构 侧栏 分组。」'), '重构 侧栏 分组');
+  assert.equal(sessionTitle.cleanTitle('标题：修复登录问题'), '修复登录问题');
+  assert.equal(sessionTitle.cleanTitle('Title: Browser history'), 'Browser history');
+  assert.equal(sessionTitle.cleanTitle('  \n   '), '');
+  assert.equal(sessionTitle.cleanTitle('hello\nsecond line'), 'hello');
+  const long = sessionTitle.cleanTitle('一'.repeat(30));
+  assert.equal(long.length, 21);
+  assert.equal(long.endsWith('…'), true);
+  assert.equal(sessionTitle.collapseSpaces('  a \n\t b  '), 'a b');
+});
+
+test('title transcript keeps the first exchange and a long tail', () => {
+  assert.equal(sessionTitle.titleTranscript([]), '');
+  const onlyUser = [titleMessage('user', '写一个测试')];
+  assert.equal(sessionTitle.titleTranscript(onlyUser), '用户：写一个测试');
+  assert.equal(sessionTitle.hasAnswer(onlyUser), false);
+  const pair = [
+    titleMessage('user', '帮我整理浏览器历史'),
+    titleMessage('assistant', '可以，先打开历史面板'),
+    titleMessage('user', '再来一步'),
+    titleMessage('assistant', '已完成')
+  ];
+  assert.equal(sessionTitle.hasAnswer(pair), true);
+  assert.equal(sessionTitle.firstUserText(pair), '帮我整理浏览器历史');
+  assert.equal(sessionTitle.firstAssistantText(pair), '可以，先打开历史面板');
+  const transcript = sessionTitle.titleTranscript(pair);
+  assert.equal(transcript.includes('用户：帮我整理浏览器历史'), true);
+  assert.equal(transcript.includes('助手：可以，先打开历史面板'), true);
+  assert.equal(transcript.includes('再来一步'), false, 'short chats omit the tail');
+
+  const long = [];
+  for (let i = 0; i < 5; i++) {
+    long.push(titleMessage('user', '问题' + i));
+    long.push(titleMessage('assistant', '回答' + i));
+  }
+  const longTranscript = sessionTitle.titleTranscript(long);
+  assert.equal(longTranscript.includes('最近助手：回答4'), true);
+  assert.equal(longTranscript.includes('最近助手：回答0'), false);
+});
+
+test('failed assistant turns do not count as an answer', () => {
+  const messages = [
+    titleMessage('user', '你好'),
+    titleMessage('assistant', '出错了', true)
+  ];
+  assert.equal(sessionTitle.hasAnswer(messages), false);
+  assert.equal(sessionTitle.titleTranscript(messages), '用户：你好');
 });

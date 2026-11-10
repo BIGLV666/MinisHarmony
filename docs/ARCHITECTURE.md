@@ -516,6 +516,21 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 生成中不会打断或重复发起请求，而是把内容放进排队队列（见下节）。
 输入框下方的提示文字随设置切换，避免用户猜测当前行为。
 
+## @ 文件提及
+
+输入框支持 `@` 提及工作区文件：
+
+- `core/Mention.ets` 的 `activeMention()` 只看草稿**末尾**的 `@query`——`@` 必须
+  位于开头或空白之后，query 不含空白（所以 `a@b.com` 和已插入的 `@path ` 都不会
+  再次弹出菜单）；ArkUI 的 `TextArea` 不暴露光标，光标在中间时暂不触发；
+- `ChatView` 首次打开菜单时调用 `listWorkspaceFiles()` 取一份扁平列表（递归 4 层，
+  跳过隐藏目录与 `node_modules` / `oh_modules` / `.hvigor` / `build` /
+  `.minis-browser`，上限 300 个文件），之后在内存里过滤；
+- `filterMentionFiles()` 跳过目录，按相对路径不区分大小写匹配，最多显示 5 条；
+- 点按或回车后 `replaceMention()` 把尾部 token 换成 `@path `，发送时模型从消息里
+  看到路径，可用文件工具读取；工具栏的 `@` 按钮插入触发符；
+- 草稿被清空或 token 含空白时菜单自动关闭，不需要额外的取消逻辑。
+
 ## 生成中排队发送
 
 生成期间 `sendMessage()` 不再直接拒绝：本地命令仍提示「请先停止当前生成」，普通

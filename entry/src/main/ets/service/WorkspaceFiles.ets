@@ -72,6 +72,52 @@ export function listWorkspace(root: string, relative: string): WorkspaceListing 
   }
 }
 
+const MENTION_SKIP_DIRS: string[] = [
+  'node_modules', 'oh_modules', '.hvigor', 'build', '.minis-browser'
+];
+const MENTION_MAX_DEPTH: number = 4;
+
+function collectWorkspaceFiles(
+  root: string,
+  relative: string,
+  depth: number,
+  limit: number,
+  out: FileEntry[]
+): void {
+  if (out.length >= limit || depth > MENTION_MAX_DEPTH) {
+    return;
+  }
+  const listing: WorkspaceListing = listWorkspace(root, relative);
+  if (!listing.ok) {
+    return;
+  }
+  for (let i = 0; i < listing.entries.length && out.length < limit; i++) {
+    const entry: FileEntry = listing.entries[i];
+    if (!entry.isDir) {
+      out.push(entry);
+      continue;
+    }
+    if (entry.name.startsWith('.') ||
+      MENTION_SKIP_DIRS.indexOf(entry.name) >= 0) {
+      continue;
+    }
+    collectWorkspaceFiles(root, entry.path, depth + 1, limit, out);
+  }
+}
+
+/**
+ * Flat file list for the composer's `@` menu. Walks subdirectories up to four
+ * levels, skipping hidden folders and dependency/build trees, and stops at
+ * `limit`. Directories are not returned: a mention points at a file.
+ */
+export function listWorkspaceFiles(root: string, limit: number): FileEntry[] {
+  const out: FileEntry[] = [];
+  if (root.length > 0) {
+    collectWorkspaceFiles(root, '', 0, limit, out);
+  }
+  return out;
+}
+
 export function looksLikeText(name: string): boolean {
   const dot: number = name.lastIndexOf('.');
   if (dot < 0) {

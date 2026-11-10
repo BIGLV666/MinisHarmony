@@ -3533,6 +3533,7 @@ struct Index {
       onUndoCompact: () => this.undoCompact(),
       onDismissCompactNotice: () => this.dismissCompactNotice(),
       draft: $draft,
+      workspaceRoot: this.workspaceRoot,
       attachments: this.pendingAttachments,
       queuedCount: this.queuedPrompts.length,
       onSend: () => this.sendMessage(),

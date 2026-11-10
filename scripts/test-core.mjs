@@ -46,6 +46,9 @@ function copyCore(name, deps = []) {
       "import { ChatMessage, textOf } from './Types.mts';",
       "import { textOf } from './Types.mts';");
   }
+  if (name === 'Mention') {
+    source = source.replace("import { FileEntry } from './FileListing';\n", '');
+  }
   writeFileSync(join(tmp, `${name}.mts`), source);
 }
 
@@ -62,6 +65,7 @@ copyCore('PromptQueue', ['Types']);
 copyCore('SessionFolder', ['Types']);
 copyCore('BrowserHistory');
 copyCore('SessionTitle', ['Types']);
+copyCore('Mention');
 copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -204,6 +208,7 @@ const promptQueue = await import(pathToFileURL(join(tmp, 'PromptQueue.mts')).hre
 const folders = await import(pathToFileURL(join(tmp, 'SessionFolder.mts')).href);
 const browserHistory = await import(pathToFileURL(join(tmp, 'BrowserHistory.mts')).href);
 const sessionTitle = await import(pathToFileURL(join(tmp, 'SessionTitle.mts')).href);
+const mention = await import(pathToFileURL(join(tmp, 'Mention.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
@@ -3716,4 +3721,38 @@ test('failed assistant turns do not count as an answer', () => {
   ];
   assert.equal(sessionTitle.hasAnswer(messages), false);
   assert.equal(sessionTitle.titleTranscript(messages), '用户：你好');
+});
+
+test('mention trigger only fires on a trailing token', () => {
+  assert.deepEqual(mention.activeMention('看看 @src/ma'), { start: 3, query: 'src/ma' });
+  assert.deepEqual(mention.activeMention('@'), { start: 0, query: '' });
+  assert.deepEqual(mention.activeMention('问一下\n@a.md'), { start: 4, query: 'a.md' });
+  assert.equal(mention.activeMention('mail me at a@b.com'), null,
+    'email-style @ is not a mention');
+  assert.equal(mention.activeMention('@src/ma 后面的字'), null,
+    'whitespace ends the token');
+  assert.equal(mention.activeMention('没有 at'), null);
+});
+
+test('mention replacement keeps surrounding text', () => {
+  assert.equal(mention.replaceMention('看看 @src/ma', 3, 'src/main.ets'),
+    '看看 @src/main.ets ');
+  assert.equal(mention.replaceMention('@x', 0, 'a.md'), '@a.md ');
+  assert.equal(mention.replaceMention('abc', 99, 'a.md'), 'abc@a.md ',
+    'out-of-range start falls back to the end');
+});
+
+test('mention filtering skips dirs and matches paths case-insensitively', () => {
+  const entries = [
+    { name: 'src', path: 'src', isDir: true, size: 0 },
+    { name: 'Main.ets', path: 'src/Main.ets', isDir: false, size: 10 },
+    { name: 'readme.md', path: 'readme.md', isDir: false, size: 4 }
+  ];
+  assert.deepEqual(mention.filterMentionFiles(entries, '', 10).map((e) => e.path),
+    ['src/Main.ets', 'readme.md']);
+  assert.deepEqual(mention.filterMentionFiles(entries, 'main', 10).map((e) => e.path),
+    ['src/Main.ets']);
+  assert.deepEqual(mention.filterMentionFiles(entries, 'SRC/', 10).map((e) => e.path),
+    ['src/Main.ets']);
+  assert.equal(mention.filterMentionFiles(entries, '', 1).length, 1);
 });

@@ -11,6 +11,14 @@ import { formatTokens } from '../service/Format';
 import { MessageBubble } from './MessageBubble';
 import { t } from '../core/I18n';
 import { MinisResource } from '../core/MinisResource';
+import { FileEntry } from '../core/FileListing';
+import {
+  MentionQuery,
+  activeMention,
+  filterMentionFiles,
+  replaceMention
+} from '../core/Mention';
+import { listWorkspaceFiles } from '../service/WorkspaceFiles';
 
 const SUGGESTIONS: string[] = [
   '帮我写一个鸿蒙 ArkTS 页面',
@@ -41,8 +49,16 @@ export struct ChatView {
   @Prop canUndoCompact: boolean = false;
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
-  @Link draft: string;
+  @Link @Watch('onDraftChanged') draft: string;
   @Prop attachments: ChatAttachment[] = [];
+  /** Workspace whose files are offered by the `@` menu. */
+  @Prop workspaceRoot: string = '';
+  @State mentionOpen: boolean = false;
+  @State mentionStart: number = -1;
+  @State mentionQuery: string = '';
+  @State mentionIndex: number = 0;
+  /** Cached flat listing; loaded the first time the menu opens. */
+  @State mentionFiles: FileEntry[] = [];
   /** Prompts waiting for the current run to reach a model boundary. */
   @Prop queuedCount: number = 0;
   onSend: () => void = () => {
@@ -441,6 +457,90 @@ export struct ChatView {
     .margin({ left: 16, right: 16, bottom: 6 })
   }
 
+  private onDraftChanged(): void {
+    this.refreshMention(this.draft);
+  }
+
+  private mentionMatches(): FileEntry[] {
+    return filterMentionFiles(this.mentionFiles, this.mentionQuery, 5);
+  }
+
+  /** Open/update the menu for the trailing `@query` token, if any. */
+  private refreshMention(value: string): void {
+    const active: MentionQuery | null = activeMention(value);
+    if (active === null) {
+      this.mentionOpen = false;
+      return;
+    }
+    if (this.mentionFiles.length === 0 && this.workspaceRoot.length > 0) {
+      this.mentionFiles = listWorkspaceFiles(this.workspaceRoot, 300);
+    }
+    const changed: boolean = this.mentionQuery !== active.query;
+    this.mentionStart = active.start;
+    this.mentionQuery = active.query;
+    this.mentionOpen = this.mentionMatches().length > 0;
+    if (changed) {
+      this.mentionIndex = 0;
+    }
+  }
+
+  private chooseMention(entry: FileEntry): void {
+    this.draft = replaceMention(this.draft, this.mentionStart, entry.path);
+    this.mentionOpen = false;
+    this.mentionStart = -1;
+    this.mentionQuery = '';
+  }
+
+  /** Insert an `@` trigger from the toolbar; the menu opens on the next tick. */
+  private startMention(): void {
+    const space: string = this.draft.length > 0 && !this.draft.endsWith(' ') ? ' ' : '';
+    this.draft = this.draft + space + '@';
+    this.refreshMention(this.draft);
+  }
+
+  @Builder
+  mentionPanel() {
+    Column({ space: 2 }) {
+      ForEach(this.mentionMatches(), (entry: FileEntry, index: number) => {
+        Row({ space: 8 }) {
+          Text('@')
+            .fontSize(12)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.accent)
+          Column({ space: 1 }) {
+            Text(entry.name)
+              .fontSize(12)
+              .fontColor($r('app.color.text_primary'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            if (entry.path !== entry.name) {
+              Text(entry.path)
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+        .borderRadius(8)
+        .backgroundColor(index === this.mentionIndex
+          ? $r('app.color.surface_alt') : Color.Transparent)
+        .onClick(() => this.chooseMention(entry))
+      }, (entry: FileEntry) => entry.path)
+    }
+    .width('100%')
+    .constraintSize({ maxHeight: 230 })
+    .padding(4)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(10)
+    .border({ width: 1, color: $r('app.color.border') })
+    .margin({ left: 12, right: 12 })
+  }
+
   @Builder
   composer() {
     Column({ space: 6 }) {
@@ -482,8 +582,17 @@ export struct ChatView {
         .padding({ left: 10, right: 10 })
       }
 
+      if (this.mentionOpen && this.mentionMatches().length > 0) {
+        this.mentionPanel()
+      }
+
       Row({ space: 8 }) {
         if (!this.streaming) {
+          Text('@')
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+            .padding({ left: 6, right: 6, top: 9, bottom: 9 })
+            .onClick(() => this.startMention())
           Text(t('图片'))
             .fontSize(11)
             .fontColor($r('app.color.text_secondary'))
@@ -510,6 +619,15 @@ export struct ChatView {
           })
           .enterKeyType(this.enterToSend ? EnterKeyType.Send : EnterKeyType.NEW_LINE)
           .onSubmit(() => {
+            // Enter picks the highlighted file while the mention menu is open.
+            if (this.mentionOpen) {
+              const matches: FileEntry[] = this.mentionMatches();
+              if (matches.length > 0) {
+                this.chooseMention(matches[Math.min(this.mentionIndex,
+                  matches.length - 1)]);
+                return;
+              }
+            }
             // NEW_LINE never fires onSubmit; Send does. Ignore while streaming
             // so Enter cannot restart a run from a half-written draft.
             if (this.canSend()) {

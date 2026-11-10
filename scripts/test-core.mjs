@@ -4018,6 +4018,16 @@ test('MCP session overrides normalize and toggle one server', () => {
   assert.deepEqual(mcpOverrides.setMcpDisabled(['a', 'b'], 'a', false), ['b']);
   assert.deepEqual(mcpOverrides.setMcpDisabled(['a'], '  ', true), ['a'],
     'an empty id changes nothing');
+  assert.deepEqual(mcpOverrides.normalizeMcpEnabled([' a ', '', 'b', 'a']), ['a', 'b']);
+  assert.equal(mcpOverrides.isMcpEnabled(['a'], 'a'), true);
+  assert.deepEqual(mcpOverrides.setMcpEnabled(['a'], 'b', true), ['a', 'b']);
+  assert.deepEqual(mcpOverrides.setMcpEnabled(['a', 'b'], 'a', false), ['b']);
+  assert.equal(mcpOverrides.mcpServerActive(true, [], [], 's'), true);
+  assert.equal(mcpOverrides.mcpServerActive(true, ['s'], ['s'], 's'), false,
+    'a session-off global server stays off');
+  assert.equal(mcpOverrides.mcpServerActive(false, [], [], 's'), false);
+  assert.equal(mcpOverrides.mcpServerActive(false, [], ['s'], 's'), true,
+    'force-enable only matters for globally disabled servers');
 });
 
 test('model quick test line formats failure, empty reply and latency', () => {

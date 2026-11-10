@@ -339,6 +339,8 @@ export interface SessionMeta {
   folderId?: string;
   /** MCP server ids switched off for this session only. */
   mcpDisabled?: string[];
+  /** Globally disabled MCP ids this session turns back on. */
+  mcpEnabled?: string[];
   /** Transient sidebar badge: background / interrupted / syncing. */
   statusBadge?: string;
 }

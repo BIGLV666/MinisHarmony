@@ -702,14 +702,19 @@ MCP / 模型覆盖 / 分组 / 子代理只存条目数，密钥原文与结构�
 
 ## 会话级 MCP 开关
 
-`SessionMeta.mcpDisabled` 只记录本会话关闭的服务 id，其余服务跟随全局设置；
-`core/McpOverrides.ets` 负责归一化、判断与切换（全部返回新数组）。`LocalStore`
-加载时归一化，fork 复制，导出与备份恢复保留，普通导入清空。
+`SessionMeta` 用两张互补的表覆盖全局设置：`mcpDisabled` 记录本会话关闭的全局
+启用服务，`mcpEnabled` 记录本会话重新打开的全局关闭服务；`core/McpOverrides.ets`
+负责归一化、判断与切换（全部返回新数组），`mcpServerActive()` 按服务是否全局启用
+选择对应表。`LocalStore` 加载时归一化，fork 复制，导出与备份恢复保留，普通导入清空。
 
-`McpRuntime` 持有本会话的关闭名单：`definitions()` 在合并 MCP 工具时跳过这些
-服务发现的全部工具，`execute()` 对绕过定义直接调用的请求也返回错误。全局关闭的
-服务在发现阶段本来就不会拉取，因此会话内只能关闭、不能强制启用；会话参数弹窗把
-这类服务标注为「全局已关闭」并禁用开关。
+`McpRegistry.refresh(servers, force, includeDisabled)` 平时只发现全局启用的服务；
+只要任一已有会话带有 `mcpEnabled`（`Index.hasMcpForceEnabled()`），启动、导入合并
+与设置保存后的刷新都会把全局关闭的配置一起交给 `McpRuntime` 并缓存为
+`globallyDisabled`。`definitions(disabledTools, disabledServers, enabledServers)` 在
+合并 MCP 工具时跳过本会话关闭的服务，也跳过全局关闭且未列入 `enabledServers` 的服务；
+`execute()` 对绕过定义直接调用的请求同样返回错误。这样全局关闭的服务不会因为某个
+会话的强制启用而对其他会话或代理暴露。会话参数弹窗的开关始终可用，强制启用的行
+显示「本会话启用」。
 
 ## 记忆面板
 

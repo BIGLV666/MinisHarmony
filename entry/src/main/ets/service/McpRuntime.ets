@@ -41,6 +41,8 @@ class McpRegistryStore {
   private statuses: McpServerStatus[] = [];
   private signature: string = '';
   private seq: number = 0;
+  /** Servers whose global switch is off but whose tools are cached anyway. */
+  private globallyDisabled: string[] = [];
 
   currentStatuses(): McpServerStatus[] {
     return this.statuses;
@@ -50,12 +52,27 @@ class McpRegistryStore {
     return this.tools.length;
   }
 
-  /** Re-discover every enabled server; servers are queried in parallel. */
-  async refresh(servers: McpServerConfig[], force: boolean = false): Promise<McpServerStatus[]> {
+  /**
+   * Re-discover servers in parallel. `includeDisabled` additionally connects
+   * globally disabled servers so a session can force one back on; their tools
+   * are cached but hidden unless the session lists them in `mcpEnabled`.
+   */
+  async refresh(servers: McpServerConfig[], force: boolean = false,
+    includeDisabled: boolean = false): Promise<McpServerStatus[]> {
     const enabled: McpServerConfig[] = [];
+    const disabled: string[] = [];
     for (let i = 0; i < servers.length; i++) {
       if (servers[i].enabled) {
         enabled.push(servers[i]);
+      } else {
+        disabled.push(servers[i].id);
+      }
+    }
+    if (includeDisabled) {
+      for (let i = 0; i < servers.length; i++) {
+        if (!servers[i].enabled) {
+          enabled.push(servers[i]);
+        }
       }
     }
     const signature: string = JSON.stringify(enabled);
@@ -103,10 +120,12 @@ class McpRegistryStore {
     this.clients = nextClients;
     this.statuses = statuses;
     this.signature = signature;
+    this.globallyDisabled = disabled;
     return statuses;
   }
 
-  definitions(disabledTools: string[], disabledServers: string[] = []): ToolDefinition[] {
+  definitions(disabledTools: string[], disabledServers: string[] = [],
+    enabledServers: string[] = []): ToolDefinition[] {
     const out: ToolDefinition[] = [];
     for (let i = 0; i < this.tools.length; i++) {
       const info: McpToolInfo = this.tools[i];
@@ -116,9 +135,18 @@ class McpRegistryStore {
       if (disabledServers.indexOf(info.serverId) >= 0) {
         continue;
       }
+      if (this.globallyDisabled.indexOf(info.serverId) >= 0 &&
+        enabledServers.indexOf(info.serverId) < 0) {
+        continue;
+      }
       out.push(definitionFor(info));
     }
     return out;
+  }
+
+  /** True when the last discovery saw the server's global switch off. */
+  isGloballyDisabled(serverId: string): boolean {
+    return this.globallyDisabled.indexOf(serverId) >= 0;
   }
 
   /** Owning server id, or an empty string when the name is not an MCP tool. */
@@ -158,21 +186,24 @@ export class McpRuntime implements ToolRuntime {
   private inner: ToolRuntime;
   private disabledTools: string[];
   private disabledServers: string[];
+  private enabledServers: string[];
 
   constructor(
     inner: ToolRuntime,
     disabledTools: string[],
-    disabledServers: string[] = []
+    disabledServers: string[] = [],
+    enabledServers: string[] = []
   ) {
     this.inner = inner;
     this.disabledTools = disabledTools;
     this.disabledServers = disabledServers;
+    this.enabledServers = enabledServers;
   }
 
   definitions(): ToolDefinition[] {
     const base: ToolDefinition[] = this.inner.definitions();
-    const extra: ToolDefinition[] =
-      McpRegistry.definitions(this.disabledTools, this.disabledServers);
+    const extra: ToolDefinition[] = McpRegistry.definitions(
+      this.disabledTools, this.disabledServers, this.enabledServers);
     for (let i = 0; i < extra.length; i++) {
       base.push(extra[i]);
     }
@@ -183,6 +214,10 @@ export class McpRuntime implements ToolRuntime {
     const serverId: string = McpRegistry.serverIdOf(name);
     if (serverId.length > 0 && this.disabledServers.indexOf(serverId) >= 0) {
       return { ok: false, content: t('该 MCP 服务已在本会话关闭。') };
+    }
+    if (serverId.length > 0 && McpRegistry.isGloballyDisabled(serverId) &&
+      this.enabledServers.indexOf(serverId) < 0) {
+      return { ok: false, content: t('该 MCP 服务已在全局关闭。') };
     }
     const mcpResult: ToolResult | null = await McpRegistry.call(name, argumentsJson);
     if (mcpResult !== null) {

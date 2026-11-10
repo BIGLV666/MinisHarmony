@@ -125,9 +125,12 @@ import { AttachmentStore } from '../service/AttachmentStore';
 import { MemoryStore } from '../service/MemoryStore';
 import { MemoryFile, MemoryLogEntry } from '../core/Memory';
 import {
-  isMcpDisabled,
+  isMcpEnabled,
+  mcpServerActive,
   normalizeMcpDisabled,
-  setMcpDisabled
+  normalizeMcpEnabled,
+  setMcpDisabled,
+  setMcpEnabled
 } from '../core/McpOverrides';
 import { SkillDoc, SkillCommand, matchSkillCommand } from '../core/SkillDoc';
 import { SkillStore } from '../service/SkillStore';
@@ -267,6 +270,7 @@ struct Index {
   @State paramThinking: string = '';
   @State paramPrompt: string = '';
   @State paramMcpDisabled: string[] = [];
+  @State paramMcpEnabled: string[] = [];
   @State memoryOpen: boolean = false;
   @State memoryInjected: string = '';
   @State memoryFiles: MemoryFile[] = [];
@@ -728,7 +732,8 @@ struct Index {
     AppLogger.init(context, this.settings.loggingEnabled);
     CrashLog.init(context);
     // Discovery is best-effort; an offline server just contributes no tools.
-    McpRegistry.refresh(this.settings.mcpServers).catch((error: Error) => {});
+    McpRegistry.refresh(this.settings.mcpServers, false, this.hasMcpForceEnabled())
+      .catch((error: Error) => {});
     const loaded: StoredSession[] = await LocalStore.loadSessions();
     this.store = loaded;
     // A result that arrived while the app was closed has not been answered
@@ -1585,7 +1590,8 @@ struct Index {
       LocalStore.saveSettings(merged).catch((error: Error) => {
         this.toast(t('设置保存失败'));
       });
-      McpRegistry.refresh(merged.mcpServers).catch((error: Error) => {});
+      McpRegistry.refresh(merged.mcpServers, false, this.hasMcpForceEnabled())
+        .catch((error: Error) => {});
     }
     this.store = imported.concat(this.store);
     this.refreshSessions();
@@ -1923,7 +1929,9 @@ struct Index {
       promptOverride: source.meta.promptOverride,
       folderId: source.meta.folderId,
       mcpDisabled: source.meta.mcpDisabled !== undefined
-        ? source.meta.mcpDisabled.slice() : []
+        ? source.meta.mcpDisabled.slice() : [],
+      mcpEnabled: source.meta.mcpEnabled !== undefined
+        ? source.meta.mcpEnabled.slice() : []
     };
     const copied: ChatMessage[] =
       JSON.parse(JSON.stringify(source.messages)) as ChatMessage[];
@@ -1951,6 +1959,8 @@ struct Index {
     this.paramPrompt = session.meta.promptOverride !== undefined ? session.meta.promptOverride : '';
     this.paramMcpDisabled = normalizeMcpDisabled(
       session.meta.mcpDisabled !== undefined ? session.meta.mcpDisabled : []);
+    this.paramMcpEnabled = normalizeMcpEnabled(
+      session.meta.mcpEnabled !== undefined ? session.meta.mcpEnabled : []);
   }
 
   private saveSessionParams(): void {
@@ -1962,7 +1972,12 @@ struct Index {
     }
     applySessionParams(session.meta, this.paramModel, this.paramThinking, this.paramPrompt);
     session.meta.mcpDisabled = normalizeMcpDisabled(this.paramMcpDisabled);
+    session.meta.mcpEnabled = normalizeMcpEnabled(this.paramMcpEnabled);
     session.meta.updatedAt = Date.now();
+    if (session.meta.mcpEnabled.length > 0) {
+      McpRegistry.refresh(this.settings.mcpServers, true, true)
+        .catch((error: Error) => {});
+    }
     if (id === this.currentId) {
       this.syncThinkingOverride();
     }
@@ -1980,6 +1995,7 @@ struct Index {
     }
     clearSessionParams(session.meta);
     session.meta.mcpDisabled = [];
+    session.meta.mcpEnabled = [];
     session.meta.updatedAt = Date.now();
     if (id === this.currentId) {
       this.syncThinkingOverride();
@@ -2871,6 +2887,17 @@ struct Index {
     this.persistSoon();
   }
 
+  /** Any session turns a globally disabled MCP server back on. */
+  private hasMcpForceEnabled(): boolean {
+    for (let i = 0; i < this.store.length; i++) {
+      const ids: string[] | undefined = this.store[i].meta.mcpEnabled;
+      if (ids !== undefined && ids.length > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private makeToolRuntime(settings: AppSettings, sessionId: string): ToolRuntime {
     let base: ToolRuntime;
     if (settings.sandboxMode === 'remote') {
@@ -2913,7 +2940,9 @@ struct Index {
     const meta: StoredSession | null = this.findSession(sessionId);
     const disabledServers: string[] = meta !== null && meta.meta.mcpDisabled !== undefined
       ? normalizeMcpDisabled(meta.meta.mcpDisabled) : [];
-    return new McpRuntime(base, settings.disabledTools, disabledServers);
+    const enabledServers: string[] = meta !== null && meta.meta.mcpEnabled !== undefined
+      ? normalizeMcpEnabled(meta.meta.mcpEnabled) : [];
+    return new McpRuntime(base, settings.disabledTools, disabledServers, enabledServers);
   }
 
   /**
@@ -3278,7 +3307,8 @@ struct Index {
     LocalStore.saveSettings(next).catch((error: Error) => {
       this.toast(t('设置保存失败'));
     });
-    McpRegistry.refresh(next.mcpServers).catch((error: Error) => {});
+    McpRegistry.refresh(next.mcpServers, false, this.hasMcpForceEnabled())
+      .catch((error: Error) => {});
     const session: StoredSession | null = this.findSession(this.currentId);
     if (session !== null) {
       session.meta.modelId = next.modelId;
@@ -3820,7 +3850,7 @@ struct Index {
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
-        Text(t('只影响当前对话；关闭后本轮不向模型提供该服务的工具。全局已关闭的服务需先在设置中启用。'))
+        Text(t('只影响当前对话；关闭后本轮不向模型提供该服务的工具。全局关闭的服务可在此仅为本会话重新打开。'))
           .fontSize(11)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
@@ -3840,7 +3870,10 @@ struct Index {
                     : $r('app.color.text_tertiary'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(server.enabled ? server.id : t('全局已关闭'))
+                Text(server.enabled
+                  ? server.id
+                  : (isMcpEnabled(this.paramMcpEnabled, server.id)
+                    ? server.id + ' · ' + t('本会话启用') : t('全局已关闭')))
                   .fontSize(10)
                   .fontColor($r('app.color.text_tertiary'))
                   .maxLines(1)
@@ -3850,12 +3883,14 @@ struct Index {
               .layoutWeight(1)
 
               Toggle({ type: ToggleType.Switch,
-                isOn: server.enabled && !isMcpDisabled(this.paramMcpDisabled, server.id) })
-                .enabled(server.enabled)
+                isOn: mcpServerActive(server.enabled, this.paramMcpDisabled,
+                  this.paramMcpEnabled, server.id) })
                 .selectedColor(this.accent)
                 .onChange((on: boolean) => {
-                  this.paramMcpDisabled =
-                    setMcpDisabled(this.paramMcpDisabled, server.id, !on);
+                  this.paramMcpDisabled = setMcpDisabled(
+                    this.paramMcpDisabled, server.id, server.enabled && !on);
+                  this.paramMcpEnabled = setMcpEnabled(
+                    this.paramMcpEnabled, server.id, !server.enabled && on);
                 })
             }
             .width('100%')
@@ -4736,6 +4771,7 @@ struct Index {
       if (this.showSettings) {
         SettingsSheet({
           settings: this.settings,
+          mcpIncludeDisabled: this.hasMcpForceEnabled(),
           auditEntries: this.configAudit.slice(0, 30),
           onRestoreAudit: (id: string) => this.restoreConfigAudit(id),
           onClearAudit: () => this.clearConfigAudit(),

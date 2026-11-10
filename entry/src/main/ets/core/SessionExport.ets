@@ -22,7 +22,7 @@ import {
   makePart
 } from './Types';
 import { exportStamp, safeFileBase } from './MarkdownExport';
-import { normalizeMcpDisabled } from './McpOverrides';
+import { normalizeMcpDisabled, normalizeMcpEnabled } from './McpOverrides';
 import { t } from './I18n';
 
 export const SESSION_EXPORT_APP: string = 'MinisHarmony';
@@ -74,7 +74,8 @@ function settledSession(session: StoredSession, messages: ChatMessage[]): Stored
       thinkingOverride: session.meta.thinkingOverride,
       promptOverride: session.meta.promptOverride,
       folderId: session.meta.folderId,
-      mcpDisabled: session.meta.mcpDisabled
+      mcpDisabled: session.meta.mcpDisabled,
+      mcpEnabled: session.meta.mcpEnabled
     },
     messages: messages
   };
@@ -171,6 +172,7 @@ interface RawMeta {
   promptOverride?: string;
   folderId?: string;
   mcpDisabled?: string[];
+  mcpEnabled?: string[];
 }
 
 interface RawSession {
@@ -334,7 +336,9 @@ function importRawSession(
         // restore keeps membership because the folder list is in settings.
         folderId: preserve && raw.meta.folderId !== undefined ? raw.meta.folderId : '',
         mcpDisabled: preserve && raw.meta.mcpDisabled !== undefined
-          ? normalizeMcpDisabled(raw.meta.mcpDisabled) : []
+          ? normalizeMcpDisabled(raw.meta.mcpDisabled) : [],
+        mcpEnabled: preserve && raw.meta.mcpEnabled !== undefined
+          ? normalizeMcpEnabled(raw.meta.mcpEnabled) : []
       },
       messages: messages
     },

@@ -13,7 +13,7 @@ import {
 import { normalizeSoulId } from '../core/Soul';
 import { normalizeModelOverrides } from '../core/ModelOverride';
 import { normalizeMcpServers } from '../core/McpProtocol';
-import { normalizeMcpDisabled } from '../core/McpOverrides';
+import { normalizeMcpDisabled, normalizeMcpEnabled } from '../core/McpOverrides';
 import { normalizeAgents } from '../core/SubAgentRoster';
 import {
   AppSettings,
@@ -269,6 +269,8 @@ function normalizeSession(source: StoredSession): StoredSession | null {
       folderId: source.meta.folderId !== undefined ? source.meta.folderId : '',
       mcpDisabled: normalizeMcpDisabled(
         source.meta.mcpDisabled !== undefined ? source.meta.mcpDisabled : []),
+      mcpEnabled: normalizeMcpEnabled(
+        source.meta.mcpEnabled !== undefined ? source.meta.mcpEnabled : []),
       // A sync badge left over from a killed process is stale, not a fact.
       statusBadge: source.meta.statusBadge === 'syncing'
         ? ''

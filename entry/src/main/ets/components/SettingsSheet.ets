@@ -158,6 +158,8 @@ const TOOL_CHOICES: ToolChoice[] = [
 export struct SettingsSheet {
   @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop settings: AppSettings = defaultSettings();
+  /** Some session force-enables a globally disabled MCP server. */
+  @Prop mcpIncludeDisabled: boolean = false;
   onCancel: () => void = () => {
   };
   onSave: (settings: AppSettings) => void = (settings: AppSettings) => {
@@ -1183,7 +1185,7 @@ export struct SettingsSheet {
     this.mcpRefreshing = true;
     try {
       const statuses: McpServerStatus[] = await McpRegistry.refresh(
-        normalizeMcpServers(this.mcpServers), true);
+        normalizeMcpServers(this.mcpServers), true, this.mcpIncludeDisabled);
       if (statuses.length === 0) {
         this.mcpStatusText = t('没有启用的 MCP 服务');
       } else {

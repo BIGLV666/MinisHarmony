@@ -21,7 +21,14 @@ import {
   highlightCode
 } from '../core/CodeHighlight';
 import { t } from '../core/I18n';
-import { MinisResource, parseMinisResource } from '../core/MinisResource';
+import {
+  MINIS_ATTACHMENTS,
+  MINIS_WORKSPACE,
+  MinisResource,
+  parseMinisResource
+} from '../core/MinisResource';
+import { normalizeRelativePath } from '../core/Workspace';
+import { AttachmentStore } from '../service/AttachmentStore';
 
 @Component
 export struct MarkdownView {
@@ -265,6 +272,48 @@ export struct MarkdownView {
     .border({ width: { left: 3 }, color: { left: $r('app.color.quote_bar') } })
   }
 
+  /**
+   * Turn an image link into something ArkUI can load. Workspace/attachment
+   * resources stay inside the app sandbox; bare relative paths are treated as
+   * workspace files (the same rule the agent uses for generated images).
+   */
+  private imageSource(url: string): string {
+    const resource: MinisResource | null = parseMinisResource(url);
+    if (resource !== null) {
+      if (resource.scope === MINIS_WORKSPACE) {
+        const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+        return 'file://' + context.filesDir + '/workspace/' + resource.path;
+      }
+      if (resource.scope === MINIS_ATTACHMENTS) {
+        return 'file://' + AttachmentStore.absolutePath(resource.path);
+      }
+      return '';
+    }
+    const lower: string = url.toLowerCase();
+    if (lower.indexOf('http://') === 0 || lower.indexOf('https://') === 0 ||
+      lower.indexOf('data:image/') === 0) {
+      return url;
+    }
+    const relative: string | null = normalizeRelativePath(url);
+    if (relative !== null && relative.length > 0) {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      return 'file://' + context.filesDir + '/workspace/' + relative;
+    }
+    return '';
+  }
+
+  @Builder
+  imageBlock(block: MdBlock) {
+    Image(this.imageSource(block.imageUrl !== undefined ? block.imageUrl : ''))
+      .width('100%')
+      .constraintSize({ maxHeight: 360 })
+      .objectFit(ImageFit.Contain)
+      .borderRadius(10)
+      .backgroundColor($r('app.color.surface_alt'))
+      .alt(block.imageAlt !== undefined ? block.imageAlt : '')
+      .draggable(false)
+  }
+
   @Builder
   mathBlock(block: MdBlock) {
     if (this.plainMath) {
@@ -299,6 +348,8 @@ export struct MarkdownView {
       this.tableBlock(block)
     } else if (block.kind === MdBlockKind.Math) {
       this.mathBlock(block)
+    } else if (block.kind === MdBlockKind.Image) {
+      this.imageBlock(block)
     } else if (block.kind === MdBlockKind.Divider) {
       Divider()
         .color($r('app.color.border'))

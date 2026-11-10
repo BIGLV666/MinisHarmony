@@ -15,7 +15,8 @@ export enum MdBlockKind {
   Quote = 'quote',
   Divider = 'divider',
   Table = 'table',
-  Math = 'math'
+  Math = 'math',
+  Image = 'image'
 }
 
 export interface MdBlock {
@@ -29,6 +30,11 @@ export interface MdBlock {
   rows?: string[][];
   /** Present for `Math` blocks: the original LaTeX, for KaTeX rendering. */
   raw?: string;
+  /** Present for `Image` blocks: the link target (http(s), minis://, or a
+   * workspace-relative path). */
+  imageUrl?: string;
+  /** Present for `Image` blocks: the alt text, used when the image fails. */
+  imageAlt?: string;
 }
 
 export interface MdInline {
@@ -38,6 +44,13 @@ export interface MdInline {
   code: boolean;
   link: string;
 }
+
+/**
+ * A whole line holding one image: `![alt](url)` with an optional quoted title.
+ * Images inside prose are left as text; chat answers overwhelmingly put them
+ * on their own line.
+ */
+const IMAGE_LINE: RegExp = /^!\[([^\]]*)\]\(\s*([^\s)]+)(?:\s+"[^"]*")?\s*\)$/;
 
 function paragraphBlock(text: string): MdBlock {
   return { kind: MdBlockKind.Paragraph, text: text, level: 0, lang: '', ordered: false, index: 0 };
@@ -169,6 +182,23 @@ export function parseMarkdown(source: string): MdBlock[] {
 
     if (trimmed.length === 0) {
       flushParagraph();
+      continue;
+    }
+
+    // Standalone image line: ![alt](url).
+    const imageMatch: RegExpMatchArray | null = trimmed.match(IMAGE_LINE);
+    if (imageMatch !== null) {
+      flushParagraph();
+      blocks.push({
+        kind: MdBlockKind.Image,
+        text: imageMatch[1],
+        level: 0,
+        lang: '',
+        ordered: false,
+        index: 0,
+        imageUrl: imageMatch[2],
+        imageAlt: imageMatch[1]
+      });
       continue;
     }
 

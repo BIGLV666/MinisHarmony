@@ -88,7 +88,7 @@ import { mergeBackupSettings } from '../core/Backup';
 import { parseBackupSessions } from '../core/SessionExport';
 import { SyncMergeResult, mergeSessionSets } from '../core/SyncMerge';
 import { parseDeepLink, DeepLink } from '../core/DeepLink';
-import { MINIS_WORKSPACE, MinisResource } from '../core/MinisResource';
+import { MINIS_ATTACHMENTS, MINIS_WORKSPACE, MinisResource } from '../core/MinisResource';
 import {
   ScheduledTask,
   TaskRun,
@@ -168,6 +168,8 @@ struct Index {
   @State showModels: boolean = false;
   @State showWorkspace: boolean = false;
   @State workspaceInitial: string = '';
+  @State previewImageOpen: boolean = false;
+  @State previewImagePath: string = '';
   @State showTasks: boolean = false;
   @State tasks: ScheduledTask[] = [];
   @State taskRuns: TaskRun[] = [];
@@ -671,18 +673,39 @@ struct Index {
     this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 });
   }
 
+  private isImagePath(path: string): boolean {
+    const lower: string = path.toLowerCase();
+    return lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') ||
+      lower.endsWith('.webp') || lower.endsWith('.gif') || lower.endsWith('.bmp') ||
+      lower.endsWith('.svg') || lower.endsWith('.heic');
+  }
+
   /**
-   * A `minis://workspace/<path>` link in a reply opens the read-only file
-   * preview. Attachment links are not previewable yet; the message already
-   * renders their images inline.
+   * A `minis://workspace/<path>` link in a reply opens the file preview;
+   * image links open the full-screen viewer instead. Attachment links point
+   * into the chat attachment directory and use the same viewer.
    */
   private openMinisResource(resource: MinisResource): void {
     if (resource.scope === MINIS_WORKSPACE) {
+      if (this.isImagePath(resource.path)) {
+        this.previewImagePath = this.workspaceRoot + '/' + resource.path;
+        this.previewImageOpen = true;
+        return;
+      }
       this.workspaceInitial = resource.path;
       this.showWorkspace = true;
       return;
     }
-    this.toast(t('附件链接请在消息中直接查看'));
+    if (resource.scope === MINIS_ATTACHMENTS) {
+      if (this.isImagePath(resource.path)) {
+        this.previewImagePath = AttachmentStore.absolutePath(resource.path);
+        this.previewImageOpen = true;
+        return;
+      }
+      this.toast(t('该附件不是图片，无法预览'));
+      return;
+    }
+    this.toast(t('不支持的链接类型'));
   }
 
   /**
@@ -2826,6 +2849,26 @@ struct Index {
     })
   }
 
+  @Builder
+  imageOverlay() {
+    Column({ space: 12 }) {
+      Image('file://' + this.previewImagePath)
+        .width('100%')
+        .layoutWeight(1)
+        .objectFit(ImageFit.Contain)
+      Text(t('点击任意处关闭'))
+        .fontSize(12)
+        .fontColor('#CCFFFFFF')
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('#000000')
+    .onClick(() => {
+      this.previewImageOpen = false;
+    })
+  }
+
   build() {
     Stack({ alignContent: Alignment.Center }) {
       // The two branches are identical on purpose: ArkUI treats them
@@ -2847,6 +2890,7 @@ struct Index {
       }
     })
     .bindContentCover($$this.showBrowser, this.browserOverlay())
+    .bindContentCover($$this.previewImageOpen, this.imageOverlay())
   }
 
   onI18nChanged(): void {

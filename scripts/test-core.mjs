@@ -378,6 +378,24 @@ test('Markdown block parsing', () => {
   assert.equal(blocks[4].text, 'const a = 1;');
 });
 
+test('Markdown standalone images parse with alt text and title', () => {
+  const blocks = md.parseMarkdown([
+    '![shot](minis://workspace/.minis-browser/shot-1.png)',
+    '',
+    '![alt](https://example.com/a.png "title")',
+    '',
+    'before ![inline](b.png) after'
+  ].join('\n'));
+  assert.equal(blocks[0].kind, md.MdBlockKind.Image);
+  assert.equal(blocks[0].imageUrl, 'minis://workspace/.minis-browser/shot-1.png');
+  assert.equal(blocks[0].imageAlt, 'shot');
+  assert.equal(blocks[1].kind, md.MdBlockKind.Image);
+  assert.equal(blocks[1].imageUrl, 'https://example.com/a.png');
+  // Inline images stay in prose instead of swallowing surrounding text.
+  assert.equal(blocks[2].kind, md.MdBlockKind.Paragraph);
+  assert.equal(blocks[2].text, 'before ![inline](b.png) after');
+});
+
 test('Markdown tables parse header and rows', () => {
   const blocks = md.parseMarkdown('| A | B |\n|:--|--:|\n| 1 | 2 |\n| x | y |\n\nafter');
   assert.equal(blocks[0].kind, 'table');

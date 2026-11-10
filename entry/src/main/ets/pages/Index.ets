@@ -270,6 +270,24 @@ struct Index {
       this.createChat();
       return;
     }
+    if (link.kind === 'settings') {
+      const sub: string = link.value.toLowerCase();
+      if (sub === 'scheduled' || sub === 'scheduled-tasks' ||
+        sub === 'scheduled_tasks') {
+        this.showTasks = true;
+      } else {
+        this.showSettings = true;
+      }
+      return;
+    }
+    if (link.kind === 'alarm') {
+      this.showTasks = true;
+      return;
+    }
+    if (link.kind === 'resource') {
+      this.openLinkedResource(link.path !== undefined ? link.path : '');
+      return;
+    }
     if (link.kind === 'task') {
       const task: ScheduledTask | null = this.findTask(link.value);
       if (task === null) {
@@ -293,6 +311,33 @@ struct Index {
     }
     this.mobileChat = true;
     this.selectSession(link.value);
+    if (link.path !== undefined && link.path.length > 0) {
+      this.openLinkedResource(link.path);
+    }
+  }
+
+  /**
+   * Deep-link resource paths follow OpenMinis (`/browser/x.html`,
+   * `/workspace/a.md`, `/attachments/p.png`). Bare paths are workspace files.
+   */
+  private openLinkedResource(raw: string): void {
+    let path: string = raw;
+    while (path.startsWith('/')) {
+      path = path.substring(1);
+    }
+    if (path.length === 0) {
+      return;
+    }
+    const cut: number = path.indexOf('/');
+    const scope: string = (cut < 0 ? path : path.substring(0, cut)).toLowerCase();
+    const rest: string = cut < 0 ? '' : path.substring(cut + 1);
+    if (rest.length > 0 &&
+      (scope === MINIS_WORKSPACE || scope === MINIS_BROWSER ||
+        scope === MINIS_ATTACHMENTS)) {
+      this.openMinisResource({ scope: scope, path: rest });
+      return;
+    }
+    this.openMinisResource({ scope: MINIS_WORKSPACE, path: path });
   }
 
   private findTask(id: string): ScheduledTask | null {

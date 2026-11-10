@@ -1802,15 +1802,33 @@ test('shared want payloads pick text and stream URIs defensively', () => {
     share.imageUrisFromShare(undefined, 'file://x.png', 'image/png').length, 1);
 });
 
-test('minis deep links resolve sessions and new chats only', () => {
+test('minis deep links resolve sessions, resources and settings', () => {
   assert.deepEqual(deepLink.parseDeepLink('minis://session/abc-123'),
     { kind: 'session', value: 'abc-123' });
   assert.deepEqual(deepLink.parseDeepLink('MINIS://Chat/xyz?x=1#top'),
     { kind: 'session', value: 'xyz' });
   assert.deepEqual(deepLink.parseDeepLink('minis://s/id'),
     { kind: 'session', value: 'id' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://sessions/id'),
+    { kind: 'session', value: 'id' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://session/id/browser/a%20b.html'),
+    { kind: 'session', value: 'id', path: 'browser/a b.html' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://open?session=id&path=%2Fbrowser%2Fx.html'),
+    { kind: 'session', value: 'id', path: '/browser/x.html' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://open?path=%2Fworkspace%2Fa.md'),
+    { kind: 'resource', value: '', path: '/workspace/a.md' });
   assert.deepEqual(deepLink.parseDeepLink('minis://new'),
     { kind: 'new', value: '' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://action/new_chat'),
+    { kind: 'new', value: '' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://settings'),
+    { kind: 'settings', value: '' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://settings/providers'),
+    { kind: 'settings', value: 'providers' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://views/alarm'),
+    { kind: 'alarm', value: '' });
+  assert.equal(deepLink.parseDeepLink('minis://views/other'), null);
+  assert.equal(deepLink.parseDeepLink('minis://action/camera_chat'), null);
   assert.equal(deepLink.parseDeepLink('minis://session/'), null);
   assert.equal(deepLink.parseDeepLink('minis://file/a.txt'), null);
   assert.equal(deepLink.parseDeepLink('https://example.com'), null);

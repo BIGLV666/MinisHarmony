@@ -474,6 +474,39 @@ CSS 视口跟随其布局尺寸，因此 `BrowserPage` 把 `Web` 抽成 `pageSur
 面板。`core/BrowserViewport.parseViewportSize()` 只接受 200–2000，空或非法输入
 归零；`customViewport()` 要求宽高同时有效，因此设置面板只填一栏时保存会被拒绝并
 提示。数值经 `BrowserStore` 的 `viewport_width` / `viewport_height` 持久化。
+高度大于可用区域时（例如 915 vp 配 658 vp 的面板）Web 被父容器约束留在可用高度，
+宽度不受影响。
+
+`Web` 的 `textAutosizing` 默认是 true（API 12 起），当布局视口比窗口窄很多时它会
+把正文放大约 4 倍，正好把数值视口的用途抵消掉；`pageSurface()` 显式
+`.textAutosizing(false)`。实机（2026-11-10）：412 × 915 时 Web 节点
+`[937,297][1864,1777]`（927 px = 412 vp × 2.25），正文按手机宽度正常排版；
+800 × 1000、412 × 915 都在重启后保持；只填宽或填 100 都弹「视口宽高需同时填写
+数字，范围 200–2000。」；清空两栏保存后 Web 恢复 `[0,288][2800,1777]` 全宽。
+
+## 全屏覆盖层（浏览器 / 图片预览 / 文本预览）
+
+浏览器、图片预览、文本预览三块覆盖层原先用 `bindContentCover($$state, builder)`。
+在 HarmonyOS 6.1.0.139（API 24）的平板上，`bindContentCover` 会在挂载后约
+12–14 ms **自动关闭**覆盖层，且不回调 `onClose`——表现为点链接后浏览器闪一下就
+回到聊天页（日志里 `BROWSER appear` 与 `BROWSER disappear` 只差 12 ms）。三者统一
+改为根 `Stack` 里的树内条件层：
+
+```ts
+if (this.showBrowser) { this.browserOverlay() }
+if (this.previewImageOpen) { this.imageOverlay() }
+if (this.previewTextOpen) { this.textOverlay() }
+```
+
+覆盖层自己带背景色与关闭按钮，状态置 false 即卸载；不再依赖系统覆盖层的生命周期。
+打开浏览器前先 `getFocusController().clearFocus()`：输入框聚焦时页面会被键盘顶起，
+此时立刻铺满全屏的覆盖层会对不齐，先收起键盘再切换。
+
+## 消息渲染：裸 URL 与可点击性
+
+只有 `[文本](url)` 才会渲染成可点击的 `Span`，裸 URL 仍是普通文本（与参考实现
+一致）。`Span.onClick` 在实机上可用；点击时按 `onOpenLink` 是否注入决定走内置
+浏览器还是系统 `Want`。
 
 ## 导出 Markdown / JSON
 

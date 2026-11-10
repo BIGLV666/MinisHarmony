@@ -794,6 +794,9 @@ export struct BrowserPage {
       .fileAccess(true)
       .wideViewModeAccess(this.wideViewport)
       .overviewModeAccess(this.wideViewport)
+      // Default autosizing inflates text ~4x once the layout viewport is much
+      // narrower than the window, which defeats a numeric phone-width viewport.
+      .textAutosizing(false)
       .onControllerAttached(() => {
         // Delegates and UA need an attached controller.
         this.applyUserAgent();

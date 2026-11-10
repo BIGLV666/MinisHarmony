@@ -4867,6 +4867,9 @@ struct Index {
         this.shareTurn(message, question);
       },
       onOpenLink: (url: string) => {
+        // Drop composer focus first: an open keyboard shifts the page up and
+        // the full-screen browser layer would come up misaligned.
+        this.getUIContext().getFocusController().clearFocus();
         this.browserUrl = url;
         this.showBrowser = true;
       },
@@ -4965,6 +4968,15 @@ struct Index {
       } else {
         this.pageBody()
       }
+      if (this.showBrowser) {
+        this.browserOverlay()
+      }
+      if (this.previewImageOpen) {
+        this.imageOverlay()
+      }
+      if (this.previewTextOpen) {
+        this.textOverlay()
+      }
     }
     .width('100%')
     .height('100%')
@@ -4975,9 +4987,6 @@ struct Index {
         this.isWide = width >= 840;
       }
     })
-    .bindContentCover($$this.showBrowser, this.browserOverlay())
-    .bindContentCover($$this.previewImageOpen, this.imageOverlay())
-    .bindContentCover($$this.previewTextOpen, this.textOverlay())
   }
 
   onI18nChanged(): void {

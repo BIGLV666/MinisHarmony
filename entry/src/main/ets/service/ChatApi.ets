@@ -1200,7 +1200,7 @@ function modelTextProblem(
 }
 
 /** One non-streaming request routed by the configured protocol. */
-async function requestModelText(
+export async function requestModelText(
   settings: AppSettings,
   sessionId: string,
   transcript: string,

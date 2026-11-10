@@ -1,5 +1,6 @@
 import { BUILTIN_MODELS, ModelInfo } from '../core/Types';
 import { capsForModel, capsLabel } from '../core/ModelCaps';
+import { ModelTestOutcome, modelTestLine } from '../core/ModelTest';
 import { t } from '../core/I18n';
 
 @Component
@@ -10,33 +11,111 @@ export struct ModelPicker {
   };
   onClose: () => void = () => {
   };
+  onTestModel: (id: string) => Promise<ModelTestOutcome> =
+    async (id: string): Promise<ModelTestOutcome> => {
+      return { ok: false, text: '', message: t('模型测试不可用'), elapsedMs: 0 };
+    };
   @State custom: string = '';
+  @State testIds: string[] = [];
+  @State testLines: string[] = [];
+  @State testingIds: string[] = [];
+
+  private testText(id: string): string {
+    const at: number = this.testIds.indexOf(id);
+    return at >= 0 ? this.testLines[at] : '';
+  }
+
+  private testing(id: string): boolean {
+    return this.testingIds.indexOf(id) >= 0;
+  }
+
+  private setTestLine(id: string, line: string): void {
+    const ids: string[] = this.testIds.slice();
+    const lines: string[] = this.testLines.slice();
+    const at: number = ids.indexOf(id);
+    if (at >= 0) {
+      lines[at] = line;
+    } else {
+      ids.push(id);
+      lines.push(line);
+    }
+    this.testIds = ids;
+    this.testLines = lines;
+  }
+
+  private async runTest(id: string): Promise<void> {
+    if (id.trim().length === 0 || this.testing(id)) {
+      return;
+    }
+    const testing: string[] = this.testingIds.slice();
+    testing.push(id);
+    this.testingIds = testing;
+    this.setTestLine(id, t('测试中…'));
+    const outcome: ModelTestOutcome = await this.onTestModel(id);
+    const left: string[] = [];
+    for (let i = 0; i < this.testingIds.length; i++) {
+      if (this.testingIds[i] !== id) {
+        left.push(this.testingIds[i]);
+      }
+    }
+    this.testingIds = left;
+    this.setTestLine(id, modelTestLine(outcome));
+  }
 
   @Builder
   modelRow(item: ModelInfo) {
-    Row({ space: 10 }) {
-      Column({ space: 2 }) {
-        Text(item.name)
-          .fontSize(14)
-          .fontColor($r('app.color.text_primary'))
-        Text(item.id + (item.note.length > 0 ? t(' · ') + t(item.note) : '') +
-          t(' · ') + capsLabel(capsForModel(item.id)))
-          .fontSize(10)
-          .fontColor($r('app.color.text_tertiary'))
+    Column({ space: 4 }) {
+      Row({ space: 10 }) {
+        Row({ space: 8 }) {
+          Column({ space: 2 }) {
+            Text(item.name)
+              .fontSize(14)
+              .fontColor($r('app.color.text_primary'))
+            Text(item.id + (item.note.length > 0 ? t(' · ') + t(item.note) : '') +
+              t(' · ') + capsLabel(capsForModel(item.id)))
+              .fontSize(10)
+              .fontColor($r('app.color.text_tertiary'))
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+          if (this.currentId === item.id) {
+            Text('✓')
+              .fontSize(13)
+              .fontColor($r('app.color.accent'))
+          }
+        }
+        .layoutWeight(1)
+        .onClick(() => this.onPick(item.id))
+
+        Text(this.testing(item.id) ? t('测试中…') : t('测试'))
+          .fontSize(11)
+          .fontColor(this.testing(item.id)
+            ? $r('app.color.text_tertiary')
+            : $r('app.color.text_secondary'))
+          .padding({ left: 8, right: 8, top: 5, bottom: 5 })
+          .backgroundColor($r('app.color.surface_alt'))
+          .borderRadius(7)
+          .onClick(() => {
+            this.runTest(item.id);
+          })
       }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-      if (this.currentId === item.id) {
-        Text('✓')
-          .fontSize(13)
-          .fontColor($r('app.color.accent'))
+      .width('100%')
+
+      if (this.testText(item.id).length > 0) {
+        Text(this.testText(item.id))
+          .fontSize(10)
+          .fontColor(this.testText(item.id).startsWith(t('测试中…'))
+            ? $r('app.color.text_tertiary')
+            : $r('app.color.text_secondary'))
+          .width('100%')
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
     }
     .width('100%')
     .padding({ left: 12, right: 12, top: 9, bottom: 9 })
     .borderRadius(9)
     .backgroundColor(this.currentId === item.id ? $r('app.color.accent_soft') : Color.Transparent)
-    .onClick(() => this.onPick(item.id))
   }
 
   build() {
@@ -101,6 +180,29 @@ export struct ModelPicker {
               .onClick(() => this.onPick(this.custom.trim()))
           }
           .width('100%')
+
+          if (this.custom.trim().length > 0) {
+            Row({ space: 8 }) {
+              Text(this.testing(this.custom.trim())
+                ? t('测试中…')
+                : t('测试') + ' ' + this.custom.trim())
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .padding({ left: 9, right: 9, top: 6, bottom: 6 })
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(8)
+                .onClick(() => {
+                  this.runTest(this.custom.trim());
+                })
+              Text(this.testText(this.custom.trim()))
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+                .layoutWeight(1)
+                .maxLines(2)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
+            .width('100%')
+          }
 
           Text(t('更多模型可在设置中获取；不同区域与隐私设置会影响可用模型。'))
             .fontSize(9)

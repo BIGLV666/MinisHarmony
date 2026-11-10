@@ -642,6 +642,19 @@ token 计数与请求数，不保存提示词或回复内容。`Index` 在每轮
 「保存」写回磁盘并刷新注入文本与日志；「撤销」把内容恢复为面板打开时的原文并写回。
 面板按文件编辑，不提供按行撤销。
 
+## 模型快速测试
+
+模型选择器每行与自定义 ID 输入框都可发一次连通性测试。`Index.testModel(id)` 克隆
+当前设置、只替换 `modelId`，经 `OAuthService.decorate` 补齐 OAuth 头，再调用
+`ChatApi.requestModelText`（非流式，`maxTokens=32`，提示语要求只回复 OK）；返回
+`ModelTestOutcome { ok, text, message, elapsedMs }`。
+
+`core/ModelTest.ets` 的 `modelTestLine` 把结果压成一行：失败优先显示服务端错误，
+成功但正文为空提示「模型没有返回内容」，否则显示「耗时 ms · 首段回复」，回复压平
+换行并截断到 80 字。选择器用 `testIds/testLines/testingIds` 三个数组按模型 id
+分别记录状态，因此多个模型可并行测试，后完成的请求不会覆盖前一个的结果，也不会
+误清另一个模型的「测试中」。测试不修改全局模型选择，只有点「使用」才切换。
+
 ## 深链
 
 `module.json5` 注册 `minis` scheme，action 为 `ohos.want.action.viewData`，并带

@@ -58,7 +58,13 @@ import {
   transcriptForSummary
 } from '../core/ContextBudget';
 import { AgentRuntime } from '../service/AgentRuntime';
-import { SummaryResult, generateSessionTitle, summarizeConversation } from '../service/ChatApi';
+import {
+  SummaryResult,
+  generateSessionTitle,
+  requestModelText,
+  summarizeConversation
+} from '../service/ChatApi';
+import { ModelTestOutcome } from '../core/ModelTest';
 import {
   cleanTitle,
   firstUserText,
@@ -893,6 +899,23 @@ struct Index {
     if (manual) {
       this.toast(t('已更新标题'));
     }
+  }
+
+  /** One tiny non-streaming request against a model from the picker. */
+  private async testModel(id: string): Promise<ModelTestOutcome> {
+    const next: AppSettings = cloneSettings(this.settings);
+    next.modelId = id;
+    const settings: AppSettings = await OAuthService.decorate(next);
+    const started: number = Date.now();
+    const result: SummaryResult = await requestModelText(
+      settings, 'model-test', 'Ping',
+      t('这是一次连通性测试，请只回复 OK。'), 32);
+    return {
+      ok: result.ok,
+      text: result.text,
+      message: result.message,
+      elapsedMs: Date.now() - started
+    };
   }
 
   /** Model actually used for the current conversation (override wins). */
@@ -4235,6 +4258,7 @@ struct Index {
         ModelPicker({
           currentId: this.settings.modelId,
           onPick: (id: string) => this.pickModel(id),
+          onTestModel: (id: string) => this.testModel(id),
           onClose: () => {
             this.showModels = false;
           }

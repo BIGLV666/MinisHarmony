@@ -96,6 +96,7 @@ copyCore('Appearance');
 copyCore('Soul');
 copyCore('SkillDoc');
 copyCore('ModelCaps');
+copyCore('ModelTest', ['I18n']);
 copyCore('ModelOverride');
 copyCore('WidgetData');
 copyCore('McpOAuth');
@@ -232,6 +233,7 @@ const appearance = await import(pathToFileURL(join(tmp, 'Appearance.mts')).href)
 const soul = await import(pathToFileURL(join(tmp, 'Soul.mts')).href);
 const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
+const modelTest = await import(pathToFileURL(join(tmp, 'ModelTest.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
 const mcpOAuth = await import(pathToFileURL(join(tmp, 'McpOAuth.mts')).href);
@@ -3883,4 +3885,22 @@ test('MCP session overrides normalize and toggle one server', () => {
   assert.deepEqual(mcpOverrides.setMcpDisabled(['a', 'b'], 'a', false), ['b']);
   assert.deepEqual(mcpOverrides.setMcpDisabled(['a'], '  ', true), ['a'],
     'an empty id changes nothing');
+});
+
+test('model quick test line formats failure, empty reply and latency', () => {
+  assert.equal(modelTest.modelTestLine(
+    { ok: false, text: '', message: 'HTTP 401', elapsedMs: 120 }), 'HTTP 401');
+  assert.equal(modelTest.modelTestLine(
+    { ok: false, text: '', message: '', elapsedMs: 120 }), '模型测试失败');
+  assert.equal(modelTest.modelTestLine(
+    { ok: true, text: '   ', message: '', elapsedMs: 90 }), '模型没有返回内容');
+  assert.equal(modelTest.modelTestLine(
+    { ok: true, text: 'OK', message: '', elapsedMs: 321 }), '321 ms · OK');
+  assert.equal(modelTest.modelTestLine(
+    { ok: true, text: 'a\nb\tc', message: '', elapsedMs: 5 }), '5 ms · a b c');
+  const long = 'x'.repeat(120);
+  const line = modelTest.modelTestLine(
+    { ok: true, text: long, message: '', elapsedMs: 7 });
+  assert.equal(line, '7 ms · ' + 'x'.repeat(80) + '…');
+  assert.equal(line.endsWith('…'), true);
 });

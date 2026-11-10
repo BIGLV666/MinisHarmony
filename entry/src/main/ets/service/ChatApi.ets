@@ -6,6 +6,7 @@ import { claudeOAuthRequestHeaders } from './OAuth';
 import { soulPrompt } from '../core/Soul';
 import { rosterPrompt } from '../core/SubAgentRoster';
 import { capsForModel, clampMaxTokens } from '../core/ModelCaps';
+import { serviceTierFor } from '../core/FastMode';
 import {
   ModelOverride,
   applyExtraBody,
@@ -133,6 +134,8 @@ interface ChatRequestBody {
   reasoning_effort?: string;
   tools?: ApiToolDefinition[];
   tool_choice?: string;
+  /** Only set for providers that document priority processing. */
+  service_tier?: string;
 }
 
 interface ModelEntry {
@@ -171,6 +174,7 @@ interface SummaryRequestBody {
   stream: boolean;
   temperature: number;
   max_tokens: number;
+  service_tier?: string;
 }
 
 interface SummaryChoiceMessage {
@@ -197,6 +201,7 @@ interface ResponsesSummaryRequest {
   input: ResponsesSummaryRequestItem[];
   stream: boolean;
   store: boolean;
+  service_tier?: string;
 }
 
 interface ResponsesSummaryContent {
@@ -631,6 +636,11 @@ export function startChatStream(
       body.max_tokens = clampMaxTokens(override.maxTokens, caps);
     }
   }
+  const tier: string = serviceTierFor(
+    settings.fastMode, settings.preset, settings.baseUrl);
+  if (tier.length > 0) {
+    body.service_tier = tier;
+  }
 
   let headers: Record<string, string> = settings.preset === 'copilot'
     ? copilotHeaders(settings, 'text/event-stream', history)
@@ -808,6 +818,9 @@ function startResponsesStream(
   const cacheKey: string = promptCacheKey(messages);
   if (cacheKey.length > 0) {
     body.prompt_cache_key = cacheKey;
+  }
+  if (settings.fastMode) {
+    body.service_tier = 'priority';
   }
 
   const overrides: ModelOverride[] = settings.modelOverrides !== undefined ? settings.modelOverrides : [];
@@ -1102,6 +1115,9 @@ async function summarizeResponses(
     stream: false,
     store: false
   };
+  if (settings.fastMode) {
+    body.service_tier = 'priority';
+  }
   const headers: Record<string, string> = codexHeaders(settings, 'application/json');
   const options: http.HttpRequestOptions = {
     method: http.RequestMethod.POST,
@@ -1247,6 +1263,11 @@ export async function requestModelText(
     temperature: 0.2,
     max_tokens: maxTokens
   };
+  const summaryTier: string =
+    serviceTierFor(settings.fastMode, settings.preset, settings.baseUrl);
+  if (summaryTier.length > 0) {
+    body.service_tier = summaryTier;
+  }
 
   const headers: Record<string, string> = settings.preset === 'copilot'
     ? copilotHeaders(settings, 'application/json', [])

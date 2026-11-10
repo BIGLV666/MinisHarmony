@@ -67,6 +67,9 @@ export struct ChatView {
   @State mentionFiles: FileEntry[] = [];
   /** Prompts waiting for the current run to reach a model boundary. */
   @Prop queuedCount: number = 0;
+  /** Current provider accepts `service_tier: priority`. */
+  @Prop canFastMode: boolean = false;
+  @Prop fastMode: boolean = false;
   onSend: () => void = () => {
   };
   onQueue: () => void = () => {
@@ -84,6 +87,9 @@ export struct ChatView {
   onRemoveAttachment: (index: number) => void = (index: number) => {
   };
   onStop: () => void = () => {
+  };
+  /** Global fast mode; the next request picks the new value up. */
+  onFastMode: (on: boolean) => void = (on: boolean) => {
   };
   onSettings: () => void = () => {
   };
@@ -289,6 +295,28 @@ export struct ChatView {
   @Builder
   headerMenu() {
     Column({ space: 2 }) {
+      if (this.canFastMode) {
+        Row({ space: 6 }) {
+          Text(this.fastMode ? '✓' : '')
+            .fontSize(12)
+            .width(14)
+            .fontColor(this.accent)
+          Column({ space: 1 }) {
+            Text(t('快速模式'))
+              .fontSize(13)
+              .fontColor($r('app.color.text_primary'))
+            Text(t('优先处理，仅部分供应商支持'))
+              .fontSize(10)
+              .fontColor($r('app.color.text_tertiary'))
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+        }
+        .width(200)
+        .padding(10)
+        .accessibilityText(t('快速模式'))
+        .onClick(() => this.onFastMode(!this.fastMode))
+      }
       Text(t('记忆'))
         .width(160)
         .fontSize(13)

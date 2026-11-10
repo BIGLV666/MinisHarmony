@@ -128,6 +128,8 @@ export interface AppSettings {
   autoTitleEnabled: boolean;
   /** Offer existing folders to the title request and file the session. */
   autoGroupingEnabled: boolean;
+  /** Ask eligible providers for priority service (`service_tier`). */
+  fastMode: boolean;
   /** Built-in persona prepended to the system prompt. */
   soulId: string;
   /** Skill ids (imported SKILL.md files) injected into the system prompt. */
@@ -640,6 +642,7 @@ export function defaultSettings(): AppSettings {
     autoFocusInput: true,
     autoTitleEnabled: true,
     autoGroupingEnabled: true,
+    fastMode: false,
     soulId: 'general',
     enabledSkills: [],
     modelOverrides: [],
@@ -753,6 +756,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     autoFocusInput: source.autoFocusInput !== false,
     autoTitleEnabled: source.autoTitleEnabled !== false,
     autoGroupingEnabled: source.autoGroupingEnabled !== false,
+    fastMode: source.fastMode === true,
     soulId: source.soulId !== undefined && source.soulId.length > 0
       ? source.soulId
       : 'general',

@@ -72,6 +72,7 @@ export function configSnapshot(settings: AppSettings): ConfigPair[] {
     { key: 'autoFocusInput', value: bool(settings.autoFocusInput) },
     { key: 'autoTitleEnabled', value: bool(settings.autoTitleEnabled) },
     { key: 'autoGroupingEnabled', value: bool(settings.autoGroupingEnabled) },
+    { key: 'fastMode', value: bool(settings.fastMode) },
     { key: 'soulId', value: encodeConfigValue(settings.soulId) },
     { key: 'enabledSkills', value: strings(settings.enabledSkills) },
     { key: 'modelOverrides', value: complexConfigValue(settings.modelOverrides.length) },

@@ -110,6 +110,7 @@ copyCore('Types', ['ModelOverride', 'McpProtocol', 'SubAgentRoster']);
 copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol', 'McpOAuth', 'SubAgentRoster']);
 copyCore('BackupCrypto', ['Backup', 'SessionExport']);
 copyCore('ImageGen', ['OpenCodeRules']);
+copyCore('FastMode');
 copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 copyCore('GeminiProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 copyCore('ResponsesProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
@@ -249,6 +250,7 @@ const minisResource = await import(pathToFileURL(join(tmp, 'MinisResource.mts'))
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 const backupCrypto = await import(pathToFileURL(join(tmp, 'BackupCrypto.mts')).href);
 const imageGen = await import(pathToFileURL(join(tmp, 'ImageGen.mts')).href);
+const fastMode = await import(pathToFileURL(join(tmp, 'FastMode.mts')).href);
 const anthropic = await import(pathToFileURL(join(tmp, 'AnthropicProtocol.mts')).href);
 const gemini = await import(pathToFileURL(join(tmp, 'GeminiProtocol.mts')).href);
 const responses = await import(pathToFileURL(join(tmp, 'ResponsesProtocol.mts')).href);
@@ -1805,6 +1807,20 @@ test('encrypted backup envelope validates shape and rejects tampering', () => {
     { ...envelope, payload: 'not base64!' })), null);
   assert.equal(backupCrypto.parseEncryptedBackup(JSON.stringify(
     { ...envelope, payload: 'AAAA' })), null);
+});
+
+test('fast mode only targets providers that accept service_tier', () => {
+  assert.equal(fastMode.hostOf('https://API.x.ai:443/v1/chat'), 'api.x.ai');
+  assert.equal(fastMode.hostOf('api.example.com/v1'), 'api.example.com');
+  assert.equal(fastMode.hostOf('  '), '');
+  assert.equal(fastMode.supportsFastMode('codex', ''), true);
+  assert.equal(fastMode.supportsFastMode('custom', 'https://api.x.ai/v1'), true);
+  assert.equal(fastMode.supportsFastMode('custom', 'https://relay.example.com/v1'), false);
+  assert.equal(fastMode.supportsFastMode('opencode', 'https://api.x.ai/v1'), false);
+  assert.equal(fastMode.serviceTierFor(true, 'codex', ''), 'priority');
+  assert.equal(fastMode.serviceTierFor(true, 'custom', 'https://api.x.ai/v1'), 'priority');
+  assert.equal(fastMode.serviceTierFor(true, 'opencode', ''), '');
+  assert.equal(fastMode.serviceTierFor(false, 'codex', ''), '');
 });
 
 test('model fallback lists parse, trim and de-duplicate', () => {

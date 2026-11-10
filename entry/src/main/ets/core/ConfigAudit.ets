@@ -79,6 +79,7 @@ export const CONFIG_RESTORABLE_KEYS: string[] = [
   'autoFocusInput',
   'autoTitleEnabled',
   'autoGroupingEnabled',
+  'fastMode',
   'soulId',
   'enabledSkills',
   'webDavUrl',

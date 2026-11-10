@@ -979,6 +979,21 @@ extra_body 必须是 JSON 对象；失败时提示并拒绝保存。运行时若
 写入覆盖，「恢复全局」清空；导出 JSON 携带这三个字段，导入与 fork 会保留。全局设置
 页仍保持独立，修改全局值不会影响已覆盖的会话。
 
+## 快速模式（service_tier）
+
+快速模式是全局设置 `AppSettings.fastMode`，只影响请求体：打开且供应商支持时，
+OpenAI 兼容的 Chat Completions 与 `/compact` 摘要写 `service_tier: "priority"`，
+Codex 的 Responses 请求同样写 `priority`。`core/FastMode.ets#supportsFastMode()`
+刻意保守：Codex 预设恒支持；自定义端点只有主机正好是 `api.x.ai` 才支持；OpenCode、
+Anthropic、Gemini 等一律不发该字段，因为严格的继电器会把未知字段当成 400。
+`hostOf()` 负责去掉协议、路径与端口，兼容带尾斜杠或大小写不同的地址。
+
+四条请求路径都在**构建请求体时**读取开关，而不是在发送前缓存，因此切换后下一条
+请求立即生效，进行中的流不受影响。入口在对话头部菜单顶部的「快速模式」勾选行，
+只在当前供应商支持时出现；`Index.setFastMode()` 对不支持的供应商再次拒绝，克隆
+设置、写配置审计并保存。设置页只透传该值（`SettingsSheet` 的 `@State fastMode`），
+避免其他设置保存时把它重置为默认值。该键同时进入备份与配置审计的可还原列表。
+
 ## 首次引导
 
 `components/OnboardingView.ets` 只在 `settings.onboardingDone === false` 且 API Key

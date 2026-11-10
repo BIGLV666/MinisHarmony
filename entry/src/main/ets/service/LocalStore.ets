@@ -141,6 +141,7 @@ function normalizeSettings(source: AppSettings): AppSettings {
     autoFocusInput: source.autoFocusInput !== false,
     autoTitleEnabled: source.autoTitleEnabled !== false,
     autoGroupingEnabled: source.autoGroupingEnabled !== false,
+    fastMode: source.fastMode === true,
     soulId: normalizeSoulId(source.soulId),
     enabledSkills: normalizeToolNames(source.enabledSkills),
     modelOverrides: normalizeModelOverrides(source.modelOverrides),

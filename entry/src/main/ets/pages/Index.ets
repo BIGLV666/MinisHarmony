@@ -70,6 +70,7 @@ import {
 } from '../service/ChatApi';
 import { ModelTestOutcome } from '../core/ModelTest';
 import { supportsImageGen } from '../core/ImageGen';
+import { supportsFastMode } from '../core/FastMode';
 import {
   CONFIG_AUDIT_LIMIT,
   ConfigAuditEntry,
@@ -1113,6 +1114,25 @@ struct Index {
     this.refreshSessions();
     this.persistSoon();
     this.toast(value === 'off' ? t('本会话思考已关闭') : t('本会话思考强度：') + this.thinkingLabel(value));
+  }
+
+  /**
+   * Global fast mode. Providers that do not document `service_tier` are refused
+   * instead of being sent a body field that some relays reject.
+   */
+  private setFastMode(on: boolean): void {
+    if (on && !supportsFastMode(this.settings.preset, this.settings.baseUrl)) {
+      this.toast(t('当前供应商不支持快速模式'));
+      return;
+    }
+    const next: AppSettings = cloneSettings(this.settings);
+    next.fastMode = on;
+    this.recordConfigChanges(this.settings, next);
+    this.settings = next;
+    LocalStore.saveSettings(next).catch((error: Error) => {
+      this.toast(t('设置保存失败'));
+    });
+    this.toast(on ? t('已开启快速模式') : t('已关闭快速模式'));
   }
 
   private toast(message: string): void {
@@ -3117,7 +3137,7 @@ struct Index {
       key === 'enterToSend' || key === 'appLockEnabled' ||
       key === 'autoExpandThinking' || key === 'autoFocusInput' ||
       key === 'autoTitleEnabled' || key === 'autoGroupingEnabled' ||
-      key === 'webDavAutoSync') {
+      key === 'fastMode' || key === 'webDavAutoSync') {
       if (typeof parsed !== 'boolean') {
         return false;
       }
@@ -3162,6 +3182,8 @@ struct Index {
         next.autoTitleEnabled = value;
       } else if (key === 'autoGroupingEnabled') {
         next.autoGroupingEnabled = value;
+      } else if (key === 'fastMode') {
+        next.fastMode = value;
       } else {
         next.webDavAutoSync = value;
       }
@@ -4476,6 +4498,9 @@ struct Index {
       attachments: this.pendingAttachments,
       onHugePaste: (text: string) => this.attachHugePaste(text),
       queuedCount: this.queuedPrompts.length,
+      canFastMode: supportsFastMode(this.settings.preset, this.settings.baseUrl),
+      fastMode: this.settings.fastMode,
+      onFastMode: (on: boolean) => this.setFastMode(on),
       onSend: () => this.sendMessage(),
       onQueue: () => this.sendMessage(),
       onClearQueued: () => this.clearQueuedPrompts(),

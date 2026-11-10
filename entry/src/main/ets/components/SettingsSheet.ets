@@ -240,6 +240,8 @@ export struct SettingsSheet {
   @State autoFocusInput: boolean = true;
   @State autoTitleEnabled: boolean = true;
   @State autoGroupingEnabled: boolean = true;
+  /** Carried through the sheet untouched; toggled from the chat header. */
+  @State fastMode: boolean = false;
   @State disabledTools: string[] = [];
   @State showLogs: boolean = false;
   @State logRows: LogRow[] = [];
@@ -375,6 +377,7 @@ export struct SettingsSheet {
     this.autoFocusInput = copy.autoFocusInput;
     this.autoTitleEnabled = copy.autoTitleEnabled;
     this.autoGroupingEnabled = copy.autoGroupingEnabled;
+    this.fastMode = copy.fastMode;
     this.disabledTools = copy.disabledTools.slice();
     this.modelOverrides = normalizeModelOverrides(copy.modelOverrides);
     this.mcpServers = normalizeMcpServers(copy.mcpServers);
@@ -749,6 +752,7 @@ export struct SettingsSheet {
       autoFocusInput: this.autoFocusInput,
       autoTitleEnabled: this.autoTitleEnabled,
       autoGroupingEnabled: this.autoGroupingEnabled,
+      fastMode: this.fastMode,
       enabledSkills: this.enabledSkills.slice(),
       modelOverrides: normalizeModelOverrides(this.modelOverrides),
       mcpServers: normalizeMcpServers(this.mcpServers),

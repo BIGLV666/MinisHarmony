@@ -1,5 +1,5 @@
 import { pasteboard } from '@kit.BasicServicesKit';
-import { common, Want } from '@kit.AbilityKit';
+import { common, ConfigurationConstant, Want } from '@kit.AbilityKit';
 import {
   MdBlock,
   MdBlockKind,
@@ -21,6 +21,7 @@ import {
   highlightCode
 } from '../core/CodeHighlight';
 import { t } from '../core/I18n';
+import { InlineMathBitmap, InlineMathCache } from '../service/InlineMathCache';
 import {
   BROWSER_ARTIFACT_DIR,
   MINIS_ATTACHMENTS,
@@ -48,13 +49,95 @@ export struct MarkdownView {
    */
   @Prop plainMath: boolean = false;
   @State blocks: MdBlock[] = [];
+  @State mathImages: Map<string, InlineMathBitmap> = new Map();
+  private dark: boolean = false;
+  private gone: boolean = false;
 
   aboutToAppear(): void {
+    this.gone = false;
+    this.dark = this.isDark();
     this.blocks = parseMarkdown(this.text);
+    this.requestInlineMath();
   }
 
   onTextChanged(): void {
     this.blocks = parseMarkdown(this.text);
+    this.requestInlineMath();
+  }
+
+  aboutToDisappear(): void {
+    this.gone = true;
+  }
+
+  private isDark(): boolean {
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      return context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  private requestMathSegment(latex: string, size: number, seen: Set<string>): void {
+    const key: string = InlineMathCache.keyFor(latex, size, this.dark);
+    if (seen.has(key) || this.mathImages.has(key)) {
+      return;
+    }
+    seen.add(key);
+    InlineMathCache.request(latex, size, this.dark,
+      (bitmap: InlineMathBitmap | null): void => {
+        if (bitmap === null || this.gone) {
+          return;
+        }
+        const next: Map<string, InlineMathBitmap> = new Map(this.mathImages);
+        next.set(key, bitmap);
+        this.mathImages = next;
+      });
+  }
+
+  /**
+   * Kick off KaTeX rendering for every inline formula in the message. The
+   * text keeps its Unicode approximation until the bitmap arrives, so a
+   * failing/slow render never blanks the paragraph.
+   */
+  private requestInlineMath(): void {
+    if (this.plainMath || this.text.indexOf('$') < 0) {
+      return;
+    }
+    const seen: Set<string> = new Set();
+    for (let i = 0; i < this.blocks.length; i++) {
+      const block: MdBlock = this.blocks[i];
+      if (block.kind === MdBlockKind.Table) {
+        const rows: string[][] = block.rows !== undefined ? block.rows : [];
+        const cellSize: number = scaleFont(13, this.fontScale);
+        for (let r = 0; r < rows.length; r++) {
+          for (let c = 0; c < rows[r].length; c++) {
+            const cells: MdInline[] = parseInline(rows[r][c]);
+            for (let k = 0; k < cells.length; k++) {
+              const math: string | undefined = cells[k].math;
+              if (math !== undefined && math.length > 0) {
+                this.requestMathSegment(math, cellSize, seen);
+              }
+            }
+          }
+        }
+        continue;
+      }
+      if (block.kind === MdBlockKind.Code || block.kind === MdBlockKind.Math ||
+        block.kind === MdBlockKind.Image || block.kind === MdBlockKind.Divider) {
+        continue;
+      }
+      const base: number = block.kind === MdBlockKind.Heading
+        ? this.headingSize(block.level) : 15;
+      const size: number = scaleFont(base, this.fontScale);
+      const segments: MdInline[] = parseInline(block.text);
+      for (let j = 0; j < segments.length; j++) {
+        const math: string | undefined = segments[j].math;
+        if (math !== undefined && math.length > 0) {
+          this.requestMathSegment(math, size, seen);
+        }
+      }
+    }
   }
 
   private syntaxColor(kind: string): ResourceColor {
@@ -133,18 +216,38 @@ export struct MarkdownView {
   @Builder
   inlineText(text: string, fontSize: number, color: ResourceColor, weight: FontWeight) {
     Text() {
-      ForEach(parseInline(text), (segment: MdInline) => {
-        Span(segment.text)
-          .fontWeight(segment.bold ? FontWeight.Bold : weight)
-          .fontStyle(segment.italic ? FontStyle.Italic : FontStyle.Normal)
-          .fontColor(segment.code ? this.accent : color)
-          .fontFamily(segment.code ? 'monospace' : 'HarmonyOS Sans')
-          .decoration({ type: segment.link.length > 0 ? TextDecorationType.Underline : TextDecorationType.None })
-          .onClick(() => {
-            if (segment.link.length > 0) {
-              this.openLink(segment.link);
-            }
-          })
+      ForEach(parseInline(text), (segment: MdInline, index: number) => {
+        if (segment.math !== undefined && segment.math.length > 0 && !this.plainMath &&
+          this.mathImages.get(InlineMathCache.keyFor(segment.math,
+            scaleFont(fontSize, this.fontScale), this.dark)) !== undefined) {
+          ImageSpan(this.mathImages.get(InlineMathCache.keyFor(segment.math,
+            scaleFont(fontSize, this.fontScale), this.dark))!.pixelMap)
+            .width(px2vp(this.mathImages.get(InlineMathCache.keyFor(segment.math,
+              scaleFont(fontSize, this.fontScale), this.dark))!.widthPx))
+            .height(px2vp(this.mathImages.get(InlineMathCache.keyFor(segment.math,
+              scaleFont(fontSize, this.fontScale), this.dark))!.heightPx))
+            .verticalAlign(ImageSpanAlignment.BASELINE)
+            .objectFit(ImageFit.Contain)
+        } else {
+          Span(segment.text)
+            .fontWeight(segment.bold ? FontWeight.Bold : weight)
+            .fontStyle(segment.italic ? FontStyle.Italic : FontStyle.Normal)
+            .fontColor(segment.code ? this.accent : color)
+            .fontFamily(segment.code ? 'monospace' : 'HarmonyOS Sans')
+            .decoration({ type: segment.link.length > 0 ? TextDecorationType.Underline : TextDecorationType.None })
+            .onClick(() => {
+              if (segment.link.length > 0) {
+                this.openLink(segment.link);
+              }
+            })
+        }
+      }, (segment: MdInline, index: number) => {
+        const latex: string = segment.math !== undefined ? segment.math : '';
+        const rendered: boolean = latex.length > 0 && !this.plainMath &&
+          this.mathImages.get(InlineMathCache.keyFor(latex,
+            scaleFont(fontSize, this.fontScale), this.dark)) !== undefined;
+        return index.toString() + ':' + (rendered ? 'math' : 'text') + ':' +
+          (latex.length > 0 ? latex : segment.text);
       })
     }
     .fontSize(scaleFont(fontSize, this.fontScale))
@@ -161,17 +264,37 @@ export struct MarkdownView {
   @Builder
   tableCell(text: string, header: boolean) {
     Text() {
-      ForEach(parseInline(text), (segment: MdInline) => {
-        Span(segment.text)
-          .fontWeight(segment.bold || header ? FontWeight.Bold : FontWeight.Normal)
-          .fontStyle(segment.italic ? FontStyle.Italic : FontStyle.Normal)
-          .fontColor(segment.code ? this.accent : $r('app.color.text_primary'))
-          .decoration({ type: segment.link.length > 0 ? TextDecorationType.Underline : TextDecorationType.None })
-          .onClick(() => {
-            if (segment.link.length > 0) {
-              this.openLink(segment.link);
-            }
-          })
+      ForEach(parseInline(text), (segment: MdInline, index: number) => {
+        if (segment.math !== undefined && segment.math.length > 0 && !this.plainMath &&
+          this.mathImages.get(InlineMathCache.keyFor(segment.math,
+            scaleFont(13, this.fontScale), this.dark)) !== undefined) {
+          ImageSpan(this.mathImages.get(InlineMathCache.keyFor(segment.math,
+            scaleFont(13, this.fontScale), this.dark))!.pixelMap)
+            .width(px2vp(this.mathImages.get(InlineMathCache.keyFor(segment.math,
+              scaleFont(13, this.fontScale), this.dark))!.widthPx))
+            .height(px2vp(this.mathImages.get(InlineMathCache.keyFor(segment.math,
+              scaleFont(13, this.fontScale), this.dark))!.heightPx))
+            .verticalAlign(ImageSpanAlignment.BASELINE)
+            .objectFit(ImageFit.Contain)
+        } else {
+          Span(segment.text)
+            .fontWeight(segment.bold || header ? FontWeight.Bold : FontWeight.Normal)
+            .fontStyle(segment.italic ? FontStyle.Italic : FontStyle.Normal)
+            .fontColor(segment.code ? this.accent : $r('app.color.text_primary'))
+            .decoration({ type: segment.link.length > 0 ? TextDecorationType.Underline : TextDecorationType.None })
+            .onClick(() => {
+              if (segment.link.length > 0) {
+                this.openLink(segment.link);
+              }
+            })
+        }
+      }, (segment: MdInline, index: number) => {
+        const latex: string = segment.math !== undefined ? segment.math : '';
+        const rendered: boolean = latex.length > 0 && !this.plainMath &&
+          this.mathImages.get(InlineMathCache.keyFor(latex,
+            scaleFont(13, this.fontScale), this.dark)) !== undefined;
+        return index.toString() + ':' + (rendered ? 'math' : 'text') + ':' +
+          (latex.length > 0 ? latex : segment.text);
       })
     }
     .fontSize(scaleFont(13, this.fontScale))

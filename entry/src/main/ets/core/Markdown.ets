@@ -43,6 +43,8 @@ export interface MdInline {
   italic: boolean;
   code: boolean;
   link: string;
+  /** Raw LaTeX for inline math; `text` carries the Unicode fallback. */
+  math?: string;
 }
 
 /**
@@ -391,7 +393,8 @@ export function parseInline(input: string): MdInline[] {
           bold: false,
           italic: false,
           code: false,
-          link: ''
+          link: '',
+          math: span.text
         });
         i = span.next;
         continue;

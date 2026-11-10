@@ -2195,7 +2195,10 @@ test('Markdown recognizes display and inline math', () => {
   const inline = md.parseInline('质能方程 $E=mc^2$ 成立');
   assert.equal(inline[0].text, '质能方程 ');
   assert.equal(inline[1].text, 'E=mc²');
+  assert.equal(inline[1].math, 'E=mc^2');
   assert.equal(inline[2].text, ' 成立');
+  // Non-math spans carry no raw LaTeX marker.
+  assert.equal(inline[0].math, undefined);
 
   const multiline = md.parseMarkdown('$$\na+b\n$$');
   assert.equal(multiline[0].kind, 'math');

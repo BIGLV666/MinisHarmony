@@ -130,6 +130,7 @@ import {
 import { SidebarView } from '../components/SidebarView';
 import { BrowserPage } from '../components/BrowserPage';
 import { HiddenBrowser } from '../components/HiddenBrowser';
+import { InlineMathHost } from '../components/InlineMathHost';
 import { BrowserTool } from '../service/BrowserTool';
 import { t } from '../core/I18n';
 
@@ -3135,6 +3136,7 @@ struct Index {
   pageBody() {
       if (this.ready) {
         HiddenBrowser({ workspaceRoot: this.workspaceRoot })
+        InlineMathHost()
       }
 
       if (!this.ready) {

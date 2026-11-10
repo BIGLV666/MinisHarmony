@@ -97,6 +97,7 @@ copyCore('Soul');
 copyCore('SkillDoc');
 copyCore('ModelCaps');
 copyCore('ModelTest', ['I18n']);
+copyCore('ConfigAudit', ['I18n']);
 copyCore('ModelOverride');
 copyCore('WidgetData');
 copyCore('McpOAuth');
@@ -234,6 +235,7 @@ const soul = await import(pathToFileURL(join(tmp, 'Soul.mts')).href);
 const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 const modelTest = await import(pathToFileURL(join(tmp, 'ModelTest.mts')).href);
+const configAudit = await import(pathToFileURL(join(tmp, 'ConfigAudit.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
 const mcpOAuth = await import(pathToFileURL(join(tmp, 'McpOAuth.mts')).href);
@@ -3903,4 +3905,73 @@ test('model quick test line formats failure, empty reply and latency', () => {
     { ok: true, text: long, message: '', elapsedMs: 7 });
   assert.equal(line, '7 ms · ' + 'x'.repeat(80) + '…');
   assert.equal(line.endsWith('…'), true);
+});
+
+test('config audit diffs changed keys and keeps secrets opaque', () => {
+  const before = [
+    { key: 'temperature', value: '1' },
+    { key: 'modelId', value: '"a"' },
+    { key: 'apiKey', value: configAudit.secretConfigValue(false) },
+    { key: 'mcpServers', value: configAudit.complexConfigValue(1) }
+  ];
+  const after = [
+    { key: 'temperature', value: '0.5' },
+    { key: 'modelId', value: '"a"' },
+    { key: 'apiKey', value: configAudit.secretConfigValue(true) },
+    { key: 'mcpServers', value: configAudit.complexConfigValue(2) }
+  ];
+  const entries = configAudit.diffConfig(before, after, 1000, 'user');
+  assert.deepEqual(entries.map((row) => row.key),
+    ['temperature', 'apiKey', 'mcpServers']);
+  assert.equal(entries[0].before, '1');
+  assert.equal(entries[0].after, '0.5');
+  assert.equal(entries[0].restorable, true);
+  assert.equal(entries[1].restorable, false, 'secrets cannot be restored');
+  assert.equal(entries[2].restorable, false, 'structured values cannot be restored');
+  assert.equal(entries[0].id, '1000-0-temperature');
+  assert.equal(configAudit.diffConfig(before, before, 1000, 'user').length, 0);
+});
+
+test('config audit merges newest first and caps the list', () => {
+  const existing = [
+    { id: '3', at: 3, actor: 'user', key: 'a', before: '"x"', after: '"y"', restorable: true },
+    { id: '2', at: 2, actor: 'user', key: 'b', before: '"x"', after: '"y"', restorable: true }
+  ];
+  const added = [
+    { id: '4', at: 4, actor: 'user', key: 'c', before: '"x"', after: '"y"', restorable: true }
+  ];
+  const merged = configAudit.mergeConfigAudit(existing, added, 2);
+  assert.deepEqual(merged.map((row) => row.id), ['4', '3']);
+  assert.equal(configAudit.mergeConfigAudit([], added, 0).length, 1);
+});
+
+test('config audit parses valid rows and drops junk', () => {
+  assert.deepEqual(configAudit.parseConfigAudit(''), []);
+  assert.deepEqual(configAudit.parseConfigAudit('not json'), []);
+  const raw = JSON.stringify([
+    { id: '1', at: 5, actor: 'user', key: 'temperature', before: '1', after: '0.5', restorable: true },
+    { at: 0, key: 'broken' },
+    { id: '2', at: 6, key: 'apiKey', before: '""', after: '"set"' }
+  ]);
+  const rows = configAudit.parseConfigAudit(raw);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].key, 'apiKey');
+  assert.equal(rows[1].restorable, false, 'missing restorable defaults to false');
+  assert.equal(rows[1].actor, 'user');
+});
+
+test('config audit labels hide secret values and summarize lists', () => {
+  assert.equal(configAudit.auditValueLabel('apiKey', '"set"'), '已设置');
+  assert.equal(configAudit.auditValueLabel('apiKey', '""'), '未设置');
+  assert.equal(configAudit.auditValueLabel('disabledTools', '["a","b"]'), '2 项');
+  assert.equal(configAudit.auditValueLabel('temperature', '0.5'), '0.5');
+  assert.equal(configAudit.auditValueLabel('systemPrompt', '""'), '（空）');
+  assert.equal(configAudit.auditValueLabel('systemPrompt', JSON.stringify('a\nb')), 'a b');
+  assert.equal(configAudit.auditValueLabel('systemPrompt',
+    JSON.stringify('x'.repeat(60))), 'x'.repeat(48) + '…');
+  assert.equal(configAudit.auditValueLabel('mcpServers',
+    configAudit.complexConfigValue(3)), '3 项');
+  assert.equal(configAudit.configAuditRestorable('temperature'), true);
+  assert.equal(configAudit.configAuditRestorable('apiKey'), false);
+  assert.equal(configAudit.configAuditRestorable('unknown'), false);
 });

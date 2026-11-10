@@ -623,6 +623,21 @@ token 计数与请求数，不保存提示词或回复内容。`Index` 在每轮
 「用量统计与存储」展示累计、按模型前 5、最近 7 天，以及附件、工作区、浏览器下载
 三类占用；清空统计和三类清理都要求二次点按确认。
 
+## 配置变更审计与回滚
+
+`service/ConfigAuditStore.ets` 的 `configSnapshot` 把设置展开为 44 个 `ConfigPair`：
+标量与字符串数组存 JSON，API Key / 沙箱令牌 / WebDAV 密码只存 `"set"` 或 `""`，
+MCP / 模型覆盖 / 分组 / 子代理只存条目数，密钥原文与结构化内容都不进审计表。
+`Index.applySettings` 与 `pickModel` 在写入前用 `diffConfig` 比较旧快照与新快照，
+差异经 `mergeConfigAudit` 插到最前（上限 200）并写入 preferences
+`minis_config_audit`。
+
+设置页「配置变更记录」显示最近 30 条：键名、旧值 → 新值、时间。可还原的键由
+`CONFIG_RESTORABLE_KEYS` 限定为标量、字符串与字符串数组；`applyAuditedValue`
+逐键校验 JSON 类型（枚举只接受已知值，数字要求有限），成功后走正常保存流程，
+因此还原动作本身也会生成一条反向记录。密钥与结构化设置的行标为「仅记录」。
+当前没有面向代理的 `config` 写入工具，`actor` 字段预留为 `user` / `agent`。
+
 ## 会话级 MCP 开关
 
 `SessionMeta.mcpDisabled` 只记录本会话关闭的服务 id，其余服务跟随全局设置；

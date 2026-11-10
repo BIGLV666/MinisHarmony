@@ -67,6 +67,7 @@ import {
 import { UsageStore } from '../service/UsageStore';
 import { DirUsage, clearDirectory, directoryUsage } from '../service/StorageUsage';
 import { formatBytes } from '../core/BrowserHistory';
+import { ConfigAuditEntry, auditValueLabel } from '../core/ConfigAudit';
 import { formatTokens } from '../service/Format';
 import {
   ClaudeLoginStart,
@@ -176,6 +177,12 @@ export struct SettingsSheet {
   onDownloadRemoteBackup: (url: string, user: string, password: string) => void =
     (url: string, user: string, password: string) => {
     };
+  /** Recent settings changes, newest first; host owns persistence. */
+  @Prop auditEntries: ConfigAuditEntry[] = [];
+  onRestoreAudit: (id: string) => void = (id: string) => {
+  };
+  onClearAudit: () => void = () => {
+  };
 
   @State preset: ProviderPreset = 'opencode';
   @State baseUrl: string = OPENCODE_GO_BASE;
@@ -1252,6 +1259,17 @@ export struct SettingsSheet {
     UsageStore.clear(getContext(this) as common.UIAbilityContext);
     this.refreshUsage();
     this.onToast(t('已清空用量统计'));
+  }
+
+  /** Two-tap clear for the settings audit list. */
+  private clearAudit(): void {
+    if (this.storageClear !== 'audit') {
+      this.storageClear = 'audit';
+      this.onToast(t('再点一次确认清空配置变更记录'));
+      return;
+    }
+    this.storageClear = '';
+    this.onClearAudit();
   }
 
   private clearLogs(): void {
@@ -3181,6 +3199,77 @@ export struct SettingsSheet {
                 .fontSize(10)
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)
+            }
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
+
+            this.sectionTitle(t('配置变更记录'),
+              t('记录设置项的旧值与新值；可逐项还原，密钥只记录是否设置'))
+            Column({ space: 8 }) {
+              if (this.auditEntries.length === 0) {
+                Text(t('还没有配置变更记录。'))
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .width('100%')
+              }
+              ForEach(this.auditEntries, (entry: ConfigAuditEntry) => {
+                Column({ space: 3 }) {
+                  Row({ space: 6 }) {
+                    Text(entry.key)
+                      .fontSize(11)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.text_primary'))
+                      .layoutWeight(1)
+                    if (entry.restorable) {
+                      Text(t('还原'))
+                        .fontSize(10)
+                        .fontColor($r('app.color.accent'))
+                        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                        .backgroundColor($r('app.color.surface_alt'))
+                        .borderRadius(7)
+                        .onClick(() => this.onRestoreAudit(entry.id))
+                    } else {
+                      Text(t('仅记录'))
+                        .fontSize(9)
+                        .fontColor($r('app.color.text_tertiary'))
+                    }
+                  }
+                  .width('100%')
+                  Text(auditValueLabel(entry.key, entry.before) + ' → ' +
+                    auditValueLabel(entry.key, entry.after))
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_secondary'))
+                    .width('100%')
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(formatDateTime(entry.at))
+                    .fontSize(9)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .width('100%')
+                }
+                .width('100%')
+                .padding(8)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(8)
+              }, (entry: ConfigAuditEntry) => entry.id)
+              Button(this.storageClear === 'audit'
+                ? t('再点一次确认清空')
+                : t('清空配置变更记录'))
+                .height(32)
+                .width('100%')
+                .fontSize(10)
+                .fontColor(this.storageClear === 'audit'
+                  ? $r('app.color.danger')
+                  : $r('app.color.text_secondary'))
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(8)
+                .onClick(() => this.clearAudit())
+              Text(t('审计只存在本机；API Key、沙箱令牌与 WebDAV 密码只记录「已设置/未设置」，结构化设置只记录条目数，无法还原。'))
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+                .lineHeight(13)
             }
             .width('100%')
             .padding({ left: 12, right: 12, top: 10, bottom: 10 })

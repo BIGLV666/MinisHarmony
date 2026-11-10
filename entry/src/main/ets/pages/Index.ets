@@ -8,6 +8,8 @@ import {
   ChatMessage,
   MessagePart,
   PART_TEXT,
+  ProviderPreset,
+  SandboxMode,
   SessionFolder,
   SessionMeta,
   SessionSearchEntry,
@@ -65,6 +67,13 @@ import {
   summarizeConversation
 } from '../service/ChatApi';
 import { ModelTestOutcome } from '../core/ModelTest';
+import {
+  CONFIG_AUDIT_LIMIT,
+  ConfigAuditEntry,
+  diffConfig,
+  mergeConfigAudit
+} from '../core/ConfigAudit';
+import { ConfigAuditStore, configSnapshot } from '../service/ConfigAuditStore';
 import {
   cleanTitle,
   firstUserText,
@@ -214,6 +223,7 @@ struct Index {
   @State mobileChat: boolean = false;
   @State query: string = '';
   @State showSettings: boolean = false;
+  @State configAudit: ConfigAuditEntry[] = [];
   @State showModels: boolean = false;
   @State showWorkspace: boolean = false;
   @State workspaceInitial: string = '';
@@ -698,6 +708,7 @@ struct Index {
       this.toast(t('本地存储初始化失败，本次会话不会保存'));
     }
     this.settings = await LocalStore.loadSettings();
+    this.configAudit = ConfigAuditStore.load(context);
     this.applyAppearance(this.settings);
     AppLogger.init(context, this.settings.loggingEnabled);
     CrashLog.init(context);
@@ -2732,7 +2743,228 @@ struct Index {
     AppStorage.setOrCreate<number>('fontScale', settings.fontScale);
   }
 
+  /** Record which settings keys changed, without touching secret values. */
+  private recordConfigChanges(prev: AppSettings, next: AppSettings): void {
+    const added: ConfigAuditEntry[] = diffConfig(
+      configSnapshot(prev), configSnapshot(next), Date.now(), 'user');
+    if (added.length === 0) {
+      return;
+    }
+    this.configAudit = mergeConfigAudit(this.configAudit, added, CONFIG_AUDIT_LIMIT);
+    try {
+      const context: common.UIAbilityContext =
+        getContext(this) as common.UIAbilityContext;
+      ConfigAuditStore.save(context, this.configAudit);
+    } catch (e) {
+    }
+  }
+
+  private auditStringList(parsed: Object): string[] | null {
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+    const list: Object[] = parsed as Object[];
+    const result: string[] = [];
+    for (let i = 0; i < list.length; i++) {
+      if (typeof list[i] !== 'string') {
+        return null;
+      }
+      result.push(list[i] as string);
+    }
+    return result;
+  }
+
+  /** Write one audited value back into a settings copy. */
+  private applyAuditedValue(next: AppSettings, key: string,
+    encoded: string): boolean {
+    let parsed: Object | null = null;
+    try {
+      parsed = JSON.parse(encoded) as Object;
+    } catch (e) {
+      return false;
+    }
+    if (parsed === null) {
+      return false;
+    }
+    const list: string[] | null = this.auditStringList(parsed);
+    if (key === 'fallbackModels') {
+      if (list === null) {
+        return false;
+      }
+      next.fallbackModels = list;
+      return true;
+    }
+    if (key === 'disabledTools') {
+      if (list === null) {
+        return false;
+      }
+      next.disabledTools = list;
+      return true;
+    }
+    if (key === 'enabledSkills') {
+      if (list === null) {
+        return false;
+      }
+      next.enabledSkills = list;
+      return true;
+    }
+    if (key === 'temperature' || key === 'maxTokens' ||
+      key === 'maxAgentTurns' || key === 'contextBudgetChars' ||
+      key === 'autoCompactPercent' || key === 'fontScale') {
+      if (typeof parsed !== 'number') {
+        return false;
+      }
+      const value: number = parsed as number;
+      if (!Number.isFinite(value)) {
+        return false;
+      }
+      if (key === 'temperature') {
+        next.temperature = value;
+      } else if (key === 'maxTokens') {
+        next.maxTokens = value;
+      } else if (key === 'maxAgentTurns') {
+        next.maxAgentTurns = value;
+      } else if (key === 'contextBudgetChars') {
+        next.contextBudgetChars = value;
+      } else if (key === 'autoCompactPercent') {
+        next.autoCompactPercent = value;
+      } else {
+        next.fontScale = value;
+      }
+      return true;
+    }
+    if (key === 'toolsEnabled' || key === 'allowWriteTools' ||
+      key === 'imageToolsEnabled' || key === 'imageGenEnabled' ||
+      key === 'clipboardToolsEnabled' || key === 'calendarToolsEnabled' ||
+      key === 'contactsToolsEnabled' || key === 'locationToolsEnabled' ||
+      key === 'weatherToolsEnabled' || key === 'confirmWriteTools' ||
+      key === 'autoCompact' || key === 'loggingEnabled' ||
+      key === 'memoryEnabled' || key === 'backgroundEnabled' ||
+      key === 'enterToSend' || key === 'appLockEnabled' ||
+      key === 'webDavAutoSync') {
+      if (typeof parsed !== 'boolean') {
+        return false;
+      }
+      const value: boolean = parsed as boolean;
+      if (key === 'toolsEnabled') {
+        next.toolsEnabled = value;
+      } else if (key === 'allowWriteTools') {
+        next.allowWriteTools = value;
+      } else if (key === 'imageToolsEnabled') {
+        next.imageToolsEnabled = value;
+      } else if (key === 'imageGenEnabled') {
+        next.imageGenEnabled = value;
+      } else if (key === 'clipboardToolsEnabled') {
+        next.clipboardToolsEnabled = value;
+      } else if (key === 'calendarToolsEnabled') {
+        next.calendarToolsEnabled = value;
+      } else if (key === 'contactsToolsEnabled') {
+        next.contactsToolsEnabled = value;
+      } else if (key === 'locationToolsEnabled') {
+        next.locationToolsEnabled = value;
+      } else if (key === 'weatherToolsEnabled') {
+        next.weatherToolsEnabled = value;
+      } else if (key === 'confirmWriteTools') {
+        next.confirmWriteTools = value;
+      } else if (key === 'autoCompact') {
+        next.autoCompact = value;
+      } else if (key === 'loggingEnabled') {
+        next.loggingEnabled = value;
+      } else if (key === 'memoryEnabled') {
+        next.memoryEnabled = value;
+      } else if (key === 'backgroundEnabled') {
+        next.backgroundEnabled = value;
+      } else if (key === 'enterToSend') {
+        next.enterToSend = value;
+      } else if (key === 'appLockEnabled') {
+        next.appLockEnabled = value;
+      } else {
+        next.webDavAutoSync = value;
+      }
+      return true;
+    }
+    if (typeof parsed !== 'string') {
+      return false;
+    }
+    const value: string = parsed as string;
+    if (key === 'preset') {
+      if (value !== 'opencode' && value !== 'custom' && value !== 'anthropic' &&
+        value !== 'gemini' && value !== 'copilot' && value !== 'codex') {
+        return false;
+      }
+      next.preset = value as ProviderPreset;
+    } else if (key === 'sandboxMode') {
+      if (value !== 'local' && value !== 'remote') {
+        return false;
+      }
+      next.sandboxMode = value as SandboxMode;
+    } else if (key === 'thinkingLevel') {
+      if (value !== 'off' && value !== 'low' && value !== 'medium' &&
+        value !== 'high') {
+        return false;
+      }
+      next.thinkingLevel = value as ThinkingLevel;
+    } else if (key === 'baseUrl') {
+      next.baseUrl = value;
+    } else if (key === 'modelId') {
+      next.modelId = value;
+    } else if (key === 'systemPrompt') {
+      next.systemPrompt = value;
+    } else if (key === 'sandboxUrl') {
+      next.sandboxUrl = value;
+    } else if (key === 'accentColor') {
+      next.accentColor = value;
+    } else if (key === 'soulId') {
+      next.soulId = value;
+    } else if (key === 'webDavUrl') {
+      next.webDavUrl = value;
+    } else if (key === 'webDavUser') {
+      next.webDavUser = value;
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  private restoreConfigAudit(id: string): void {
+    let entry: ConfigAuditEntry | null = null;
+    for (let i = 0; i < this.configAudit.length; i++) {
+      if (this.configAudit[i].id === id) {
+        entry = this.configAudit[i];
+        break;
+      }
+    }
+    if (entry === null) {
+      this.toast(t('该配置记录已不存在'));
+      return;
+    }
+    if (!entry.restorable) {
+      this.toast(t('该配置项不支持还原'));
+      return;
+    }
+    const next: AppSettings = cloneSettings(this.settings);
+    if (!this.applyAuditedValue(next, entry.key, entry.before)) {
+      this.toast(t('该配置值无法还原'));
+      return;
+    }
+    const key: string = entry.key;
+    this.applySettings(next);
+    this.toast(t('已还原配置 ') + key);
+  }
+
+  private clearConfigAudit(): void {
+    this.configAudit = [];
+    try {
+      const context: common.UIAbilityContext =
+        getContext(this) as common.UIAbilityContext;
+      ConfigAuditStore.clear(context);
+    } catch (e) {
+    }
+    this.toast(t('配置变更记录已清空'));
+  }
+
   private applySettings(next: AppSettings): void {
+    this.recordConfigChanges(this.settings, next);
     this.settings = next;
     this.applyAppearance(next);
     AppLogger.setEnabled(next.loggingEnabled);
@@ -2756,6 +2988,7 @@ struct Index {
     }
     const next: AppSettings = cloneSettings(this.settings);
     next.modelId = id;
+    this.recordConfigChanges(this.settings, next);
     this.settings = next;
     this.showModels = false;
     LocalStore.saveSettings(next).catch((error: Error) => {
@@ -4191,6 +4424,9 @@ struct Index {
       if (this.showSettings) {
         SettingsSheet({
           settings: this.settings,
+          auditEntries: this.configAudit.slice(0, 30),
+          onRestoreAudit: (id: string) => this.restoreConfigAudit(id),
+          onClearAudit: () => this.clearConfigAudit(),
           onCancel: () => {
             this.showSettings = false;
           },

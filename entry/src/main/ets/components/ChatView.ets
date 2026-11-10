@@ -19,6 +19,7 @@ import {
   replaceMention
 } from '../core/Mention';
 import { listWorkspaceFiles } from '../service/WorkspaceFiles';
+import { hugePasteInsertion, isPastedAttachment } from '../core/Paste';
 
 const SUGGESTIONS: string[] = [
   '帮我写一个鸿蒙 ArkTS 页面',
@@ -53,6 +54,8 @@ export struct ChatView {
   @StorageProp('autoFocusInput') autoFocusInput: boolean = true;
   @Link @Watch('onDraftChanged') draft: string;
   @Prop attachments: ChatAttachment[] = [];
+  /** Hand a >15k paste to the host; true means it became an attachment. */
+  onHugePaste: (text: string) => boolean = () => false;
   /** Workspace whose files are offered by the `@` menu. */
   @Prop workspaceRoot: string = '';
   @State mentionOpen: boolean = false;
@@ -495,6 +498,15 @@ export struct ChatView {
     this.refreshMention(this.draft);
   }
 
+  private isPastedFile(item: ChatAttachment): boolean {
+    return isPastedAttachment(item.uri, item.mimeType);
+  }
+
+  private fileLabel(item: ChatAttachment): string {
+    const cut: number = item.path.lastIndexOf('/');
+    return cut < 0 ? item.path : item.path.substring(cut + 1);
+  }
+
   private isVideo(item: ChatAttachment): boolean {
     return item.mimeType.startsWith('video/');
   }
@@ -610,7 +622,24 @@ export struct ChatView {
         Row({ space: 8 }) {
           ForEach(this.attachments, (item: ChatAttachment, index: number) => {
             Stack({ alignContent: Alignment.TopEnd }) {
-              if (this.isVideo(item) || this.isAudio(item)) {
+              if (this.isPastedFile(item)) {
+                Column({ space: 2 }) {
+                  Text('📄')
+                    .fontSize(17)
+                  Text(this.fileLabel(item))
+                    .fontSize(7)
+                    .fontColor($r('app.color.text_secondary'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width(48)
+                    .textAlign(TextAlign.Center)
+                }
+                .width(56)
+                .height(56)
+                .justifyContent(FlexAlign.Center)
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(9)
+              } else if (this.isVideo(item) || this.isAudio(item)) {
                 Column({ space: 2 }) {
                   Text(this.isVideo(item) ? '▶' : '♪')
                     .fontSize(17)
@@ -692,6 +721,17 @@ export struct ChatView {
           .borderWidth(0)
           .padding({ left: 8, right: 8, top: 10, bottom: 10 })
           .onChange((value: string) => {
+            const pasted: string = hugePasteInsertion(this.draft, value);
+            if (pasted.length > 0 && this.onHugePaste(pasted)) {
+              // Show the paste once so TextArea accepts the edit, then restore
+              // the draft without the inserted body on the next tick.
+              const restore: string = this.draft;
+              this.draft = value;
+              setTimeout(() => {
+                this.draft = restore;
+              }, 0);
+              return;
+            }
             this.draft = value;
           })
           .enterKeyType(this.enterToSend ? EnterKeyType.Send : EnterKeyType.NEW_LINE)

@@ -538,6 +538,26 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
   看到路径，可用文件工具读取；工具栏的 `@` 按钮插入触发符；
 - 草稿被清空或 token 含空白时菜单自动关闭，不需要额外的取消逻辑。
 
+## 长粘贴转工作区附件
+
+ArkUI 的 `TextArea` 没有粘贴事件，只在 `onChange` 给出完整新值。`core/Paste.ets`
+的 `hugePasteInsertion(before, after)` 先比较长度差是否超过 `PASTE_FILE_THRESHOLD`
+（15000），再用公共前缀/公共后缀夹出本次编辑的片段。这样粘贴落在开头、中间、末尾
+甚至替换选区都能还原，而不必依赖光标位置。范围较小、但整段草稿已经超过 15000 字的
+编辑不会被误判，因为判断依据是单次增量。
+
+`ChatView` 检测到长片段后调用 `onHugePaste`。宿主 `Index.attachHugePaste()` 把正文
+写入 `<workspace>/pasted/Pasted_<本地时间>_<毫秒>.txt`，再追加一个
+`minis://workspace/pasted/...` 的 `text/plain` 附件；写入失败时返回 false，输入框
+保留原文。成功时组件先让 `TextArea` 接受一次新值，再在下一个 tick 把草稿恢复为
+粘贴前的内容——直接赋回旧值可能与框架的旧渲染比较相等而不刷新。
+
+发送（以及生成中排队注入的 `queuedParts`）把该附件转换成一段
+`[粘贴文本] pasted/...（长文本已保存为工作区文件，可用 read_file 读取完整内容）`
+文本加一个文件 part。气泡只渲染文本标记和 📄 附件卡片，正文不进入界面；模型按需
+读取文件。工具关闭或使用远程沙箱时不做转换：前者模型没有读取工具，后者看不到本机
+工作区，保留原文在输入框反而不会丢内容。
+
 ## 生成中排队发送
 
 生成期间 `sendMessage()` 不再直接拒绝：本地命令仍提示「请先停止当前生成」，普通

@@ -1,4 +1,5 @@
-import { ChatAttachment, MessagePart, imagePart } from './Types';
+import { ChatAttachment, MessagePart, filePart, imagePart, textPart } from './Types';
+import { isPastedAttachment, pastePlaceholder, pasteRelativePath } from './Paste';
 
 /**
  * A prompt typed while the agent was still generating. OpenMinis keeps these
@@ -19,11 +20,18 @@ export class QueuedPrompt {
   }
 }
 
-/** Multimodal parts for the queued images, in composer order. */
+/** Multimodal parts for the queued attachments, in composer order. */
 export function queuedParts(item: QueuedPrompt): MessagePart[] {
   const parts: MessagePart[] = [];
   for (let i = 0; i < item.attachments.length; i++) {
-    parts.push(imagePart(item.attachments[i].uri, item.attachments[i].mimeType));
+    const uri: string = item.attachments[i].uri;
+    const mime: string = item.attachments[i].mimeType;
+    if (isPastedAttachment(uri, mime)) {
+      parts.push(textPart(pastePlaceholder(pasteRelativePath(uri))));
+      parts.push(filePart(uri, mime));
+    } else {
+      parts.push(imagePart(uri, mime));
+    }
   }
   return parts;
 }

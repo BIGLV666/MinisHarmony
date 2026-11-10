@@ -33,8 +33,8 @@ function copyCore(name, deps = []) {
   // interfaces imported alongside runtime values would fail to link.
   if (name === 'PromptQueue') {
     source = source.replace(
-      "import { ChatAttachment, MessagePart, imagePart } from './Types.mts';",
-      "import { imagePart } from './Types.mts';");
+      "import { ChatAttachment, MessagePart, filePart, imagePart, textPart } from './Types.mts';",
+      "import { filePart, imagePart, textPart } from './Types.mts';");
   }
   if (name === 'SessionFolder') {
     source = source.replace(
@@ -61,7 +61,7 @@ copyCore('SubagentJob');
 copyCore('WebUrl');
 copyCore('SubAgentRoster');
 copyCore('Types');
-copyCore('PromptQueue', ['Types']);
+copyCore('PromptQueue', ['Types', 'Paste']);
 copyCore('SessionFolder', ['Types']);
 copyCore('BrowserHistory');
 copyCore('SessionTitle', ['Types']);
@@ -74,6 +74,7 @@ copyCore('ToolCatalog', ['ToolTypes']);
 copyCore('ToolProtocol', ['Types']);
 copyCore('Workspace');
 copyCore('MinisResource', ['Workspace']);
+copyCore('Paste', ['MinisResource']);
 copyCore('Terminal');
 copyCore('SandboxProtocol');
 copyCore('EventLog');
@@ -236,6 +237,7 @@ const skilldoc = await import(pathToFileURL(join(tmp, 'SkillDoc.mts')).href);
 const modelCaps = await import(pathToFileURL(join(tmp, 'ModelCaps.mts')).href);
 const modelTest = await import(pathToFileURL(join(tmp, 'ModelTest.mts')).href);
 const configAudit = await import(pathToFileURL(join(tmp, 'ConfigAudit.mts')).href);
+const paste = await import(pathToFileURL(join(tmp, 'Paste.mts')).href);
 const modelOverride = await import(pathToFileURL(join(tmp, 'ModelOverride.mts')).href);
 const mcp = await import(pathToFileURL(join(tmp, 'McpProtocol.mts')).href);
 const mcpOAuth = await import(pathToFileURL(join(tmp, 'McpOAuth.mts')).href);
@@ -3990,4 +3992,33 @@ test('config audit labels hide secret values and summarize lists', () => {
   assert.equal(configAudit.configAuditRestorable('temperature'), true);
   assert.equal(configAudit.configAuditRestorable('apiKey'), false);
   assert.equal(configAudit.configAuditRestorable('unknown'), false);
+});
+
+test('huge paste detection extracts only the inserted chunk', () => {
+  const big = 'x'.repeat(paste.PASTE_FILE_THRESHOLD + 1);
+  assert.equal(paste.hugePasteInsertion('', big), big);
+  assert.equal(paste.hugePasteInsertion('hello', 'hello' + big), big);
+  assert.equal(paste.hugePasteInsertion('hello', big + 'hello'), big);
+  assert.equal(paste.hugePasteInsertion('ab', 'a' + big + 'b'), big);
+  assert.equal(paste.hugePasteInsertion('notes', 'notes'), '');
+  assert.equal(paste.hugePasteInsertion('a', 'a' + 'x'.repeat(100)), '');
+  assert.equal(paste.hugePasteInsertion('old', big), '', 'delta below threshold');
+  assert.equal(paste.hugePasteInsertion('old', big + 'zzz'), big + 'zzz',
+    'replacement paste');
+});
+
+test('paste files use a stable local name and workspace path', () => {
+  const at = new Date(2026, 10, 10, 9, 5, 7, 42);
+  assert.equal(paste.pasteFileName(at), 'Pasted_2026-11-10_090507042.txt');
+  assert.equal(paste.pastedRelativePath('Pasted_1.txt'), 'pasted/Pasted_1.txt');
+  assert.equal(paste.pasteRelativePath('minis://workspace/pasted/Pasted_1.txt'),
+    'pasted/Pasted_1.txt');
+  assert.equal(paste.pasteRelativePath('minis://workspace/notes/a.txt'), '');
+  assert.equal(paste.pasteRelativePath('minis://attachments/pasted/a.txt'), '');
+  assert.equal(paste.pasteRelativePath('not a uri'), '');
+  assert.equal(paste.isPastedAttachment('minis://workspace/pasted/a.txt', 'text/plain'),
+    true);
+  assert.equal(paste.isPastedAttachment('minis://workspace/pasted/a.txt', 'image/png'),
+    false);
+  assert.equal(paste.pastePlaceholder('pasted/a.txt').indexOf('pasted/a.txt') > 0, true);
 });

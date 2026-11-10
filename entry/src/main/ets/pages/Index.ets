@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { picker } from '@kit.CoreFileKit';
+import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { camera, cameraPicker } from '@kit.CameraKit';
 import { util } from '@kit.ArkTS';
 import {
@@ -141,8 +141,17 @@ import {
   MINIS_ATTACHMENTS,
   MINIS_BROWSER,
   MINIS_WORKSPACE,
-  MinisResource
+  MinisResource,
+  resourceUrl
 } from '../core/MinisResource';
+import {
+  PASTED_DIR,
+  isPastedAttachment,
+  pasteFileName,
+  pastePlaceholder,
+  pasteRelativePath,
+  pastedRelativePath
+} from '../core/Paste';
 import {
   ScheduledTask,
   TaskRun,
@@ -1979,6 +1988,48 @@ struct Index {
     }
   }
 
+  /**
+   * A >15k paste is written to `<workspace>/pasted/` and attached instead of
+   * staying in the composer. The file is a normal workspace document, so the
+   * model can read it with `read_file`; only a short marker travels in chat.
+   * Returns false when the write failed, letting the composer keep the text.
+   */
+  private attachHugePaste(text: string): boolean {
+    // Without local file tools the model could not read the attachment, and a
+    // remote sandbox cannot see this workspace; keep the text in the composer.
+    if (this.workspaceRoot.length === 0 || !this.settings.toolsEnabled ||
+      this.settings.sandboxMode === 'remote') {
+      return false;
+    }
+    const dir: string = this.workspaceRoot + '/' + PASTED_DIR;
+    const name: string = pasteFileName(new Date());
+    const absolute: string = dir + '/' + name;
+    try {
+      if (!fs.accessSync(dir)) {
+        fs.mkdirSync(dir, true);
+      }
+      const file = fs.openSync(absolute,
+        fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+      try {
+        fs.writeSync(file.fd, text);
+      } finally {
+        fs.closeSync(file);
+      }
+    } catch (e) {
+      this.toast(t('长文本保存失败，已保留在输入框'));
+      return false;
+    }
+    const next: ChatAttachment[] = this.pendingAttachments.slice();
+    next.push({
+      uri: resourceUrl(MINIS_WORKSPACE, pastedRelativePath(name)),
+      mimeType: 'text/plain',
+      path: absolute
+    });
+    this.pendingAttachments = next;
+    this.toast(t('长文本已保存为工作区附件'));
+    return true;
+  }
+
   /** Copy picked media into the sandbox and append it to the composer. */
   private async attachPicked(uris: string[], failedLabel: string): Promise<void> {
     const next: ChatAttachment[] = this.pendingAttachments.slice();
@@ -2293,7 +2344,10 @@ struct Index {
       for (let i = 0; i < attachments.length; i++) {
         const uri: string = attachments[i].uri;
         const mime: string = attachments[i].mimeType;
-        if (mime.startsWith('video/') || mime.startsWith('audio/')) {
+        if (isPastedAttachment(uri, mime)) {
+          parts.push(textPart(pastePlaceholder(pasteRelativePath(uri))));
+          parts.push(filePart(uri, mime));
+        } else if (mime.startsWith('video/') || mime.startsWith('audio/')) {
           const label: string = mime.startsWith('video/') ? t('视频') : t('音频');
           parts.push(textPart('[' + label + '] ' +
             AttachmentStore.nameFromUri(uri)));
@@ -4281,6 +4335,7 @@ struct Index {
       draft: $draft,
       workspaceRoot: this.workspaceRoot,
       attachments: this.pendingAttachments,
+      onHugePaste: (text: string) => this.attachHugePaste(text),
       queuedCount: this.queuedPrompts.length,
       onSend: () => this.sendMessage(),
       onQueue: () => this.sendMessage(),

@@ -67,6 +67,7 @@ copyCore('BrowserHistory');
 copyCore('SessionTitle', ['Types']);
 copyCore('Mention');
 copyCore('UsageStats');
+copyCore('McpOverrides');
 copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -88,7 +89,7 @@ copyCore('Device');
 copyCore('OAuth');
 copyCore('ToolArgs');
 copyCore('ToolLoop');
-copyCore('SessionExport', ['Types', 'MarkdownExport']);
+copyCore('SessionExport', ['Types', 'MarkdownExport', 'McpOverrides']);
 copyCore('FileListing');
 copyCore('SessionParams', ['Types']);
 copyCore('Appearance');
@@ -211,6 +212,7 @@ const browserHistory = await import(pathToFileURL(join(tmp, 'BrowserHistory.mts'
 const sessionTitle = await import(pathToFileURL(join(tmp, 'SessionTitle.mts')).href);
 const mention = await import(pathToFileURL(join(tmp, 'Mention.mts')).href);
 const usageStats = await import(pathToFileURL(join(tmp, 'UsageStats.mts')).href);
+const mcpOverrides = await import(pathToFileURL(join(tmp, 'McpOverrides.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
@@ -3847,4 +3849,16 @@ test('usage rollups total by model and by day', () => {
   assert.equal(usageStats.usageByDay(records, 1).length, 1);
   assert.equal(usageStats.usageByDay(records, 0).length, 2,
     'a zero limit keeps every day');
+});
+
+test('MCP session overrides normalize and toggle one server', () => {
+  assert.deepEqual(mcpOverrides.normalizeMcpDisabled([' a ', '', 'b', 'a']), ['a', 'b']);
+  assert.equal(mcpOverrides.isMcpDisabled(['a', 'b'], 'b'), true);
+  assert.equal(mcpOverrides.isMcpDisabled(['a'], 'z'), false);
+  assert.deepEqual(mcpOverrides.setMcpDisabled(['a'], 'b', true), ['a', 'b']);
+  assert.deepEqual(mcpOverrides.setMcpDisabled(['a', 'b'], 'a', true), ['b', 'a'],
+    'turning an already-disabled server off keeps it last');
+  assert.deepEqual(mcpOverrides.setMcpDisabled(['a', 'b'], 'a', false), ['b']);
+  assert.deepEqual(mcpOverrides.setMcpDisabled(['a'], '  ', true), ['a'],
+    'an empty id changes nothing');
 });

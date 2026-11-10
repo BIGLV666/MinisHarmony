@@ -106,16 +106,29 @@ class McpRegistryStore {
     return statuses;
   }
 
-  definitions(disabledTools: string[]): ToolDefinition[] {
+  definitions(disabledTools: string[], disabledServers: string[] = []): ToolDefinition[] {
     const out: ToolDefinition[] = [];
     for (let i = 0; i < this.tools.length; i++) {
-      const name: string = this.tools[i].exposedName;
-      if (disabledTools.indexOf(name) >= 0) {
+      const info: McpToolInfo = this.tools[i];
+      if (disabledTools.indexOf(info.exposedName) >= 0) {
         continue;
       }
-      out.push(definitionFor(this.tools[i]));
+      if (disabledServers.indexOf(info.serverId) >= 0) {
+        continue;
+      }
+      out.push(definitionFor(info));
     }
     return out;
+  }
+
+  /** Owning server id, or an empty string when the name is not an MCP tool. */
+  serverIdOf(exposedName: string): string {
+    for (let i = 0; i < this.tools.length; i++) {
+      if (this.tools[i].exposedName === exposedName) {
+        return this.tools[i].serverId;
+      }
+    }
+    return '';
   }
 
   /** Returns null when the name is not an MCP tool. */
@@ -144,15 +157,22 @@ export const McpRegistry: McpRegistryStore = new McpRegistryStore();
 export class McpRuntime implements ToolRuntime {
   private inner: ToolRuntime;
   private disabledTools: string[];
+  private disabledServers: string[];
 
-  constructor(inner: ToolRuntime, disabledTools: string[]) {
+  constructor(
+    inner: ToolRuntime,
+    disabledTools: string[],
+    disabledServers: string[] = []
+  ) {
     this.inner = inner;
     this.disabledTools = disabledTools;
+    this.disabledServers = disabledServers;
   }
 
   definitions(): ToolDefinition[] {
     const base: ToolDefinition[] = this.inner.definitions();
-    const extra: ToolDefinition[] = McpRegistry.definitions(this.disabledTools);
+    const extra: ToolDefinition[] =
+      McpRegistry.definitions(this.disabledTools, this.disabledServers);
     for (let i = 0; i < extra.length; i++) {
       base.push(extra[i]);
     }
@@ -160,6 +180,10 @@ export class McpRuntime implements ToolRuntime {
   }
 
   async execute(name: string, argumentsJson: string): Promise<ToolResult> {
+    const serverId: string = McpRegistry.serverIdOf(name);
+    if (serverId.length > 0 && this.disabledServers.indexOf(serverId) >= 0) {
+      return { ok: false, content: t('该 MCP 服务已在本会话关闭。') };
+    }
     const mcpResult: ToolResult | null = await McpRegistry.call(name, argumentsJson);
     if (mcpResult !== null) {
       return mcpResult;

@@ -13,6 +13,7 @@ import {
 import { normalizeSoulId } from '../core/Soul';
 import { normalizeModelOverrides } from '../core/ModelOverride';
 import { normalizeMcpServers } from '../core/McpProtocol';
+import { normalizeMcpDisabled } from '../core/McpOverrides';
 import { normalizeAgents } from '../core/SubAgentRoster';
 import {
   AppSettings,
@@ -255,7 +256,9 @@ function normalizeSession(source: StoredSession): StoredSession | null {
       modelOverride: source.meta.modelOverride !== undefined ? source.meta.modelOverride : '',
       thinkingOverride: source.meta.thinkingOverride !== undefined ? source.meta.thinkingOverride : '',
       promptOverride: source.meta.promptOverride !== undefined ? source.meta.promptOverride : '',
-      folderId: source.meta.folderId !== undefined ? source.meta.folderId : ''
+      folderId: source.meta.folderId !== undefined ? source.meta.folderId : '',
+      mcpDisabled: normalizeMcpDisabled(
+        source.meta.mcpDisabled !== undefined ? source.meta.mcpDisabled : [])
     },
     messages: messages
   };

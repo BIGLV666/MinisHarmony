@@ -101,12 +101,19 @@ import { ScreenshotOutcome, saveShareCard } from '../service/Screenshot';
 import { shareCardFileName } from '../core/ShareCard';
 import { shareCardView } from '../components/ShareCardView';
 import { AttachmentStore } from '../service/AttachmentStore';
-import { MemoryStore } from '../service/MemoryStore';
+import { MemoryLogEntry, MemoryStore } from '../service/MemoryStore';
+import { MemoryFile } from '../core/Memory';
+import {
+  isMcpDisabled,
+  normalizeMcpDisabled,
+  setMcpDisabled
+} from '../core/McpOverrides';
 import { SkillDoc, SkillCommand, matchSkillCommand } from '../core/SkillDoc';
 import { SkillStore } from '../service/SkillStore';
 import { keepScreenOn } from '../service/ScreenWake';
 import { RemoteToolRuntime } from '../service/RemoteToolRuntime';
 import { McpRegistry, McpRuntime } from '../service/McpRuntime';
+import { McpServerConfig } from '../core/McpProtocol';
 import { WidgetBridge } from '../service/WidgetBridge';
 import { widgetExcerpt } from '../core/WidgetData';
 import { mergeBackupSettings } from '../core/Backup';
@@ -228,6 +235,14 @@ struct Index {
   @State paramModel: string = '';
   @State paramThinking: string = '';
   @State paramPrompt: string = '';
+  @State paramMcpDisabled: string[] = [];
+  @State memoryOpen: boolean = false;
+  @State memoryInjected: string = '';
+  @State memoryFiles: MemoryFile[] = [];
+  @State memoryDrafts: string[] = [];
+  @State memoryOriginals: string[] = [];
+  @State memoryLogs: MemoryLogEntry[] = [];
+  @State memoryNotice: string = '';
   @State rewindId: string = '';
   @State showArchived: boolean = false;
   @State showFolderManager: boolean = false;
@@ -1639,7 +1654,10 @@ struct Index {
       archived: false,
       modelOverride: source.meta.modelOverride,
       thinkingOverride: source.meta.thinkingOverride,
-      promptOverride: source.meta.promptOverride
+      promptOverride: source.meta.promptOverride,
+      folderId: source.meta.folderId,
+      mcpDisabled: source.meta.mcpDisabled !== undefined
+        ? source.meta.mcpDisabled.slice() : []
     };
     const copied: ChatMessage[] =
       JSON.parse(JSON.stringify(source.messages)) as ChatMessage[];
@@ -1664,6 +1682,8 @@ struct Index {
     this.paramModel = session.meta.modelOverride !== undefined ? session.meta.modelOverride : '';
     this.paramThinking = session.meta.thinkingOverride !== undefined ? session.meta.thinkingOverride : '';
     this.paramPrompt = session.meta.promptOverride !== undefined ? session.meta.promptOverride : '';
+    this.paramMcpDisabled = normalizeMcpDisabled(
+      session.meta.mcpDisabled !== undefined ? session.meta.mcpDisabled : []);
   }
 
   private saveSessionParams(): void {
@@ -1674,6 +1694,7 @@ struct Index {
       return;
     }
     applySessionParams(session.meta, this.paramModel, this.paramThinking, this.paramPrompt);
+    session.meta.mcpDisabled = normalizeMcpDisabled(this.paramMcpDisabled);
     session.meta.updatedAt = Date.now();
     if (id === this.currentId) {
       this.syncThinkingOverride();
@@ -1691,6 +1712,7 @@ struct Index {
       return;
     }
     clearSessionParams(session.meta);
+    session.meta.mcpDisabled = [];
     session.meta.updatedAt = Date.now();
     if (id === this.currentId) {
       this.syncThinkingOverride();
@@ -1698,6 +1720,61 @@ struct Index {
     this.refreshSessions();
     this.persistSoon();
     this.toast(t('已恢复为全局设置'));
+  }
+
+  private openMemoryPanel(): void {
+    this.memoryOpen = true;
+    this.memoryNotice = this.settings.memoryEnabled
+      ? '' : t('持久记忆未开启；到设置 → 工具与沙箱打开后，模型才能读写记忆。');
+    this.refreshMemoryPanel();
+  }
+
+  private refreshMemoryPanel(): void {
+    this.memoryInjected = this.settings.memoryEnabled ? MemoryStore.context() : '';
+    const files: MemoryFile[] = MemoryStore.editable();
+    const drafts: string[] = [];
+    const originals: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      drafts.push(files[i].text);
+      originals.push(files[i].text);
+    }
+    this.memoryFiles = files;
+    this.memoryDrafts = drafts;
+    this.memoryOriginals = originals;
+    this.memoryLogs = MemoryStore.logs();
+  }
+
+  private saveMemoryAt(index: number): void {
+    if (index < 0 || index >= this.memoryFiles.length) {
+      return;
+    }
+    const name: string = this.memoryFiles[index].name;
+    this.memoryNotice = MemoryStore.saveText(name, this.memoryDrafts[index]);
+    this.memoryInjected = this.settings.memoryEnabled ? MemoryStore.context() : '';
+    this.memoryLogs = MemoryStore.logs();
+  }
+
+  /** Restore the text this file had when the panel opened, then reread it. */
+  private undoMemoryAt(index: number): void {
+    if (index < 0 || index >= this.memoryFiles.length) {
+      return;
+    }
+    const name: string = this.memoryFiles[index].name;
+    const original: string = this.memoryOriginals[index];
+    const next: string[] = this.memoryDrafts.slice();
+    next[index] = original;
+    this.memoryDrafts = next;
+    this.memoryNotice = MemoryStore.saveText(name, original);
+    this.memoryInjected = this.settings.memoryEnabled ? MemoryStore.context() : '';
+    this.memoryLogs = MemoryStore.logs();
+  }
+
+  private memoryClock(at: number): string {
+    const date: Date = new Date(at);
+    const hour: number = date.getHours();
+    const minute: number = date.getMinutes();
+    return (hour < 10 ? '0' : '') + hour.toString() + ':' +
+      (minute < 10 ? '0' : '') + minute.toString();
   }
 
   private performDelete(): void {
@@ -2517,7 +2594,10 @@ struct Index {
         shell
       );
     }
-    return new McpRuntime(base, settings.disabledTools);
+    const meta: StoredSession | null = this.findSession(sessionId);
+    const disabledServers: string[] = meta !== null && meta.meta.mcpDisabled !== undefined
+      ? normalizeMcpDisabled(meta.meta.mcpDisabled) : [];
+    return new McpRuntime(base, settings.disabledTools, disabledServers);
   }
 
   /**
@@ -3174,6 +3254,53 @@ struct Index {
             this.paramPrompt = value;
           })
 
+        Text(t('MCP 服务'))
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+        Text(t('只影响当前对话；关闭后本轮不向模型提供该服务的工具。全局已关闭的服务需先在设置中启用。'))
+          .fontSize(11)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+        if (this.settings.mcpServers.length === 0) {
+          Text(t('尚未配置 MCP 服务。'))
+            .fontSize(12)
+            .fontColor($r('app.color.text_tertiary'))
+            .width('100%')
+        } else {
+          ForEach(this.settings.mcpServers, (server: McpServerConfig) => {
+            Row({ space: 10 }) {
+              Column({ space: 2 }) {
+                Text(server.name)
+                  .fontSize(13)
+                  .fontColor(server.enabled
+                    ? $r('app.color.text_primary')
+                    : $r('app.color.text_tertiary'))
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                Text(server.enabled ? server.id : t('全局已关闭'))
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+
+              Toggle({ type: ToggleType.Switch,
+                isOn: server.enabled && !isMcpDisabled(this.paramMcpDisabled, server.id) })
+                .enabled(server.enabled)
+                .selectedColor(this.accent)
+                .onChange((on: boolean) => {
+                  this.paramMcpDisabled =
+                    setMcpDisabled(this.paramMcpDisabled, server.id, !on);
+                })
+            }
+            .width('100%')
+            .padding({ top: 4, bottom: 4 })
+          }, (server: McpServerConfig) => server.id)
+        }
+
         Row({ space: 8 }) {
           Button(t('恢复全局'), { type: ButtonType.Normal })
             .layoutWeight(1)
@@ -3206,6 +3333,187 @@ struct Index {
       }
       .width('86%')
       .constraintSize({ maxWidth: 440 })
+      .padding(18)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  memoryPanel() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+        .onClick(() => {
+          this.memoryOpen = false;
+        })
+      Column({ space: 10 }) {
+        Row() {
+          Column({ space: 2 }) {
+            Text(t('记忆'))
+              .fontSize(17)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_primary'))
+            Text(t('查看本轮注入的记忆、编辑记忆文件，并回看近期读写。'))
+              .fontSize(11)
+              .fontColor($r('app.color.text_secondary'))
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+          Text('✕')
+            .fontSize(16)
+            .fontColor($r('app.color.text_secondary'))
+            .padding(6)
+            .onClick(() => {
+              this.memoryOpen = false;
+            })
+        }
+        .width('100%')
+
+        if (this.memoryNotice.length > 0) {
+          Text(this.memoryNotice)
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+            .width('100%')
+            .padding(8)
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(8)
+        }
+
+        Scroll() {
+          Column({ space: 14 }) {
+            Column({ space: 6 }) {
+              Text(t('本轮注入的系统提示'))
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_secondary'))
+                .width('100%')
+              if (this.memoryInjected.length === 0) {
+                Text(t('当前没有可注入的记忆内容。'))
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .width('100%')
+              } else {
+                Text(this.memoryInjected)
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_primary'))
+                  .lineHeight(17)
+                  .width('100%')
+                  .padding(10)
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(9)
+              }
+            }
+            .width('100%')
+
+            Divider().color($r('app.color.border'))
+
+            Column({ space: 10 }) {
+              Text(t('记忆文件'))
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_secondary'))
+                .width('100%')
+              ForEach(this.memoryFiles, (file: MemoryFile, index: number) => {
+                Column({ space: 6 }) {
+                  Row({ space: 8 }) {
+                    Text(file.name)
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_primary'))
+                      .layoutWeight(1)
+                    Text(t('撤销'))
+                      .fontSize(11)
+                      .fontColor(this.memoryDrafts[index] === this.memoryOriginals[index]
+                        ? $r('app.color.text_tertiary')
+                        : $r('app.color.text_secondary'))
+                      .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                      .enabled(this.memoryDrafts[index] !== this.memoryOriginals[index])
+                      .onClick(() => this.undoMemoryAt(index))
+                    Text(t('保存'))
+                      .fontSize(11)
+                      .fontColor($r('app.color.on_accent'))
+                      .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+                      .backgroundColor(this.accent)
+                      .borderRadius(7)
+                      .onClick(() => this.saveMemoryAt(index))
+                  }
+                  .width('100%')
+                  TextArea({
+                    text: this.memoryDrafts[index],
+                    placeholder: t('这个记忆文件还是空的')
+                  })
+                    .width('100%')
+                    .height(76)
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                    .placeholderColor($r('app.color.text_tertiary'))
+                    .backgroundColor($r('app.color.surface_alt'))
+                    .borderRadius(9)
+                    .onChange((value: string) => {
+                      const next: string[] = this.memoryDrafts.slice();
+                      next[index] = value;
+                      this.memoryDrafts = next;
+                    })
+                }
+                .width('100%')
+                .padding(10)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(11)
+                .border({ width: 1, color: $r('app.color.border') })
+              }, (file: MemoryFile) => file.name)
+            }
+            .width('100%')
+
+            Divider().color($r('app.color.border'))
+
+            Column({ space: 6 }) {
+              Text(t('近期读写'))
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_secondary'))
+                .width('100%')
+              if (this.memoryLogs.length === 0) {
+                Text(t('本次启动后还没有记忆读写。'))
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .width('100%')
+              } else {
+                ForEach(this.memoryLogs, (entry: MemoryLogEntry, index: number) => {
+                  Row({ space: 8 }) {
+                    Text(this.memoryClock(entry.at))
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                    Text(entry.text)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_secondary'))
+                      .layoutWeight(1)
+                      .maxLines(2)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  }
+                  .width('100%')
+                  .padding({ top: 3, bottom: 3 })
+                }, (entry: MemoryLogEntry, index: number) =>
+                  entry.at.toString() + '_' + index.toString())
+              }
+            }
+            .width('100%')
+          }
+          .width('100%')
+          .padding({ right: 4 })
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .scrollBar(BarState.Auto)
+      }
+      .width('92%')
+      .constraintSize({ maxWidth: 560 })
+      .height('86%')
       .padding(18)
       .backgroundColor($r('app.color.surface'))
       .borderRadius(18)
@@ -3639,6 +3947,7 @@ struct Index {
       onSettings: () => {
         this.showSettings = true;
       },
+      onMemory: () => this.openMemoryPanel(),
       onScheduledTasks: () => {
         this.showTasks = true;
       },
@@ -3830,6 +4139,10 @@ struct Index {
 
       if (this.paramsId.length > 0) {
         this.sessionParamsDialog()
+      }
+
+      if (this.memoryOpen) {
+        this.memoryPanel()
       }
 
       if (this.deleteId.length > 0) {

@@ -81,6 +81,8 @@ export struct ChatView {
   };
   onSettings: () => void = () => {
   };
+  onMemory: () => void = () => {
+  };
   onScheduledTasks: () => void = () => {
   };
   onPickModel: () => void = () => {
@@ -263,6 +265,12 @@ export struct ChatView {
   @Builder
   headerMenu() {
     Column({ space: 2 }) {
+      Text(t('记忆'))
+        .width(160)
+        .fontSize(13)
+        .fontColor($r('app.color.text_primary'))
+        .padding(10)
+        .onClick(() => this.onMemory())
       Text(t('定时任务'))
         .width(160)
         .fontSize(13)
@@ -349,6 +357,12 @@ export struct ChatView {
       }
 
       if (this.isWide) {
+        Text(t('记忆'))
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+          .padding({ left: 8, right: 8, top: 8, bottom: 8 })
+          .onClick(() => this.onMemory())
+
         Text(t('任务'))
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))

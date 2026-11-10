@@ -323,6 +323,8 @@ export interface SessionMeta {
   promptOverride?: string;
   /** Sidebar folder; empty/undefined means "ungrouped". */
   folderId?: string;
+  /** MCP server ids switched off for this session only. */
+  mcpDisabled?: string[];
 }
 
 export interface StoredSession {

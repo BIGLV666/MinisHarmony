@@ -11,6 +11,11 @@ import {
 } from '../core/Memory';
 import { t } from '../core/I18n';
 
+export interface MemoryLogEntry {
+  at: number;
+  text: string;
+}
+
 const GLOBAL_FILE: string = 'GLOBAL.md';
 const DEFAULT_DAYS: number = 7;
 const CONTEXT_DAYS: number = 3;
@@ -25,6 +30,19 @@ export class MemoryStore {
   private static root: string = '';
   private static cachedContext: string = '';
   private static cacheAt: number = 0;
+  private static recentLogs: MemoryLogEntry[] = [];
+
+  private static logLine(text: string): void {
+    MemoryStore.recentLogs.unshift({ at: Date.now(), text: text });
+    if (MemoryStore.recentLogs.length > 50) {
+      MemoryStore.recentLogs = MemoryStore.recentLogs.slice(0, 50);
+    }
+  }
+
+  /** Newest-first read/write history for the in-chat memory panel. */
+  static logs(): MemoryLogEntry[] {
+    return MemoryStore.recentLogs.slice();
+  }
 
   static init(root: string): void {
     MemoryStore.root = root;
@@ -138,9 +156,11 @@ export class MemoryStore {
         fs.closeSync(file);
       }
       MemoryStore.cacheAt = 0;
+      MemoryStore.logLine(t('保存记忆文件 ') + name);
       return t('已保存 ') + name;
     } catch (e) {
       const error: Error = e as Error;
+      MemoryStore.logLine(t('保存失败：') + error.message);
       return t('保存失败：') + error.message;
     }
   }
@@ -180,9 +200,11 @@ export class MemoryStore {
         fs.closeSync(file);
       }
       MemoryStore.cacheAt = 0;
+      MemoryStore.logLine(t('代理写入记忆 ') + name + '：' + clean);
       return t('已写入记忆（') + name + t('）：') + clean;
     } catch (e) {
       const error: Error = e as Error;
+      MemoryStore.logLine(t('写入记忆失败：') + error.message);
       return t('写入记忆失败：') + error.message;
     }
   }
@@ -192,6 +214,9 @@ export class MemoryStore {
       return t('记忆目录未初始化。');
     }
     const window: number = days > 0 ? days : DEFAULT_DAYS;
+    const trimmed: string = query.trim();
+    MemoryStore.logLine(t('检索记忆：') +
+      (trimmed.length > 0 ? trimmed : t('最近条目')));
     return searchMemoryFiles(MemoryStore.files(window), query, limit);
   }
 

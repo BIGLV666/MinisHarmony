@@ -22,6 +22,7 @@ import {
   makePart
 } from './Types';
 import { exportStamp, safeFileBase } from './MarkdownExport';
+import { normalizeMcpDisabled } from './McpOverrides';
 import { t } from './I18n';
 
 export const SESSION_EXPORT_APP: string = 'MinisHarmony';
@@ -72,7 +73,8 @@ function settledSession(session: StoredSession, messages: ChatMessage[]): Stored
       modelOverride: session.meta.modelOverride,
       thinkingOverride: session.meta.thinkingOverride,
       promptOverride: session.meta.promptOverride,
-      folderId: session.meta.folderId
+      folderId: session.meta.folderId,
+      mcpDisabled: session.meta.mcpDisabled
     },
     messages: messages
   };
@@ -168,6 +170,7 @@ interface RawMeta {
   thinkingOverride?: string;
   promptOverride?: string;
   folderId?: string;
+  mcpDisabled?: string[];
 }
 
 interface RawSession {
@@ -329,7 +332,9 @@ function importRawSession(
         promptOverride: raw.meta.promptOverride !== undefined ? raw.meta.promptOverride : '',
         // Folder ids are local: a normal import lands ungrouped, a backup
         // restore keeps membership because the folder list is in settings.
-        folderId: preserve && raw.meta.folderId !== undefined ? raw.meta.folderId : ''
+        folderId: preserve && raw.meta.folderId !== undefined ? raw.meta.folderId : '',
+        mcpDisabled: preserve && raw.meta.mcpDisabled !== undefined
+          ? normalizeMcpDisabled(raw.meta.mcpDisabled) : []
       },
       messages: messages
     },

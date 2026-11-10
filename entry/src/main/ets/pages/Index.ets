@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { picker } from '@kit.CoreFileKit';
+import { camera, cameraPicker } from '@kit.CameraKit';
 import { util } from '@kit.ArkTS';
 import {
   AppSettings,
@@ -1407,6 +1408,42 @@ struct Index {
       }
     } catch (e) {
       this.toast(t('选择图片失败'));
+    }
+  }
+
+  /** Launch the system camera picker and attach the captured photo. */
+  private async takePhoto(): Promise<void> {
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const profile: cameraPicker.PickerProfile = {
+        cameraPosition: camera.CameraPosition.CAMERA_POSITION_BACK
+      };
+      const result: cameraPicker.PickerResult = await cameraPicker.pick(
+        context, [cameraPicker.PickerMediaType.PHOTO], profile);
+      if (result.resultCode !== 0 || result.resultUri.length === 0) {
+        return;
+      }
+      const info = await AttachmentStore.saveFromUri(result.resultUri);
+      if (info === null) {
+        this.toast(t('照片无法读取（格式或大小不支持）'));
+        return;
+      }
+      const next: ChatAttachment[] = this.pendingAttachments.slice();
+      next.push({
+        uri: AttachmentStore.uriFor(info.name),
+        mimeType: info.mimeType,
+        path: AttachmentStore.absolutePath(info.name)
+      });
+      this.pendingAttachments = next;
+      const session: StoredSession | null = this.findSession(this.currentId);
+      const modelId: string = session !== null
+        ? effectiveSettings(this.settings, session.meta).modelId
+        : this.settings.modelId;
+      if (!capsForModel(modelId).vision) {
+        this.toast(t('当前模型未标记视觉能力，图片可能被拒绝'));
+      }
+    } catch (e) {
+      this.toast(t('拍照失败'));
     }
   }
 
@@ -2828,6 +2865,7 @@ struct Index {
       onSend: () => this.sendMessage(),
       onStop: () => this.stopStream(),
       onPickImage: () => this.pickImages(),
+      onTakePhoto: () => this.takePhoto(),
       onRemoveAttachment: (index: number) => this.removeAttachment(index),
       onSettings: () => {
         this.showSettings = true;

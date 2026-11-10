@@ -47,6 +47,8 @@ export struct ChatView {
   };
   onPickImage: () => void = () => {
   };
+  onTakePhoto: () => void = () => {
+  };
   onRemoveAttachment: (index: number) => void = (index: number) => {
   };
   onStop: () => void = () => {
@@ -461,6 +463,11 @@ export struct ChatView {
             .fontColor($r('app.color.text_secondary'))
             .padding({ left: 6, right: 6, top: 10, bottom: 10 })
             .onClick(() => this.onPickImage())
+          Text(t('拍照'))
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+            .padding({ left: 6, right: 6, top: 10, bottom: 10 })
+            .onClick(() => this.onTakePhoto())
         }
         TextArea({ text: this.draft, placeholder: t('问点什么…') })
           .id('composerInput')

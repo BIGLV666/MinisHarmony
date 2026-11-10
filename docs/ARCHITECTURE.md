@@ -507,12 +507,19 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 只认 `minis://` 前缀，命中后写入 `AppStorage.pendingDeepLink` 并返回 true，
 避免把链接当分享文本塞进输入框。
 
-`core/DeepLink.ets` 只接受三种会话形式（`session` / `chat` / `s`）与 `new`，
-忽略查询串与片段，未知路径返回 null。UI 收到链接时清空 AppStorage；如果
-bootstrap 还没结束就先缓存，等会话列表加载完再跳转，否则冷启动会找不到目标。
-`minis://workspace/<path>` 与 `minis://attachments/<path>` 作为 Markdown 资源链接
-由 `core/MinisResource.ets` 解析：前者直接打开工作区预览并定位到文件，后者暂只
-提示在消息中查看。`minis://file/...` 这种外部深链仍未实现。
+`core/DeepLink.ets` 按 OpenMinis 的路由表解析：会话支持
+`session` / `sessions` / `chat` / `s` 加 id，`session/<id>/<资源路径>` 在进入会话后
+再打开资源；`open?session=<id>&path=<路径>` 是 launcher 回跳形式，只有 `path` 时
+留在当前会话；`new`、`action/new_chat`、`action/camera_chat`（新建会话并打开系统
+相机）、`task/<id>`、`settings[/<子页>]`（`scheduled*` 与 `views/alarm` 直接打开
+定时任务面板）都有对应动作。路径与查询参数只解码一次，空 id、未知 host 与
+`voice_chat` 返回 null。UI 收到链接时清空 AppStorage；如果 bootstrap 还没结束就
+先缓存，等会话列表加载完再跳转，否则冷启动会找不到目标。
+
+资源链接由 `core/MinisResource.ets` 解析 `workspace` / `browser` / `attachments`
+三个作用域：图片进全屏查看器；`.html`/`.htm` 在工作区面板里用 ArkWeb 渲染；
+其余文本类打开只读预览，二进制给出不可预览原因。`minis://file/...` 在 OpenMinis
+里没有对应实现，本实现同样不接。
 
 ## 接收应用分享
 
@@ -523,9 +530,12 @@ URI `file` + `text/plain`，让本应用出现在系统的分享目标里。`Ent
 `core/SharePayload.ets` 负责归一化：依次尝试 `ability.params.content`、
 `ohos.extra.param.key.content`、`content`、`text`、`sharedText` 几个历史键名；
 文件分享从 `ability.params.stream` 取 URI 列表，只读看起来是文本的文件
-（扩展名或 MIME 判断），上限 512 KB。结果写入 `AppStorage.pendingShareText`，
-`Index` 的 `@StorageProp` 监听后只把文本填进输入框并清空该键——分享不会替用户
-发送消息。纯图片分享目前忽略。
+（扩展名或 MIME 判断），上限 512 KB。图片分享由 `imageUrisFromShare()` 从
+`want.uri` 与 `ability.params.stream` 中挑出（MIME 或常见图片后缀，去重，最多
+4 张），`ShareReceiver` 把 URI 列表写入 `AppStorage.pendingShareImages`，`Index`
+逐张经 `AttachmentStore.saveFromUri()` 复制到应用私有目录后加入待发送附件。
+文本写入 `AppStorage.pendingShareText`，`Index` 的 `@StorageProp` 监听后只把
+文本填进输入框并清空该键——分享不会替用户发送消息。
 
 ## 代码高亮
 
@@ -535,6 +545,20 @@ URI `file` + `text/plain`，让本应用出现在系统的分享目标里。`Ent
 `MarkdownView` 用 `Text { ForEach(Span) }` 输出，每类给一个资源颜色（浅/深色
 各一组）。未知语言、空文本或超过 20000 字符的代码直接返回单个纯文本片段，
 避免流式生成时反复分词拖慢渲染。
+
+## 数学公式
+
+独立成块的 `$$...$$` 交给 `MathBlockView`：每个公式一个 ArkWeb，加载内置
+KaTeX（含 mhchem），页面测量实际宽高后回报，超宽横向滚动，渲染失败退回
+`core/Latex.ets` 的 Unicode 近似。
+
+行内 `$...$` 复刻 OpenMinis Android 的离屏 WebView 池：`InlineMathHost` 在聊天
+界面背后常驻一个透明 ArkWeb，`InlineMathCache` 按「LaTeX + 字号 + 深浅色」
+串行渲染并缓存 `PixelMap`（重复公式共享，上限 256 条），`MarkdownView` 先用
+Unicode 近似占位，位图返回后把对应的 `Span` 换成 `ImageSpan`（基线对齐）。
+正文、标题、列表、引用与表格单元格都走这条路径；`plainMath`（离屏分享卡）
+没有 ArkWeb 宿主，保持近似文本。渲染或截图失败、测量超时都会保留近似文本，
+不会留下空白。
 
 ## 整库备份
 

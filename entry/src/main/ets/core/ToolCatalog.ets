@@ -128,6 +128,7 @@ export function builtinToolDefinitions(): ToolDefinition[] {
         t('set_user_agent 切换 UA，set_viewport 调整或重置视口，') +
         t('scroll_and_collect 边滚动边收集，wait_for_dom_stable 等待 DOM 稳定，') +
         t('screenshot 截图并保存到工作区，fetch 下载 URL 原始字节到工作区并返回链接，') +
+        t('new_tab/close_tab/list_tabs 管理隐藏标签页（最多 4 个），') +
         t('back/forward/reload 导航，wait 等待，title/url 读取当前页。')),
     field('url', 'string', t('open/navigate/fetch 的网址；省略协议时自动补 https://。') +
       t('open/navigate 也接受 minis://workspace/相对路径 或 minis://attachments/文件名。')),
@@ -154,6 +155,8 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('viewport_width', 'number', t('set_viewport 的宽度（CSS 像素），默认 412，最大 4000。')),
     field('viewport_height', 'number', t('set_viewport 的高度（CSS 像素），默认 915，最大 4000。')),
     field('reset', 'boolean', t('set_viewport 时传 true 恢复默认视口，忽略宽高。')),
+    field('tab_id', 'number', t('目标标签页 id；省略时使用当前标签页。') +
+      t('new_tab 新建后自动切过去，close_tab 省略时关闭当前页。')),
     field('keyword', 'string', t('get_cookies 可选：只返回名称匹配的 Cookie。')),
     field('fuzzy', 'boolean', t('get_cookies 的 keyword 匹配方式：true（默认）包含即可，') +
       t('false 要求名称完全相同。'))

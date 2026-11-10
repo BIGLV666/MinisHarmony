@@ -17,44 +17,187 @@ const PAGE_LOAD_TIMEOUT_MS: number = 20000;
 const DEFAULT_MAX_CHARS: number = 8000;
 const MAX_CHARS: number = 20000;
 const MAX_ELEMENTS: number = 50;
+const MAX_TABS: number = 4;
 
 /**
- * The hidden ArkWeb view registers its controller here. Keeping the binding in
- * a module singleton lets the tool runtime reach the UI-owned webview without
- * threading a controller through every service.
+ * The hidden ArkWeb tabs register their controllers here. Keeping the binding
+ * in a module singleton lets the tool runtime reach UI-owned webviews without
+ * threading controllers through every service. Tab ids are allocated by the
+ * tool and mirrored by the UI; ids start at 0 for the always-present tab.
  */
 export class BrowserHostRegistry {
-  private controller: webview.WebviewController | null = null;
-  private pageEnd: (() => void) | null = null;
-  private pendingDone: ((loaded: boolean) => void) | null = null;
-  private waitToken: number = 0;
+  private tabs: Map<number, webview.WebviewController> =
+    new Map<number, webview.WebviewController>();
+  private active: number = 0;
+  private nextTabId: number = 1;
+  private waiters: Map<number, (loaded: boolean) => void> =
+    new Map<number, (loaded: boolean) => void>();
+  private tabUrls: Map<number, string> = new Map<number, string>();
+  private pendingAttach: Map<number, (ok: boolean) => void> =
+    new Map<number, (ok: boolean) => void>();
+  private createHandler: ((id: number) => void) | null = null;
+  private closeHandler: ((id: number) => void) | null = null;
+  private activeHandler: ((id: number) => void) | null = null;
   private workspace: string = '';
   private attachments: string = '';
   private viewportHandler: ((width: number, height: number) => void) | null = null;
 
-  attach(controller: webview.WebviewController): void {
-    this.controller = controller;
+  attach(id: number, controller: webview.WebviewController): void {
+    this.tabs.set(id, controller);
+    if (!this.tabs.has(this.active)) {
+      this.active = id;
+      this.publishActive();
+    }
+    const pending: ((ok: boolean) => void) | undefined = this.pendingAttach.get(id);
+    if (pending !== undefined) {
+      this.pendingAttach.delete(id);
+      pending(true);
+    }
   }
 
-  detach(controller: webview.WebviewController): void {
-    if (this.controller === controller) {
-      this.controller = null;
-      this.pageEnd = null;
-      const pending: ((loaded: boolean) => void) | null = this.pendingDone;
-      this.pendingDone = null;
-      if (pending !== null) {
-        pending(false);
-      }
-      this.waitToken++;
+  detach(id: number, controller: webview.WebviewController): void {
+    if (this.tabs.get(id) !== controller) {
+      return;
+    }
+    this.tabs.delete(id);
+    this.tabUrls.delete(id);
+    const waiter: ((loaded: boolean) => void) | undefined = this.waiters.get(id);
+    if (waiter !== undefined) {
+      this.waiters.delete(id);
+      waiter(false);
+    }
+    if (this.active === id) {
+      this.active = this.firstTab();
+      this.publishActive();
+    }
+  }
+
+  private publishActive(): void {
+    const handler: ((id: number) => void) | null = this.activeHandler;
+    if (handler !== null) {
+      handler(this.active);
     }
   }
 
   ready(): boolean {
-    return this.controller !== null;
+    return this.tabs.size > 0;
+  }
+
+  private firstTab(): number {
+    const ids: number[] = Array.from(this.tabs.keys());
+    return ids.length > 0 ? ids[0] : 0;
+  }
+
+  private current(): webview.WebviewController | null {
+    const controller: webview.WebviewController | undefined = this.tabs.get(this.active);
+    if (controller !== undefined) {
+      return controller;
+    }
+    const id: number = this.firstTab();
+    const fallback: webview.WebviewController | undefined = this.tabs.get(id);
+    if (fallback === undefined) {
+      return null;
+    }
+    this.active = id;
+    return fallback;
   }
 
   get(): webview.WebviewController | null {
-    return this.controller;
+    return this.current();
+  }
+
+  activeId(): number {
+    return this.active;
+  }
+
+  hasTab(id: number): boolean {
+    return this.tabs.has(id);
+  }
+
+  setActive(id: number): boolean {
+    if (!this.tabs.has(id)) {
+      return false;
+    }
+    this.active = id;
+    this.publishActive();
+    return true;
+  }
+
+  openIds(): number[] {
+    return Array.from(this.tabs.keys()).sort((a: number, b: number) => a - b);
+  }
+
+  urlOf(id: number): string {
+    const url: string | undefined = this.tabUrls.get(id);
+    return url !== undefined ? url : '';
+  }
+
+  setTabHandlers(create: (id: number) => void, close: (id: number) => void): void {
+    this.createHandler = create;
+    this.closeHandler = close;
+  }
+
+  /** Lets the UI raise the active surface above the other hidden tabs. */
+  setActiveHandler(handler: ((id: number) => void) | null): void {
+    this.activeHandler = handler;
+  }
+
+  clearTabHandlers(): void {
+    this.createHandler = null;
+    this.closeHandler = null;
+    this.activeHandler = null;
+  }
+
+  /** Ask the UI to mount a new hidden tab and wait for its controller. */
+  createTab(): Promise<number> {
+    return new Promise<number>((resolve: (id: number) => void) => {
+      const create: ((id: number) => void) | null = this.createHandler;
+      if (create === null || this.tabs.size >= MAX_TABS) {
+        resolve(-1);
+        return;
+      }
+      let id: number = this.nextTabId++;
+      while (this.tabs.has(id)) {
+        id = this.nextTabId++;
+      }
+      this.pendingAttach.set(id, (ok: boolean) => {
+        if (ok) {
+          this.active = id;
+          this.publishActive();
+        }
+        resolve(ok ? id : -1);
+      });
+      setTimeout(() => {
+        const pending: ((ok: boolean) => void) | undefined = this.pendingAttach.get(id);
+        if (pending !== undefined) {
+          this.pendingAttach.delete(id);
+          pending(false);
+        }
+      }, 3000);
+      create(id);
+    });
+  }
+
+  closeTab(id: number): boolean {
+    if (this.tabs.size <= 1 || !this.tabs.has(id)) {
+      return false;
+    }
+    this.tabs.delete(id);
+    this.tabUrls.delete(id);
+    const waiter: ((loaded: boolean) => void) | undefined = this.waiters.get(id);
+    if (waiter !== undefined) {
+      this.waiters.delete(id);
+      waiter(false);
+    }
+    if (this.active === id) {
+      this.active = this.firstTab();
+      this.publishActive();
+    }
+    const close: ((id: number) => void) | null = this.closeHandler;
+    if (close !== null) {
+      close(id);
+    }
+    return true;
   }
 
   /** Directory where screenshots and downloads are written. */
@@ -111,40 +254,34 @@ export class BrowserHostRegistry {
     return true;
   }
 
-  /** Navigate and resolve true on page end, false on timeout. */
+  /** Navigate the active tab and resolve true on page end, false on timeout. */
   load(url: string): Promise<boolean> {
     return new Promise<boolean>((resolve: (value: boolean) => void) => {
-      const controller: webview.WebviewController | null = this.controller;
+      const controller: webview.WebviewController | null = this.current();
       if (controller === null) {
         resolve(false);
         return;
       }
-      // A newer navigation supersedes the previous one; let its caller stop
-      // waiting instead of hanging until the timeout.
-      const previous: ((loaded: boolean) => void) | null = this.pendingDone;
-      this.pendingDone = null;
-      if (previous !== null) {
+      const id: number = this.active;
+      // A newer navigation supersedes the previous one on this tab.
+      const previous: ((loaded: boolean) => void) | undefined = this.waiters.get(id);
+      if (previous !== undefined) {
+        this.waiters.delete(id);
         previous(false);
       }
-      const token: number = ++this.waitToken;
       let settled: boolean = false;
       const done = (loaded: boolean): void => {
         if (settled) {
           return;
         }
         settled = true;
-        if (this.waitToken === token) {
-          this.pageEnd = null;
-          this.pendingDone = null;
+        if (this.waiters.get(id) === done) {
+          this.waiters.delete(id);
         }
         resolve(loaded);
       };
-      this.pendingDone = done;
-      this.pageEnd = () => {
-        if (this.waitToken === token) {
-          done(true);
-        }
-      };
+      this.waiters.set(id, done);
+      this.tabUrls.set(id, url);
       setTimeout(() => {
         done(false);
       }, PAGE_LOAD_TIMEOUT_MS);
@@ -156,11 +293,11 @@ export class BrowserHostRegistry {
     });
   }
 
-  notifyPageEnd(): void {
-    const callback: (() => void) | null = this.pageEnd;
-    if (callback !== null) {
-      this.pageEnd = null;
-      callback();
+  notifyPageEnd(id: number): void {
+    const callback: ((loaded: boolean) => void) | undefined = this.waiters.get(id);
+    if (callback !== undefined) {
+      this.waiters.delete(id);
+      callback(true);
     }
   }
 }
@@ -188,6 +325,7 @@ interface BrowserArgs {
   reset?: boolean;
   keyword?: string;
   fuzzy?: boolean;
+  tab_id?: number;
 }
 
 interface ViewportInfo {
@@ -712,6 +850,11 @@ export class BrowserTool implements BrowserHandler {
     const action: string = args.action !== undefined ? args.action.trim().toLowerCase() : '';
     const selector: string = args.selector !== undefined ? args.selector : '';
     const maxChars: number = clampNumber(args.max_chars, DEFAULT_MAX_CHARS, 100, MAX_CHARS);
+    if (args.tab_id !== undefined && action !== 'new_tab' && action !== 'list_tabs') {
+      if (!BrowserHost.setActive(args.tab_id)) {
+        return { ok: false, content: t('标签页不存在：') + args.tab_id.toString() };
+      }
+    }
     const controller: webview.WebviewController | null = BrowserHost.get();
     if (controller === null) {
       return { ok: false, content: t('内置浏览器尚未就绪，请稍后重试。') };
@@ -1062,11 +1205,57 @@ export class BrowserTool implements BrowserHandler {
         return await this.fetchResource(args.url !== undefined ? args.url : '');
       }
 
-      if (action === 'new_tab' || action === 'close_tab' || action === 'list_tabs') {
-        return {
-          ok: false,
-          content: t('当前实现只有一个隐藏标签页，暂不支持多标签操作；请直接用 open/navigate。')
-        };
+      if (action === 'new_tab') {
+        const id: number = await BrowserHost.createTab();
+        if (id < 0) {
+          return {
+            ok: false,
+            content: t('无法新建标签页：浏览器未就绪或已达到 4 个上限。')
+          };
+        }
+        let text: string = t('已新建标签页 #') + id.toString();
+        const requested: string = args.url !== undefined ? args.url.trim() : '';
+        if (requested.length > 0) {
+          let target: string = '';
+          if (parseMinisResource(requested) !== null) {
+            target = BrowserHost.resolveResource(requested);
+          } else {
+            target = normalizeWebUrl(requested);
+          }
+          if (target.length === 0) {
+            text += t('，但地址无法打开：') + requested;
+          } else {
+            const loaded: boolean = await BrowserHost.load(target);
+            text += t('，已打开 ') + requested;
+            if (!loaded) {
+              text += t('（加载超时）');
+            }
+          }
+        }
+        return { ok: true, content: text };
+      }
+
+      if (action === 'close_tab') {
+        const id: number = args.tab_id !== undefined ? args.tab_id : BrowserHost.activeId();
+        if (!BrowserHost.closeTab(id)) {
+          return {
+            ok: false,
+            content: t('无法关闭标签页：它不存在或这是最后一个标签页。')
+          };
+        }
+        return { ok: true, content: t('已关闭标签页 #') + id.toString() };
+      }
+
+      if (action === 'list_tabs') {
+        const ids: number[] = BrowserHost.openIds();
+        const active: number = BrowserHost.activeId();
+        const lines: string[] = [];
+        for (let i = 0; i < ids.length; i++) {
+          const mark: string = ids[i] === active ? '* ' : '  ';
+          const url: string = BrowserHost.urlOf(ids[i]);
+          lines.push(mark + '#' + ids[i].toString() + (url.length > 0 ? ' ' + url : ''));
+        }
+        return { ok: true, content: t('标签页：\n') + lines.join('\n') };
       }
 
       if (action === 'back' || action === 'forward' || action === 'reload') {
@@ -1093,7 +1282,8 @@ export class BrowserTool implements BrowserHandler {
         content: t('未知动作：') + action +
           t('（可用 open/navigate/click/type/text/get_text/html/eval/execute_js/back/forward/reload/wait/title/url/') +
           t('scroll/get_page_info/find_elements/hover/get_readable/get_backbone/get_cookies/set_cookies/') +
-          t('set_user_agent/set_viewport/wait_for_dom_stable/scroll_and_collect/screenshot/fetch）')
+          t('set_user_agent/set_viewport/wait_for_dom_stable/scroll_and_collect/screenshot/fetch/') +
+          t('new_tab/close_tab/list_tabs）')
       };
     } catch (e) {
       const error: Error = e as Error;

@@ -2650,7 +2650,7 @@ test('browser_use schema covers interactive, cookie and screenshot actions', () 
   assert.deepEqual(tool.parameters.required, ['action']);
   for (const name of ['direction', 'amount', 'item_selector', 'scroll_count',
     'cookies', 'user_agent', 'max_depth', 'timeout',
-    'viewport_width', 'viewport_height', 'reset', 'keyword', 'fuzzy']) {
+    'viewport_width', 'viewport_height', 'reset', 'keyword', 'fuzzy', 'tab_id']) {
     assert.notEqual(tool.parameters.properties[name], undefined, name);
   }
   assert.equal(tool.parameters.properties.amount.type, 'number');

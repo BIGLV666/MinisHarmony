@@ -504,7 +504,12 @@ export struct MessageBubble {
   userBubble() {
     Column({ space: 6 }) {
       ForEach(this.videos(), (part: MessagePart) => {
-        Video({ src: 'file://' + AttachmentStore.absolutePath(part.uri) })
+        // The player surface is black until playback; ask ArkUI to show the
+        // first frame once prepared so the bubble reads as a cover thumbnail.
+        Video({
+          src: 'file://' + AttachmentStore.absolutePath(part.uri),
+          posterOptions: { showFirstFrame: true }
+        })
           .width(240)
           .height(150)
           .borderRadius(10)

@@ -455,8 +455,15 @@ Web 中打开，因此 `fileAccess` 必须开启。`onDownloadUpdated` 用
 `onControllerAttached` 应用。ArkWeb 没有「列出全部 Cookie」的接口，因此
 `core/BrowserHistory.cookieOrigins()` 从当前页与历史里提取去重后的 origin（最多
 20 个），逐个 `fetchCookieSync(origin + '/')` 计数并在设置里列出，可单站清除或
-全部清除；不展示 Cookie 值与过期时间。视口只提供桌面宽视口开关，尚未提供数值
-宽高（ArkWeb 未暴露对应设置）。
+全部清除；不展示 Cookie 值与过期时间。
+
+视口有两层：`wideViewModeAccess` / `overviewModeAccess` 的桌面宽视口开关，以及
+「宽 / 高」两个 vp 数值输入。ArkWeb 没有直接设置视口尺寸的接口，但 Web 组件的
+CSS 视口跟随其布局尺寸，因此 `BrowserPage` 把 `Web` 抽成 `pageSurface()`：宽高
+都有效时按固定尺寸渲染并居中放进 `Scroll`（页面高于面板时可滚动），否则填满
+面板。`core/BrowserViewport.parseViewportSize()` 只接受 200–2000，空或非法输入
+归零；`customViewport()` 要求宽高同时有效，因此设置面板只填一栏时保存会被拒绝并
+提示。数值经 `BrowserStore` 的 `viewport_width` / `viewport_height` 持久化。
 
 ## 导出 Markdown / JSON
 

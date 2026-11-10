@@ -10,6 +10,7 @@ import {
   formatBytes,
   webOrigin
 } from '../core/BrowserHistory';
+import { VIEWPORT_MAX, VIEWPORT_MIN, customViewport, parseViewportSize } from '../core/BrowserViewport';
 import { BrowserStore, userAgentFor } from '../service/BrowserStore';
 import { formatRelative } from '../service/Format';
 import { t } from '../core/I18n';
@@ -55,6 +56,11 @@ export struct BrowserPage {
   @State uaPreset: string = 'default';
   @State uaCustom: string = '';
   @State wideViewport: boolean = false;
+  /** Fixed page surface in vp; 0 means fill the panel. */
+  @State viewportWidth: number = 0;
+  @State viewportHeight: number = 0;
+  @State viewportWidthText: string = '';
+  @State viewportHeightText: string = '';
   @State cookieCount: number = 0;
   @State cookieRows: CookieOriginRow[] = [];
   @State activeDownloads: ActiveDownload[] = [];
@@ -76,6 +82,10 @@ export struct BrowserPage {
     this.uaPreset = BrowserStore.uaPreset(context);
     this.uaCustom = BrowserStore.customUserAgent(context);
     this.wideViewport = BrowserStore.wideViewport(context);
+    this.viewportWidth = BrowserStore.viewportWidth(context);
+    this.viewportHeight = BrowserStore.viewportHeight(context);
+    this.viewportWidthText = this.viewportWidth > 0 ? this.viewportWidth.toString() : '';
+    this.viewportHeightText = this.viewportHeight > 0 ? this.viewportHeight.toString() : '';
     this.downloadDir = context.filesDir + '/browser-downloads';
     try {
       if (!fileIo.accessSync(this.downloadDir)) {
@@ -196,6 +206,19 @@ export struct BrowserPage {
     if (this.context === null) {
       return;
     }
+    const width: number = parseViewportSize(this.viewportWidthText);
+    const height: number = parseViewportSize(this.viewportHeightText);
+    const wantsCustom: boolean = this.viewportWidthText.trim().length > 0 ||
+      this.viewportHeightText.trim().length > 0;
+    if (wantsCustom && !customViewport(width, height)) {
+      this.getUIContext().getPromptAction().showToast({
+        message: t('视口宽高需同时填写数字，范围 200–2000。')
+      });
+      return;
+    }
+    this.viewportWidth = width;
+    this.viewportHeight = height;
+    BrowserStore.saveViewport(this.context, width, height);
     BrowserStore.saveUserAgent(this.context, this.uaPreset, this.uaCustom);
     BrowserStore.saveWideViewport(this.context, this.wideViewport);
     this.applyUserAgent();
@@ -647,6 +670,50 @@ export struct BrowserPage {
           }
           .width('100%')
 
+          Row({ space: 8 }) {
+            Column({ space: 2 }) {
+              Text(t('宽'))
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+              TextInput({ text: this.viewportWidthText, placeholder: t('自动') })
+                .type(InputType.Number)
+                .fontSize(12)
+                .height(36)
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(8)
+                .placeholderColor($r('app.color.text_tertiary'))
+                .onChange((value: string) => {
+                  this.viewportWidthText = value;
+                })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Column({ space: 2 }) {
+              Text(t('高'))
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+              TextInput({ text: this.viewportHeightText, placeholder: t('自动') })
+                .type(InputType.Number)
+                .fontSize(12)
+                .height(36)
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(8)
+                .placeholderColor($r('app.color.text_tertiary'))
+                .onChange((value: string) => {
+                  this.viewportHeightText = value;
+                })
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+          }
+          .width('100%')
+
+          Text(t('页面宽高（vp），留空跟随面板；') + VIEWPORT_MIN.toString() + '–' +
+            VIEWPORT_MAX.toString())
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+            .width('100%')
+
           Column({ space: 6 }) {
             Text('Cookie')
               .fontSize(12)
@@ -715,6 +782,49 @@ export struct BrowserPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg'))
+  }
+
+  @Builder
+  pageSurface() {
+    Web({ src: this.url, controller: this.controller })
+      .width(this.viewportWidth > 0 ? this.viewportWidth : '100%')
+      .height(this.viewportHeight > 0 ? this.viewportHeight : '100%')
+      .javaScriptAccess(true)
+      .domStorageAccess(true)
+      .fileAccess(true)
+      .wideViewModeAccess(this.wideViewport)
+      .overviewModeAccess(this.wideViewport)
+      .onControllerAttached(() => {
+        // Delegates and UA need an attached controller.
+        this.applyUserAgent();
+        this.configureDownloads();
+      })
+      .onPageBegin((event) => {
+        this.url = event.url;
+        this.address = event.url;
+        this.hostHint = webHost(event.url);
+        this.title = '';
+        this.loading = true;
+      })
+      .onPageEnd((event) => {
+        this.canBack = this.controller.accessBackward();
+        this.canForward = this.controller.accessForward();
+        this.hostHint = webHost(this.url);
+        this.loading = false;
+        if (this.context !== null) {
+          this.history = BrowserStore.recordHistory(this.context, {
+            url: this.url,
+            title: this.title.length > 0 ? this.title : webHost(this.url),
+            at: Date.now()
+          });
+        }
+      })
+      .onTitleReceive((event) => {
+        this.title = event.title;
+      })
+      .onProgressChange((event) => {
+        this.progress = event.newProgress;
+      })
   }
 
   build() {
@@ -789,45 +899,25 @@ export struct BrowserPage {
           .backgroundColor($r('app.color.surface'))
         }
 
-        Web({ src: this.url, controller: this.controller })
+        if (this.viewportWidth > 0 && this.viewportHeight > 0) {
+          Scroll() {
+            Column() {
+              this.pageSurface()
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Center)
+            .padding({ top: 4, bottom: 4 })
+          }
           .width('100%')
           .layoutWeight(1)
-          .javaScriptAccess(true)
-          .domStorageAccess(true)
-          .fileAccess(true)
-          .wideViewModeAccess(this.wideViewport)
-          .overviewModeAccess(this.wideViewport)
-          .onControllerAttached(() => {
-            // Delegates and UA need an attached controller.
-            this.applyUserAgent();
-            this.configureDownloads();
-          })
-          .onPageBegin((event) => {
-            this.url = event.url;
-            this.address = event.url;
-            this.hostHint = webHost(event.url);
-            this.title = '';
-            this.loading = true;
-          })
-          .onPageEnd((event) => {
-            this.canBack = this.controller.accessBackward();
-            this.canForward = this.controller.accessForward();
-            this.hostHint = webHost(this.url);
-            this.loading = false;
-            if (this.context !== null) {
-              this.history = BrowserStore.recordHistory(this.context, {
-                url: this.url,
-                title: this.title.length > 0 ? this.title : webHost(this.url),
-                at: Date.now()
-              });
-            }
-          })
-          .onTitleReceive((event) => {
-            this.title = event.title;
-          })
-          .onProgressChange((event) => {
-            this.progress = event.newProgress;
-          })
+          .scrollBar(BarState.Auto)
+        } else {
+          Column() {
+            this.pageSurface()
+          }
+          .width('100%')
+          .layoutWeight(1)
+        }
       }
       .width('100%')
       .height('100%')

@@ -64,6 +64,7 @@ copyCore('Types');
 copyCore('PromptQueue', ['Types', 'Paste']);
 copyCore('SessionFolder', ['Types']);
 copyCore('BrowserHistory');
+copyCore('BrowserViewport');
 copyCore('SessionTitle', ['Types']);
 copyCore('Mention');
 copyCore('UsageStats');
@@ -218,6 +219,7 @@ const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
 const promptQueue = await import(pathToFileURL(join(tmp, 'PromptQueue.mts')).href);
 const folders = await import(pathToFileURL(join(tmp, 'SessionFolder.mts')).href);
 const browserHistory = await import(pathToFileURL(join(tmp, 'BrowserHistory.mts')).href);
+const browserViewport = await import(pathToFileURL(join(tmp, 'BrowserViewport.mts')).href);
 const sessionTitle = await import(pathToFileURL(join(tmp, 'SessionTitle.mts')).href);
 const mention = await import(pathToFileURL(join(tmp, 'Mention.mts')).href);
 const usageStats = await import(pathToFileURL(join(tmp, 'UsageStats.mts')).href);
@@ -4370,4 +4372,20 @@ test('mention replacement keeps text after the caret', () => {
     'out-of-range start falls back to the end');
   assert.equal(mention.replaceMentionRange('abc', 0, 99, 'a.md'), '@a.md ',
     'out-of-range end clamps to the text length');
+});
+
+test('browser viewport parses sizes and requires both sides', () => {
+  assert.equal(browserViewport.parseViewportSize(''), 0);
+  assert.equal(browserViewport.parseViewportSize('  '), 0);
+  assert.equal(browserViewport.parseViewportSize('412'), 412);
+  assert.equal(browserViewport.parseViewportSize(' 915 '), 915);
+  assert.equal(browserViewport.parseViewportSize('412.6'), 413);
+  assert.equal(browserViewport.parseViewportSize('199'), 0);
+  assert.equal(browserViewport.parseViewportSize('2001'), 0);
+  assert.equal(browserViewport.parseViewportSize('auto'), 0);
+  assert.equal(browserViewport.customViewport(412, 915), true);
+  assert.equal(browserViewport.customViewport(412, 0), false);
+  assert.equal(browserViewport.customViewport(0, 915), false);
+  assert.equal(browserViewport.customViewport(199, 915), false);
+  assert.equal(browserViewport.customViewport(412, 2001), false);
 });

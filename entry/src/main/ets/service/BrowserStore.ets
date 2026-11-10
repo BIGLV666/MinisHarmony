@@ -8,6 +8,7 @@ import {
   recordHistory,
   upsertDownload
 } from '../core/BrowserHistory';
+import { parseViewportSize } from '../core/BrowserViewport';
 
 const STORE_NAME: string = 'minis_browser_store';
 const KEY_HISTORY: string = 'history';
@@ -15,6 +16,8 @@ const KEY_DOWNLOADS: string = 'downloads';
 const KEY_UA_PRESET: string = 'ua_preset';
 const KEY_UA_CUSTOM: string = 'ua_custom';
 const KEY_WIDE: string = 'wide_viewport';
+const KEY_VIEWPORT_W: string = 'viewport_width';
+const KEY_VIEWPORT_H: string = 'viewport_height';
 
 /**
  * Local-only persistence for the browser's history, download records and
@@ -95,6 +98,20 @@ export class BrowserStore {
 
   static saveWideViewport(context: common.Context, wide: boolean): void {
     BrowserStore.writeString(context, KEY_WIDE, wide ? '1' : '0');
+  }
+
+  /** Custom page surface size in vp; 0 means fill the panel. */
+  static viewportWidth(context: common.Context): number {
+    return parseViewportSize(BrowserStore.readString(context, KEY_VIEWPORT_W));
+  }
+
+  static viewportHeight(context: common.Context): number {
+    return parseViewportSize(BrowserStore.readString(context, KEY_VIEWPORT_H));
+  }
+
+  static saveViewport(context: common.Context, width: number, height: number): void {
+    BrowserStore.writeString(context, KEY_VIEWPORT_W, width > 0 ? width.toString() : '');
+    BrowserStore.writeString(context, KEY_VIEWPORT_H, height > 0 ? height.toString() : '');
   }
 }
 

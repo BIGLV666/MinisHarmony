@@ -3677,6 +3677,28 @@ test('browser download sizes format compactly', () => {
   assert.equal(browserHistory.formatBytes(5 * 1024 * 1024), '5.0 MB');
 });
 
+test('cookie origins dedupe current page and history', () => {
+  assert.equal(browserHistory.webOrigin('https://example.com/a/b?q=1#x'),
+    'https://example.com');
+  assert.equal(browserHistory.webOrigin('http://localhost:8080/'), 'http://localhost:8080');
+  assert.equal(browserHistory.webOrigin('file:///tmp/a.html'), '');
+  assert.equal(browserHistory.webOrigin('https://example.com'), 'https://example.com');
+  const history = [
+    { url: 'https://a.test/x', title: '', at: 1 },
+    { url: 'https://b.test:8443/y', title: '', at: 2 },
+    { url: 'https://a.test/z', title: '', at: 3 },
+    { url: 'file:///local', title: '', at: 4 }
+  ];
+  assert.deepEqual(
+    browserHistory.cookieOrigins(history, 'https://c.test/start', 10),
+    ['https://c.test', 'https://a.test', 'https://b.test:8443']);
+  assert.deepEqual(
+    browserHistory.cookieOrigins(history, 'https://a.test/page', 10),
+    ['https://a.test', 'https://b.test:8443']);
+  assert.deepEqual(browserHistory.cookieOrigins(history, '', 2),
+    ['https://a.test', 'https://b.test:8443']);
+});
+
 function titleMessage(role, text, error = false) {
   return {
     id: role + '-' + text.length,

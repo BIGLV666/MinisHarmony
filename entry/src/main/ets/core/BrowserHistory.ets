@@ -143,6 +143,49 @@ export function upsertDownload(list: BrowserDownloadEntry[], entry: BrowserDownl
   return next;
 }
 
+/** `scheme://host[:port]` without path, query or fragment; '' for non-web URLs. */
+export function webOrigin(url: string): string {
+  if (!isWebUrl(url)) {
+    return '';
+  }
+  const schemeEnd: number = url.indexOf('://');
+  const rest: string = url.substring(schemeEnd + 3);
+  let end: number = rest.length;
+  const marks: string[] = ['/', '?', '#'];
+  for (let i = 0; i < marks.length; i++) {
+    const at: number = rest.indexOf(marks[i]);
+    if (at >= 0 && at < end) {
+      end = at;
+    }
+  }
+  const origin: string = url.substring(0, schemeEnd + 3) + rest.substring(0, end);
+  return origin.length > schemeEnd + 3 ? origin : '';
+}
+
+/**
+ * Origins worth showing in the cookie list: the current page first, then
+ * history order, de-duplicated and capped. Cookies are queried per origin
+ * because ArkWeb exposes no "list every cookie" call.
+ */
+export function cookieOrigins(
+  history: BrowserHistoryEntry[],
+  currentUrl: string,
+  limit: number
+): string[] {
+  const out: string[] = [];
+  const current: string = webOrigin(currentUrl);
+  if (current.length > 0) {
+    out.push(current);
+  }
+  for (let i = 0; i < history.length && out.length < limit; i++) {
+    const origin: string = webOrigin(history[i].url);
+    if (origin.length > 0 && out.indexOf(origin) < 0) {
+      out.push(origin);
+    }
+  }
+  return out;
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes <= 0) {
     return '—';

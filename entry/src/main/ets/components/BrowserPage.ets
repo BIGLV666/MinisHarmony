@@ -5,12 +5,26 @@ import { normalizeWebUrl, webHost } from '../core/WebUrl';
 import {
   BrowserDownloadEntry,
   BrowserHistoryEntry,
+  cookieOrigins,
   filterHistory,
-  formatBytes
+  formatBytes,
+  webOrigin
 } from '../core/BrowserHistory';
 import { BrowserStore, userAgentFor } from '../service/BrowserStore';
 import { formatRelative } from '../service/Format';
 import { t } from '../core/I18n';
+
+interface ActiveDownload {
+  guid: string;
+  name: string;
+  percent: number;
+}
+
+interface CookieOriginRow {
+  origin: string;
+  host: string;
+  count: number;
+}
 
 /**
  * In-app browser for links in chat. Mirrors OpenMinis's browser sheet: page
@@ -42,6 +56,8 @@ export struct BrowserPage {
   @State uaCustom: string = '';
   @State wideViewport: boolean = false;
   @State cookieCount: number = 0;
+  @State cookieRows: CookieOriginRow[] = [];
+  @State activeDownloads: ActiveDownload[] = [];
   private controller: webview.WebviewController = new webview.WebviewController();
   private downloadDelegate: webview.WebDownloadDelegate = new webview.WebDownloadDelegate();
   private context: common.UIAbilityContext | null = null;
@@ -107,16 +123,16 @@ export struct BrowserPage {
       this.downloads = BrowserStore.downloads(this.context);
     } else if (index === 3) {
       this.refreshCookieCount();
+      this.refreshCookieRows();
     }
   }
 
-  private refreshCookieCount(): void {
-    if (this.url.length === 0) {
-      this.cookieCount = 0;
-      return;
+  private cookieCountFor(url: string): number {
+    if (url.length === 0) {
+      return 0;
     }
     try {
-      const raw: string = webview.WebCookieManager.fetchCookieSync(this.url);
+      const raw: string = webview.WebCookieManager.fetchCookieSync(url);
       let count: number = 0;
       const parts: string[] = raw.split(';');
       for (let i = 0; i < parts.length; i++) {
@@ -124,10 +140,38 @@ export struct BrowserPage {
           count++;
         }
       }
-      this.cookieCount = count;
+      return count;
     } catch (e) {
-      this.cookieCount = 0;
+      return 0;
     }
+  }
+
+  private refreshCookieCount(): void {
+    this.cookieCount = this.cookieCountFor(this.url);
+  }
+
+  private refreshCookieRows(): void {
+    const origins: string[] = cookieOrigins(this.history, this.url, 20);
+    const rows: CookieOriginRow[] = [];
+    for (let i = 0; i < origins.length; i++) {
+      const origin: string = origins[i];
+      rows.push({
+        origin: origin,
+        host: webHost(origin),
+        count: this.cookieCountFor(origin + '/')
+      });
+    }
+    this.cookieRows = rows;
+  }
+
+  private clearOriginCookies(origin: string): void {
+    try {
+      webview.WebCookieManager.configCookieSync(origin + '/', '');
+    } catch (e) {
+    }
+    this.refreshCookieCount();
+    this.refreshCookieRows();
+    this.getUIContext().getPromptAction().showToast({ message: t('清除') });
   }
 
   private applyUserAgent(): void {
@@ -164,6 +208,7 @@ export struct BrowserPage {
     } catch (e) {
     }
     this.refreshCookieCount();
+    this.refreshCookieRows();
     this.getUIContext().getPromptAction().showToast({ message: t('清除') });
   }
 
@@ -173,6 +218,7 @@ export struct BrowserPage {
     } catch (e) {
     }
     this.refreshCookieCount();
+    this.refreshCookieRows();
     this.getUIContext().getPromptAction().showToast({ message: t('清除') });
   }
 
@@ -201,9 +247,19 @@ export struct BrowserPage {
       try {
         const path: string = this.safeFileName(item.getSuggestedFileName(), item.getUrl());
         this.downloadPaths.set(item.getGuid(), path);
+        const next: ActiveDownload[] = this.activeDownloads.slice();
+        next.push({
+          guid: item.getGuid(),
+          name: item.getSuggestedFileName(),
+          percent: 0
+        });
+        this.activeDownloads = next;
         item.start(path);
       } catch (e) {
       }
+    });
+    this.downloadDelegate.onDownloadUpdated((item: webview.WebDownloadItem) => {
+      this.updateActiveDownload(item);
     });
     this.downloadDelegate.onDownloadFinish((item: webview.WebDownloadItem) => {
       this.finishDownload(item, true);
@@ -217,7 +273,47 @@ export struct BrowserPage {
     }
   }
 
+  private updateActiveDownload(item: webview.WebDownloadItem): void {
+    let percent: number = -1;
+    try {
+      percent = item.getPercentComplete();
+    } catch (e) {
+      percent = -1;
+    }
+    const guid: string = item.getGuid();
+    const next: ActiveDownload[] = [];
+    for (let i = 0; i < this.activeDownloads.length; i++) {
+      const row: ActiveDownload = this.activeDownloads[i];
+      if (row.guid === guid) {
+        if (row.percent === percent) {
+          next.push(row);
+        } else {
+          next.push({ guid: row.guid, name: row.name, percent: percent });
+        }
+      } else {
+        next.push(row);
+      }
+    }
+    this.activeDownloads = next;
+  }
+
+  private removeActiveDownload(guid: string): void {
+    const next: ActiveDownload[] = [];
+    for (let i = 0; i < this.activeDownloads.length; i++) {
+      if (this.activeDownloads[i].guid !== guid) {
+        next.push(this.activeDownloads[i]);
+      }
+    }
+    this.activeDownloads = next;
+  }
+
+  private downloadBadgeLabel(): string {
+    const count: number = this.activeDownloads.length;
+    return count === 0 ? '⬇' : (count > 9 ? '⬇9+' : '⬇' + count.toString());
+  }
+
   private finishDownload(item: webview.WebDownloadItem, ok: boolean): void {
+    this.removeActiveDownload(item.getGuid());
     if (this.context === null) {
       return;
     }
@@ -398,6 +494,42 @@ export struct BrowserPage {
       this.panelHeader(t('下载'))
       Scroll() {
         Column({ space: 4 }) {
+          if (this.activeDownloads.length > 0) {
+            Text(t('正在下载'))
+              .fontSize(11)
+              .fontColor($r('app.color.text_secondary'))
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 6 })
+            ForEach(this.activeDownloads, (item: ActiveDownload) => {
+              Column({ space: 5 }) {
+                Row({ space: 8 }) {
+                  Text(item.name)
+                    .fontSize(13)
+                    .fontColor($r('app.color.text_primary'))
+                    .layoutWeight(1)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(item.percent >= 0 ? item.percent.toString() + '%' : '…')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                }
+                .width('100%')
+                Progress({
+                  value: item.percent >= 0 ? item.percent : 0,
+                  total: 100,
+                  type: ProgressType.Linear
+                })
+                  .width('100%')
+                  .height(4)
+                  .color($r('app.color.accent'))
+                  .backgroundColor($r('app.color.border'))
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 9, bottom: 9 })
+              .borderRadius(10)
+              .backgroundColor($r('app.color.surface_alt'))
+            }, (item: ActiveDownload) => item.guid)
+          }
           if (this.downloads.length === 0) {
             Text(t('暂无记录'))
               .fontSize(12)
@@ -525,11 +657,34 @@ export struct BrowserPage {
               .fontSize(11)
               .fontColor($r('app.color.text_tertiary'))
               .width('100%')
+            if (this.cookieRows.length === 0) {
+              Text(t('还没有可列出的网站 Cookie。'))
+                .fontSize(11)
+                .fontColor($r('app.color.text_tertiary'))
+                .width('100%')
+            } else {
+              ForEach(this.cookieRows, (row: CookieOriginRow) => {
+                Row({ space: 8 }) {
+                  Text(row.host)
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                    .layoutWeight(1)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(row.count.toString())
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                  Text(t('清除'))
+                    .fontSize(11)
+                    .fontColor($r('app.color.danger'))
+                    .padding({ left: 6, right: 6, top: 4, bottom: 4 })
+                    .onClick(() => this.clearOriginCookies(row.origin))
+                }
+                .width('100%')
+                .padding({ top: 4, bottom: 4 })
+              }, (row: CookieOriginRow) => row.origin)
+            }
             Row({ space: 10 }) {
-              Text(t('清除'))
-                .fontSize(12)
-                .fontColor($r('app.color.danger'))
-                .onClick(() => this.clearCurrentCookies())
               Text(t('清除') + ' (' + t('全部') + ')')
                 .fontSize(12)
                 .fontColor($r('app.color.danger'))
@@ -581,7 +736,7 @@ export struct BrowserPage {
             }
           })
           this.toolbarButton('🕘', true, () => this.openPanel(1))
-          this.toolbarButton('⬇', true, () => this.openPanel(2))
+          this.toolbarButton(this.downloadBadgeLabel(), true, () => this.openPanel(2))
           this.toolbarButton('⚙', true, () => this.openPanel(3))
           TextInput({ text: this.address, placeholder: t('输入网址') })
             .layoutWeight(1)

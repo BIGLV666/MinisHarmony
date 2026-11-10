@@ -447,9 +447,16 @@ filesDir/memory/
 `setDownloadDelegate` 启动，文件名按 `\/:*?"<>|` 清洗后写入
 `filesDir/browser-downloads`，同名追加时间戳；完成/失败后记录
 `{name, path, at, bytes, ok}`，上限 100。面板里的下载项用 `file://` 在当前
-Web 中打开，因此 `fileAccess` 必须开启。设置面板保存 UA 预设（默认/移动/桌面/
-自定义）与宽视口开关，UA 在 `onControllerAttached` 应用；Cookie 只显示当前站的
-条数，可清除当前站或全部，不展示具体值。
+Web 中打开，因此 `fileAccess` 必须开启。`onDownloadUpdated` 用
+`getPercentComplete()` 维护进行中列表，下载面板顶部显示文件名与进度条，工具栏
+⬇ 按钮附带进行中数量；完成或失败即从列表移除并写入记录。
+
+设置面板保存 UA 预设（默认/移动/桌面/自定义）与宽视口开关，UA 在
+`onControllerAttached` 应用。ArkWeb 没有「列出全部 Cookie」的接口，因此
+`core/BrowserHistory.cookieOrigins()` 从当前页与历史里提取去重后的 origin（最多
+20 个），逐个 `fetchCookieSync(origin + '/')` 计数并在设置里列出，可单站清除或
+全部清除；不展示 Cookie 值与过期时间。视口只提供桌面宽视口开关，尚未提供数值
+宽高（ArkWeb 未暴露对应设置）。
 
 ## 导出 Markdown / JSON
 

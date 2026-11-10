@@ -112,6 +112,7 @@ import { ModelPicker } from '../components/ModelPicker';
 import { SettingsSheet } from '../components/SettingsSheet';
 import { ScheduledTasksSheet } from '../components/ScheduledTasksSheet';
 import { WorkspaceSheet } from '../components/WorkspaceSheet';
+import { previewWorkspaceFile, WorkspacePreview } from '../service/WorkspaceFiles';
 import { OnboardingView } from '../components/OnboardingView';
 import { authenticate } from '../service/AppLock';
 import {
@@ -170,6 +171,10 @@ struct Index {
   @State workspaceInitial: string = '';
   @State previewImageOpen: boolean = false;
   @State previewImagePath: string = '';
+  @State previewTextOpen: boolean = false;
+  @State previewTextTitle: string = '';
+  @State previewTextBody: string = '';
+  @State previewTextError: string = '';
   @State showTasks: boolean = false;
   @State tasks: ScheduledTask[] = [];
   @State taskRuns: TaskRun[] = [];
@@ -702,10 +707,22 @@ struct Index {
         this.previewImageOpen = true;
         return;
       }
-      this.toast(t('该附件不是图片，无法预览'));
+      this.openAttachmentPreview(resource.path);
       return;
     }
     this.toast(t('不支持的链接类型'));
+  }
+
+  /** Read-only preview for text-like chat attachments (md, txt, json, csv…). */
+  private openAttachmentPreview(path: string): void {
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const preview: WorkspacePreview =
+      previewWorkspaceFile(context.filesDir + '/attachments', path);
+    const slash: number = path.lastIndexOf('/');
+    this.previewTextTitle = slash < 0 ? path : path.substring(slash + 1);
+    this.previewTextBody = preview.text;
+    this.previewTextError = preview.ok ? '' : preview.error;
+    this.previewTextOpen = true;
   }
 
   /**
@@ -2869,6 +2886,57 @@ struct Index {
     })
   }
 
+  @Builder
+  textOverlay() {
+    Column({ space: 12 }) {
+      Row({ space: 12 }) {
+        Text(this.previewTextTitle)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(t('关闭'))
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+          .onClick(() => {
+            this.previewTextOpen = false;
+          })
+      }
+      .width('100%')
+
+      Scroll() {
+        Column() {
+          if (this.previewTextError.length > 0) {
+            Text(this.previewTextError)
+              .fontSize(14)
+              .fontColor($r('app.color.text_secondary'))
+              .width('100%')
+          } else {
+            Text(this.previewTextBody)
+              .fontSize(13)
+              .lineHeight(20)
+              .fontColor($r('app.color.text_primary'))
+              .fontFamily('monospace')
+              .copyOption(CopyOptions.LocalDevice)
+              .width('100%')
+          }
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+      .layoutWeight(1)
+      .width('100%')
+      .align(Alignment.TopStart)
+      .scrollBar(BarState.Auto)
+    }
+    .width('100%')
+    .height('100%')
+    .padding(24)
+    .backgroundColor($r('app.color.bg'))
+  }
+
   build() {
     Stack({ alignContent: Alignment.Center }) {
       // The two branches are identical on purpose: ArkUI treats them
@@ -2891,6 +2959,7 @@ struct Index {
     })
     .bindContentCover($$this.showBrowser, this.browserOverlay())
     .bindContentCover($$this.previewImageOpen, this.imageOverlay())
+    .bindContentCover($$this.previewTextOpen, this.textOverlay())
   }
 
   onI18nChanged(): void {

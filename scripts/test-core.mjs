@@ -1186,6 +1186,25 @@ test('memory logs persist newest first and drop junk rows', () => {
   assert.equal(JSON.parse(memory.memoryLogsJson(logs)).length, 2);
 });
 
+test('memory lines can be listed, rewritten and removed in place', () => {
+  assert.deepEqual(memory.memoryLines('- one\n\n- two\r\n'), [
+    { index: 0, text: '- one' },
+    { index: 2, text: '- two' }
+  ]);
+  assert.deepEqual(memory.memoryLines('   \n\t\n'), []);
+  assert.equal(memory.memoryLineAt('- one\n- two', 1), '- two');
+  assert.equal(memory.memoryLineAt('- one', 4), '');
+  assert.equal(
+    memory.replaceMemoryLine('- one\n- two', 0, '  - fixed\nnext '),
+    '- fixed next\n- two'
+  );
+  assert.equal(memory.replaceMemoryLine('- one', 3, 'x'), '- one');
+  assert.equal(memory.removeMemoryLine('- one\n\n- two', 1), '- one\n- two');
+  assert.equal(memory.removeMemoryLine('a\nb\n', 0), 'b\n');
+  assert.equal(memory.removeMemoryLine('a', -1), 'a');
+  assert.equal(memory.memoryLineAt('a\n\nb', 1), '');
+});
+
 test('tool catalogue exposes file_edit with a safe schema', () => {
   const tools = catalog.builtinToolDefinitions();
   const owner = tools.find((tool) => tool.name === 'file_edit');

@@ -123,7 +123,15 @@ import { shareCardFileName } from '../core/ShareCard';
 import { shareCardView } from '../components/ShareCardView';
 import { AttachmentStore } from '../service/AttachmentStore';
 import { MemoryStore } from '../service/MemoryStore';
-import { MemoryFile, MemoryLogEntry } from '../core/Memory';
+import {
+  MemoryFile,
+  MemoryLine,
+  MemoryLogEntry,
+  memoryLineAt,
+  memoryLines,
+  removeMemoryLine,
+  replaceMemoryLine
+} from '../core/Memory';
 import {
   isMcpEnabled,
   mcpServerActive,
@@ -278,6 +286,10 @@ struct Index {
   @State memoryOriginals: string[] = [];
   @State memoryLogs: MemoryLogEntry[] = [];
   @State memoryNotice: string = '';
+  /** Which file is showing its per-entry list, and which entry is open. */
+  @State memoryLineFile: number = -1;
+  @State memoryLineIndex: number = -1;
+  @State memoryLineDraft: string = '';
   @State rewindId: string = '';
   @State showArchived: boolean = false;
   @State showFolderManager: boolean = false;
@@ -2009,6 +2021,9 @@ struct Index {
     this.memoryOpen = true;
     this.memoryNotice = this.settings.memoryEnabled
       ? '' : t('持久记忆未开启；到设置 → 工具与沙箱打开后，模型才能读写记忆。');
+    this.memoryLineFile = -1;
+    this.memoryLineIndex = -1;
+    this.memoryLineDraft = '';
     this.refreshMemoryPanel();
   }
 
@@ -2050,6 +2065,107 @@ struct Index {
     this.memoryNotice = MemoryStore.saveText(name, original);
     this.memoryInjected = this.settings.memoryEnabled ? MemoryStore.context() : '';
     this.memoryLogs = MemoryStore.logs();
+    this.closeMemoryLine();
+  }
+
+  private memoryLinesAt(fileIndex: number): MemoryLine[] {
+    if (fileIndex < 0 || fileIndex >= this.memoryDrafts.length) {
+      return [];
+    }
+    return memoryLines(this.memoryDrafts[fileIndex]);
+  }
+
+  private toggleMemoryLines(fileIndex: number): void {
+    this.memoryLineFile = this.memoryLineFile === fileIndex ? -1 : fileIndex;
+    this.closeMemoryLine();
+  }
+
+  private beginMemoryLine(fileIndex: number, line: MemoryLine): void {
+    this.memoryLineFile = fileIndex;
+    this.memoryLineIndex = line.index;
+    this.memoryLineDraft = line.text;
+  }
+
+  private closeMemoryLine(): void {
+    this.memoryLineIndex = -1;
+    this.memoryLineDraft = '';
+  }
+
+  /**
+   * Persist one rewritten file. The in-memory draft only follows the disk when
+   * `MemoryStore.saveText` reports success, so a failed write stays visible.
+   */
+  private commitMemoryLine(
+    fileIndex: number,
+    nextText: string,
+    message: string
+  ): void {
+    if (fileIndex < 0 || fileIndex >= this.memoryFiles.length) {
+      return;
+    }
+    const name: string = this.memoryFiles[fileIndex].name;
+    const result: string = MemoryStore.saveText(name, nextText);
+    this.memoryNotice = result;
+    if (result !== t('已保存 ') + name) {
+      return;
+    }
+    const next: string[] = this.memoryDrafts.slice();
+    next[fileIndex] = nextText;
+    this.memoryDrafts = next;
+    this.memoryInjected = this.settings.memoryEnabled ? MemoryStore.context() : '';
+    this.memoryLogs = MemoryStore.logs();
+    this.memoryNotice = message;
+    this.closeMemoryLine();
+  }
+
+  private saveMemoryLine(): void {
+    const fileIndex: number = this.memoryLineFile;
+    const index: number = this.memoryLineIndex;
+    if (fileIndex < 0 || index < 0 || fileIndex >= this.memoryDrafts.length) {
+      return;
+    }
+    if (this.memoryLineDraft.trim().length === 0) {
+      this.memoryNotice = t('这一条不能为空。');
+      return;
+    }
+    this.commitMemoryLine(
+      fileIndex,
+      replaceMemoryLine(this.memoryDrafts[fileIndex], index, this.memoryLineDraft),
+      t('已保存这一条')
+    );
+  }
+
+  private deleteMemoryLine(): void {
+    const fileIndex: number = this.memoryLineFile;
+    const index: number = this.memoryLineIndex;
+    if (fileIndex < 0 || index < 0 || fileIndex >= this.memoryDrafts.length) {
+      return;
+    }
+    this.commitMemoryLine(
+      fileIndex,
+      removeMemoryLine(this.memoryDrafts[fileIndex], index),
+      t('已删除这一条')
+    );
+  }
+
+  /** Put the line back to the text it had when the panel opened. */
+  private restoreMemoryLine(): void {
+    const fileIndex: number = this.memoryLineFile;
+    const index: number = this.memoryLineIndex;
+    if (fileIndex < 0 || index < 0 || fileIndex >= this.memoryDrafts.length ||
+      fileIndex >= this.memoryOriginals.length) {
+      return;
+    }
+    const original: string = memoryLineAt(this.memoryOriginals[fileIndex], index);
+    if (original.length === 0) {
+      this.memoryNotice = t('原始文件里没有这一条。');
+      return;
+    }
+    this.commitMemoryLine(
+      fileIndex,
+      replaceMemoryLine(this.memoryDrafts[fileIndex], index, original),
+      t('已恢复这一条')
+    );
   }
 
   private memoryClock(at: number): string {
@@ -4057,6 +4173,91 @@ struct Index {
                       next[index] = value;
                       this.memoryDrafts = next;
                     })
+                  Row({ space: 6 }) {
+                    Text(this.memoryLineFile === index ? '▾' : '▸')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                    Text(t('逐条编辑'))
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_secondary'))
+                    Blank()
+                  }
+                  .width('100%')
+                  .padding({ top: 2, bottom: 2 })
+                  .onClick(() => this.toggleMemoryLines(index))
+                  .accessibilityText(t('逐条编辑'))
+                  if (this.memoryLineFile === index) {
+                    Column({ space: 5 }) {
+                      if (this.memoryLinesAt(index).length === 0) {
+                        Text(t('这个记忆文件还没有条目。'))
+                          .fontSize(11)
+                          .fontColor($r('app.color.text_tertiary'))
+                          .width('100%')
+                      } else {
+                        ForEach(this.memoryLinesAt(index), (line: MemoryLine) => {
+                          Row({ space: 8 }) {
+                            Text(line.text)
+                              .fontSize(11)
+                              .fontColor($r('app.color.text_primary'))
+                              .layoutWeight(1)
+                              .maxLines(2)
+                              .textOverflow({ overflow: TextOverflow.Ellipsis })
+                            Text(t('编辑'))
+                              .fontSize(11)
+                              .fontColor($r('app.color.text_secondary'))
+                              .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+                              .onClick(() => this.beginMemoryLine(index, line))
+                          }
+                          .width('100%')
+                          .padding({ left: 8, right: 8, top: 5, bottom: 5 })
+                          .backgroundColor($r('app.color.surface_alt'))
+                          .borderRadius(7)
+                        }, (line: MemoryLine) =>
+                          file.name + '#' + line.index.toString())
+                      }
+                      if (this.memoryLineIndex >= 0) {
+                        TextArea({
+                          text: this.memoryLineDraft,
+                          placeholder: t('编辑这一条记忆')
+                        })
+                          .width('100%')
+                          .height(56)
+                          .fontSize(12)
+                          .fontColor($r('app.color.text_primary'))
+                          .placeholderColor($r('app.color.text_tertiary'))
+                          .backgroundColor($r('app.color.surface_alt'))
+                          .borderRadius(9)
+                          .onChange((value: string) => {
+                            this.memoryLineDraft = value;
+                          })
+                        Row({ space: 12 }) {
+                          Text(t('取消'))
+                            .fontSize(11)
+                            .fontColor($r('app.color.text_secondary'))
+                            .onClick(() => this.closeMemoryLine())
+                          Text(t('还原'))
+                            .fontSize(11)
+                            .fontColor($r('app.color.text_secondary'))
+                            .onClick(() => this.restoreMemoryLine())
+                          Blank()
+                          Text(t('删除'))
+                            .fontSize(11)
+                            .fontColor($r('app.color.danger'))
+                            .onClick(() => this.deleteMemoryLine())
+                          Text(t('保存'))
+                            .fontSize(11)
+                            .fontColor($r('app.color.on_accent'))
+                            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+                            .backgroundColor(this.accent)
+                            .borderRadius(7)
+                            .onClick(() => this.saveMemoryLine())
+                        }
+                        .width('100%')
+                      }
+                    }
+                    .width('100%')
+                    .padding({ left: 2, right: 2 })
+                  }
                 }
                 .width('100%')
                 .padding(10)

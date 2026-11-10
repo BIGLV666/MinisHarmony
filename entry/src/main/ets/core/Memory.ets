@@ -23,6 +23,12 @@ export interface MemoryLogEntry {
   text: string;
 }
 
+/** One non-empty line of a memory file, with its position in the file. */
+export interface MemoryLine {
+  index: number;
+  text: string;
+}
+
 export const MEMORY_ENTRY_CHARS: number = 500;
 export const MEMORY_CONTEXT_CHARS: number = 4000;
 /** Read/write history rows kept for the in-chat memory panel. */
@@ -66,6 +72,55 @@ export function oneLine(text: string): string {
 
 export function memoryEntry(date: Date, content: string): string {
   return '- ' + clockKey(date) + ' ' + oneLine(content);
+}
+
+/**
+ * Non-empty lines for per-entry editing. `index` counts every line in the
+ * file, blank ones included, so callers can rewrite the file in place.
+ */
+export function memoryLines(text: string): MemoryLine[] {
+  const parts: string[] = text.split('\n');
+  const out: MemoryLine[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const clean: string = parts[i].split('\r').join('').trim();
+    if (clean.length > 0) {
+      out.push({ index: i, text: clean });
+    }
+  }
+  return out;
+}
+
+/** Read one line without collapsing it; returns '' for an invalid index. */
+export function memoryLineAt(text: string, index: number): string {
+  const parts: string[] = text.split('\n');
+  if (index < 0 || index >= parts.length) {
+    return '';
+  }
+  return parts[index].split('\r').join('').trim();
+}
+
+/** Rewrite one line, flattening any newlines the user pasted. */
+export function replaceMemoryLine(
+  text: string,
+  index: number,
+  next: string
+): string {
+  const parts: string[] = text.split('\n');
+  if (index < 0 || index >= parts.length) {
+    return text;
+  }
+  parts[index] = oneLine(next);
+  return parts.join('\n');
+}
+
+/** Drop one line while keeping every other line (and blank lines) intact. */
+export function removeMemoryLine(text: string, index: number): string {
+  const parts: string[] = text.split('\n');
+  if (index < 0 || index >= parts.length) {
+    return text;
+  }
+  parts.splice(index, 1);
+  return parts.join('\n');
 }
 
 /** Newest-first log list, capped; malformed rows are dropped on read. */

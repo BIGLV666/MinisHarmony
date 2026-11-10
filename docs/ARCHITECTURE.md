@@ -527,15 +527,20 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 
 输入框支持 `@` 提及工作区文件：
 
-- `core/Mention.ets` 的 `activeMention()` 只看草稿**末尾**的 `@query`——`@` 必须
-  位于开头或空白之后，query 不含空白（所以 `a@b.com` 和已插入的 `@path ` 都不会
-  再次弹出菜单）；ArkUI 的 `TextArea` 不暴露光标，光标在中间时暂不触发；
+- `core/Mention.ets` 的 `activeMentionAt(text, caret)` 只看**光标之前**的文本：
+  从光标位置向前找最后一个 `@`，`@` 必须位于开头或空白之后，query 不含空白（所以
+  `a@b.com` 和已插入的 `@path ` 都不会再次弹出菜单）。`activeMention()` 等价于
+  `activeMentionAt(text, text.length)`，供没有光标信息的调用点使用；
 - `ChatView` 首次打开菜单时调用 `listWorkspaceFiles()` 取一份扁平列表（递归 4 层，
   跳过隐藏目录与 `node_modules` / `oh_modules` / `.hvigor` / `build` /
   `.minis-browser`，上限 300 个文件），之后在内存里过滤；
 - `filterMentionFiles()` 跳过目录，按相对路径不区分大小写匹配，最多显示 5 条；
-- 点按或回车后 `replaceMention()` 把尾部 token 换成 `@path `，发送时模型从消息里
-  看到路径，可用文件工具读取；工具栏的 `@` 按钮插入触发符；
+- `TextArea.onTextSelectionChange` 持续记录 `mentionCaret` 与 `mentionSelectionEnd`，
+  每次变更/光标移动都重新解析 token；草稿中间、行首、选中文字后输入 `@` 都会打开菜单；
+- 点按或回车后 `replaceMentionRange()` 只替换 `@query`（或选区）为 `@path `，保留
+  光标后的正文并吸收一个已有空格，随后通过 `TextAreaController.caretPosition()`
+  把光标移到插入内容之后；发送时模型从消息里看到路径，可用文件工具读取；
+  工具栏的 `@` 按钮在光标处插入（有选区则替换选区）；
 - 草稿被清空或 token 含空白时菜单自动关闭，不需要额外的取消逻辑。
 
 ## 长粘贴转工作区附件

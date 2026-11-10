@@ -15,9 +15,9 @@ import { MinisResource } from '../core/MinisResource';
 import { FileEntry } from '../core/FileListing';
 import {
   MentionQuery,
-  activeMention,
+  activeMentionAt,
   filterMentionFiles,
-  replaceMention
+  replaceMentionRange
 } from '../core/Mention';
 import { listWorkspaceFiles } from '../service/WorkspaceFiles';
 import { hugePasteInsertion, isPastedAttachment } from '../core/Paste';
@@ -64,6 +64,9 @@ export struct ChatView {
   @State mentionStart: number = -1;
   @State mentionQuery: string = '';
   @State mentionIndex: number = 0;
+  /** Caret end of the `@query` token, reported by the TextArea. */
+  @State mentionCaret: number = 0;
+  @State mentionSelectionEnd: number = 0;
   /** Cached flat listing; loaded the first time the menu opens. */
   @State mentionFiles: FileEntry[] = [];
   /** Prompts waiting for the current run to reach a model boundary. */
@@ -146,6 +149,7 @@ export struct ChatView {
   }
 
   private scroller: Scroller = new Scroller();
+  private inputController: TextAreaController = new TextAreaController();
 
   private lastMessageId(): string {
     if (this.messages.length === 0) {
@@ -529,7 +533,7 @@ export struct ChatView {
   }
 
   private onDraftChanged(): void {
-    this.refreshMention(this.draft);
+    this.refreshMention(this.draft, this.mentionCaret);
   }
 
   private isPastedFile(item: ChatAttachment): boolean {
@@ -558,9 +562,9 @@ export struct ChatView {
     return filterMentionFiles(this.mentionFiles, this.mentionQuery, 5);
   }
 
-  /** Open/update the menu for the trailing `@query` token, if any. */
-  private refreshMention(value: string): void {
-    const active: MentionQuery | null = activeMention(value);
+  /** Open/update the menu for the `@query` token ending at the caret. */
+  private refreshMention(value: string, caret: number): void {
+    const active: MentionQuery | null = activeMentionAt(value, caret);
     if (active === null) {
       this.mentionOpen = false;
       return;
@@ -587,17 +591,42 @@ export struct ChatView {
   }
 
   private chooseMention(entry: FileEntry): void {
-    this.draft = replaceMention(this.draft, this.mentionStart, entry.path);
+    const end: number = Math.max(this.mentionCaret, this.mentionSelectionEnd);
+    const next: string = replaceMentionRange(this.draft, this.mentionStart,
+      end, entry.path);
+    const caret: number = this.mentionStart + entry.path.length + 2;
+    this.draft = next;
+    this.mentionCaret = caret;
+    this.mentionSelectionEnd = caret;
     this.mentionOpen = false;
     this.mentionStart = -1;
     this.mentionQuery = '';
+    setTimeout(() => {
+      this.inputController.caretPosition(caret);
+    }, 0);
   }
 
-  /** Insert an `@` trigger from the toolbar; the menu opens on the next tick. */
+  /** Insert an `@` trigger at the caret, replacing any selection. */
   private startMention(): void {
-    const space: string = this.draft.length > 0 && !this.draft.endsWith(' ') ? ' ' : '';
-    this.draft = this.draft + space + '@';
-    this.refreshMention(this.draft);
+    const length: number = this.draft.length;
+    const a: number = this.mentionCaret >= 0 && this.mentionCaret <= length
+      ? this.mentionCaret : length;
+    const b: number = this.mentionSelectionEnd >= 0 && this.mentionSelectionEnd <= length
+      ? this.mentionSelectionEnd : length;
+    const from: number = Math.min(a, b);
+    const to: number = Math.max(a, b);
+    const before: string = this.draft.substring(0, from);
+    const after: string = this.draft.substring(to);
+    const space: string = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
+    const insert: string = space + '@';
+    const caret: number = from + insert.length;
+    this.draft = before + insert + after;
+    this.mentionCaret = caret;
+    this.mentionSelectionEnd = caret;
+    this.refreshMention(this.draft, caret);
+    setTimeout(() => {
+      this.inputController.caretPosition(caret);
+    }, 0);
   }
 
   @Builder
@@ -753,7 +782,11 @@ export struct ChatView {
             .padding({ left: 6, right: 6, top: 10, bottom: 10 })
             .onClick(() => this.onTakePhoto())
         }
-        TextArea({ text: this.draft, placeholder: t('问点什么…') })
+        TextArea({
+          text: this.draft,
+          placeholder: t('问点什么…'),
+          controller: this.inputController
+        })
           .id('composerInput')
           .layoutWeight(1)
           .constraintSize({ minHeight: 42, maxHeight: 150 })
@@ -776,6 +809,11 @@ export struct ChatView {
               return;
             }
             this.draft = value;
+          })
+          .onTextSelectionChange((selectionStart: number, selectionEnd: number) => {
+            this.mentionCaret = selectionStart;
+            this.mentionSelectionEnd = selectionEnd;
+            this.refreshMention(this.draft, selectionStart);
           })
           // While the mention menu is open Enter must submit so onSubmit can
           // pick the highlighted file instead of inserting a newline.

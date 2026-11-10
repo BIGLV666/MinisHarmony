@@ -4338,3 +4338,36 @@ test('agent config reports unchanged values without a rewrite', () => {
   assert.equal(same.changed, false);
   assert.equal(same.message, '配置未变化：temperature');
 });
+
+test('mention trigger follows the caret, not just the draft end', () => {
+  const text = '看看 @src/ma 后面的字';
+  assert.deepEqual(mention.activeMentionAt(text, 10), { start: 3, query: 'src/ma' },
+    'caret at the end of the token mid-draft');
+  assert.deepEqual(mention.activeMentionAt(text, 7), { start: 3, query: 'src' },
+    'caret inside the query');
+  assert.equal(mention.activeMentionAt(text, 3), null, 'caret before the @');
+  assert.equal(mention.activeMentionAt(text, 2), null);
+  assert.deepEqual(mention.activeMentionAt('@', 1), { start: 0, query: '' });
+  assert.equal(mention.activeMentionAt('@', 0), null, 'caret before the @');
+  assert.equal(mention.activeMentionAt('@', -5), null,
+    'negative caret clamps to zero');
+  assert.equal(mention.activeMentionAt(text, 999), null,
+    'out-of-range caret clamps to the draft end');
+  assert.equal(mention.activeMentionAt('mail me at a@b.com', 19), null,
+    'email-style @ still ignored');
+  assert.equal(mention.activeMentionAt('@src/ma 后面的字', 9), null,
+    'whitespace between @ and caret ends the token');
+});
+
+test('mention replacement keeps text after the caret', () => {
+  const text = '看看 @src/ma 后面的字';
+  assert.equal(mention.replaceMentionRange(text, 3, 10, 'src/main.ets'),
+    '看看 @src/main.ets 后面的字', 'mid-draft replacement keeps the suffix');
+  assert.equal(mention.replaceMentionRange(text, 3, 10, 'a.md'),
+    '看看 @a.md 后面的字', 'one existing space is absorbed');
+  assert.equal(mention.replaceMentionRange('@x', 0, 2, 'a.md'), '@a.md ');
+  assert.equal(mention.replaceMentionRange('abc', 99, 99, 'a.md'), 'abc@a.md ',
+    'out-of-range start falls back to the end');
+  assert.equal(mention.replaceMentionRange('abc', 0, 99, 'a.md'), '@a.md ',
+    'out-of-range end clamps to the text length');
+});

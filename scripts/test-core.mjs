@@ -55,6 +55,7 @@ copyCore('SubAgentRoster');
 copyCore('Types');
 copyCore('PromptQueue', ['Types']);
 copyCore('SessionFolder', ['Types']);
+copyCore('BrowserHistory');
 copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -195,6 +196,7 @@ const md = await import(pathToFileURL(join(tmp, 'Markdown.mts')).href);
 const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
 const promptQueue = await import(pathToFileURL(join(tmp, 'PromptQueue.mts')).href);
 const folders = await import(pathToFileURL(join(tmp, 'SessionFolder.mts')).href);
+const browserHistory = await import(pathToFileURL(join(tmp, 'BrowserHistory.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
@@ -3561,4 +3563,90 @@ test('folder grouping keeps folder order, empties and the ungrouped bucket', () 
   const noUngrouped = folders.groupByFolder([make('s1', 'f1')], list);
   assert.equal(noUngrouped.length, 3);
   assert.equal(noUngrouped[2].id, 'f3');
+});
+
+test('browser history parses defensively and keeps web URLs only', () => {
+  assert.deepEqual(browserHistory.parseHistory(''), []);
+  assert.deepEqual(browserHistory.parseHistory('not json'), []);
+  assert.deepEqual(browserHistory.parseHistory('{"url":"https://a"}'), []);
+  const parsed = browserHistory.parseHistory(JSON.stringify([
+    { url: 'https://a.com', title: 'A', at: 5 },
+    { url: 'file:///etc/passwd', title: 'bad', at: 1 },
+    { url: 'https://b.com', at: 'bad' },
+    { url: 3 }
+  ]));
+  assert.deepEqual(parsed.map((item) => item.url), ['https://a.com', 'https://b.com']);
+  assert.equal(parsed[0].title, 'A');
+  assert.equal(parsed[1].title, '');
+  assert.equal(parsed[1].at, 0);
+});
+
+test('browser history dedupes by URL and keeps newest first', () => {
+  const first = browserHistory.recordHistory([], {
+    url: 'https://a.com', title: 'A', at: 1
+  });
+  const second = browserHistory.recordHistory(first, {
+    url: 'https://b.com', title: 'B', at: 2
+  });
+  const revisit = browserHistory.recordHistory(second, {
+    url: 'https://a.com', title: 'A2', at: 3
+  });
+  assert.deepEqual(revisit.map((item) => item.url), ['https://a.com', 'https://b.com']);
+  assert.equal(revisit[0].title, 'A2');
+  assert.equal(revisit[0].at, 3);
+  const untitled = browserHistory.recordHistory(revisit, {
+    url: 'https://c.com', title: '', at: 4
+  });
+  assert.equal(untitled[0].title, 'https://c.com');
+  assert.equal(browserHistory.recordHistory(second, {
+    url: 'data:text/html,hi', title: 'x', at: 5
+  }), second, 'non-web URLs are ignored');
+  const capped = browserHistory.recordHistory(second, {
+    url: 'https://c.com', title: 'C', at: 3
+  }, 2);
+  assert.equal(capped.length, 2);
+});
+
+test('browser history search matches title and URL case-insensitively', () => {
+  const list = [
+    { url: 'https://Example.com/docs', title: 'Harmony Docs', at: 1 },
+    { url: 'https://other.org', title: 'News', at: 2 }
+  ];
+  assert.deepEqual(browserHistory.filterHistory(list, ' ').map((item) => item.url),
+    ['https://Example.com/docs', 'https://other.org']);
+  assert.deepEqual(browserHistory.filterHistory(list, 'DOC').map((item) => item.url),
+    ['https://Example.com/docs']);
+  assert.deepEqual(browserHistory.filterHistory(list, 'other').map((item) => item.url),
+    ['https://other.org']);
+  assert.deepEqual(browserHistory.filterHistory(list, 'missing'), []);
+});
+
+test('browser downloads parse and upsert by path', () => {
+  assert.deepEqual(browserHistory.parseDownloads('[]'), []);
+  const parsed = browserHistory.parseDownloads(JSON.stringify([
+    { name: 'a.pdf', path: '/d/a.pdf', at: 4, bytes: 12, ok: true },
+    { path: '' },
+    { name: 'b.pdf' }
+  ]));
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].bytes, 12);
+  const one = browserHistory.upsertDownload([], {
+    name: 'a.pdf', path: '/d/a.pdf', at: 1, bytes: 0, ok: false
+  });
+  const two = browserHistory.upsertDownload(one, {
+    name: 'b.pdf', path: '/d/b.pdf', at: 2, bytes: 3, ok: true
+  });
+  const updated = browserHistory.upsertDownload(two, {
+    name: 'a.pdf', path: '/d/a.pdf', at: 3, bytes: 9, ok: true
+  });
+  assert.deepEqual(updated.map((item) => item.name), ['a.pdf', 'b.pdf']);
+  assert.equal(updated[0].ok, true);
+  assert.equal(updated[0].bytes, 9);
+});
+
+test('browser download sizes format compactly', () => {
+  assert.equal(browserHistory.formatBytes(0), '—');
+  assert.equal(browserHistory.formatBytes(512), '512 B');
+  assert.equal(browserHistory.formatBytes(2048), '2.0 KB');
+  assert.equal(browserHistory.formatBytes(5 * 1024 * 1024), '5.0 MB');
 });

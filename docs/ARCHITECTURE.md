@@ -417,6 +417,23 @@ filesDir/memory/
 浏览器。`isOpenableUrl()` 只放行 http / https / mailto / tel，`javascript:`、`file:`
 等协议直接拒绝并提示。
 
+## 内置浏览器
+
+聊天里的 http(s) 链接由 `components/BrowserPage.ets` 全屏打开；它是一页一实例的
+前台浏览器，自动化用的 4 标签池在 `HiddenBrowser` 里，两者互不复用 controller。
+工具栏按「后退 / 前进 / 刷新或停止 / 历史 / 下载 / 设置 / 地址栏 / 系统打开 / 关闭」
+排列，地址栏接受裸域名并补全 `https://`。
+
+历史与下载记录只存本机 preferences（`service/BrowserStore.ets`）：历史是
+`{url, title, at}`，同 URL 只保留最近一次并在 `onPageEnd` 写入，上限 200；
+`file://`、`data:` 等非 http(s) 页面不记录。下载通过 controller 的
+`setDownloadDelegate` 启动，文件名按 `\/:*?"<>|` 清洗后写入
+`filesDir/browser-downloads`，同名追加时间戳；完成/失败后记录
+`{name, path, at, bytes, ok}`，上限 100。面板里的下载项用 `file://` 在当前
+Web 中打开，因此 `fileAccess` 必须开启。设置面板保存 UA 预设（默认/移动/桌面/
+自定义）与宽视口开关，UA 在 `onControllerAttached` 应用；Cookie 只显示当前站的
+条数，可清除当前站或全部，不展示具体值。
+
 ## 导出 Markdown / JSON
 
 `core/MarkdownExport.ets` 是纯函数：把 `StoredSession` 渲染成标题、模型/日期、

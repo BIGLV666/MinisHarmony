@@ -376,13 +376,13 @@ export struct MessageBubble {
 
       // Generated or read images arrive as an attachment URI on the tool part.
       if (part.uri.length > 0) {
-        Image('file://' + AttachmentStore.absolutePath(part.uri))
+        Image('file://' + AttachmentStore.imagePath(part.uri))
           .width(180)
           .height(180)
           .objectFit(ImageFit.Cover)
           .borderRadius(8)
           .onClick(() => {
-            this.previewPath = AttachmentStore.absolutePath(part.uri);
+            this.previewPath = AttachmentStore.imagePath(part.uri);
             this.previewOpen = true;
           })
       }

@@ -6,10 +6,13 @@ import { http } from '@kit.NetworkKit';
 import { BrowserHandler, ToolResult } from '../core/ToolTypes';
 import { normalizeWebUrl } from '../core/WebUrl';
 import {
+  BROWSER_ARTIFACT_DIR,
   MINIS_ATTACHMENTS,
+  MINIS_BROWSER,
   MINIS_WORKSPACE,
   MinisResource,
-  parseMinisResource
+  parseMinisResource,
+  resourceUrl
 } from '../core/MinisResource';
 import { t } from '../core/I18n';
 
@@ -323,6 +326,8 @@ export class BrowserHostRegistry {
     let base: string = '';
     if (resource.scope === MINIS_WORKSPACE) {
       base = this.workspace;
+    } else if (resource.scope === MINIS_BROWSER) {
+      base = this.workspace + '/' + BROWSER_ARTIFACT_DIR;
     } else if (resource.scope === MINIS_ATTACHMENTS) {
       base = this.attachments;
     }
@@ -768,9 +773,9 @@ export class BrowserTool implements BrowserHandler {
       return {
         ok: true,
         content: truncate(t('截图已保存：') + path + '\n' +
-          t('Markdown 链接：') + '[.minis-browser/' + name + '](minis://workspace/.minis-browser/' +
-          name + ')', maxChars),
-        imageUri: '.minis-browser/' + name,
+          t('Markdown 链接：') + '[' + name + '](' +
+          resourceUrl(MINIS_BROWSER, name) + ')', maxChars),
+        imageUri: resourceUrl(MINIS_BROWSER, name),
         imageMimeType: 'image/png'
       };
     } catch (e) {
@@ -992,7 +997,8 @@ export class BrowserTool implements BrowserHandler {
         t('类型：') + (contentType.length > 0 ? contentType : t('未知')) + '\n' +
         t('大小：') + formatBytes(data.byteLength) + '\n' +
         t('文件：') + relative + '\n' +
-        t('Markdown 链接：') + '[' + fileName + '](minis://workspace/' + relative + ')';
+        t('Markdown 链接：') + '[' + fileName + '](' +
+        resourceUrl(MINIS_BROWSER, fileName) + ')';
       return { ok: true, content: lines };
     } catch (e) {
       const error: Error = e as Error;

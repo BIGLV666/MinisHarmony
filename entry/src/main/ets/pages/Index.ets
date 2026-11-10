@@ -89,7 +89,13 @@ import { mergeBackupSettings } from '../core/Backup';
 import { parseBackupSessions } from '../core/SessionExport';
 import { SyncMergeResult, mergeSessionSets } from '../core/SyncMerge';
 import { parseDeepLink, DeepLink } from '../core/DeepLink';
-import { MINIS_ATTACHMENTS, MINIS_WORKSPACE, MinisResource } from '../core/MinisResource';
+import {
+  BROWSER_ARTIFACT_DIR,
+  MINIS_ATTACHMENTS,
+  MINIS_BROWSER,
+  MINIS_WORKSPACE,
+  MinisResource
+} from '../core/MinisResource';
 import {
   ScheduledTask,
   TaskRun,
@@ -760,6 +766,17 @@ struct Index {
         return;
       }
       this.workspaceInitial = resource.path;
+      this.showWorkspace = true;
+      return;
+    }
+    if (resource.scope === MINIS_BROWSER) {
+      const path: string = BROWSER_ARTIFACT_DIR + '/' + resource.path;
+      if (this.isImagePath(resource.path)) {
+        this.previewImagePath = this.workspaceRoot + '/' + path;
+        this.previewImageOpen = true;
+        return;
+      }
+      this.workspaceInitial = path;
       this.showWorkspace = true;
       return;
     }

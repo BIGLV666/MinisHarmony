@@ -1824,6 +1824,12 @@ test('minis resource links resolve workspace and attachment files', () => {
     { scope: 'workspace', path: '日志.md' });
   assert.deepEqual(minisResource.parseMinisResource('minis://attachments/pic.png'),
     { scope: 'attachments', path: 'pic.png' });
+  assert.deepEqual(minisResource.parseMinisResource('minis://browser/shot-1.png'),
+    { scope: 'browser', path: 'shot-1.png' });
+  assert.equal(minisResource.resourceUrl('browser', 'shot 1.png'),
+    'minis://browser/shot%201.png');
+  assert.equal(minisResource.resourceUrl('workspace', 'site/a b.js'),
+    'minis://workspace/site/a%20b.js');
   assert.deepEqual(minisResource.parseMinisResource('minis://workspace'),
     { scope: 'workspace', path: '' });
   // Traversal, absolute paths, bad escapes and other hosts are rejected.

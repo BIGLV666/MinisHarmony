@@ -22,7 +22,9 @@ import {
 } from '../core/CodeHighlight';
 import { t } from '../core/I18n';
 import {
+  BROWSER_ARTIFACT_DIR,
   MINIS_ATTACHMENTS,
+  MINIS_BROWSER,
   MINIS_WORKSPACE,
   MinisResource,
   parseMinisResource
@@ -286,6 +288,11 @@ export struct MarkdownView {
       }
       if (resource.scope === MINIS_ATTACHMENTS) {
         return 'file://' + AttachmentStore.absolutePath(resource.path);
+      }
+      if (resource.scope === MINIS_BROWSER) {
+        const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+        return 'file://' + context.filesDir + '/workspace/' +
+          BROWSER_ARTIFACT_DIR + '/' + resource.path;
       }
       return '';
     }

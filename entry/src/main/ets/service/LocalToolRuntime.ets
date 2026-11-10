@@ -25,6 +25,7 @@ import { MemoryStore } from './MemoryStore';
 import { SkillStore } from './SkillStore';
 import { SkillDoc } from '../core/SkillDoc';
 import { t } from '../core/I18n';
+import { MINIS_WORKSPACE, resourceUrl } from '../core/MinisResource';
 
 const MAX_READ_BYTES: number = 1024 * 1024;
 const MAX_IMAGE_BYTES: number = 5 * 1024 * 1024;
@@ -593,7 +594,7 @@ export class LocalToolRuntime implements ToolRuntime {
       ok: true,
       content: 'Image loaded successfully.\nMIME: ' + mime +
         '\nBytes: ' + stat.size.toString(),
-      imageUri: relative,
+      imageUri: resourceUrl(MINIS_WORKSPACE, relative),
       imageMimeType: mime
     };
   }

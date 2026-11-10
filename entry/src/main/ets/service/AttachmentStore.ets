@@ -1,5 +1,12 @@
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
+import {
+  BROWSER_ARTIFACT_DIR,
+  MINIS_BROWSER,
+  MINIS_WORKSPACE,
+  MinisResource,
+  parseMinisResource
+} from '../core/MinisResource';
 
 const MAX_ATTACHMENT_BYTES: number = 10 * 1024 * 1024;
 const ATTACHMENT_PREFIX: string = 'attachment:';
@@ -43,6 +50,47 @@ export class AttachmentStore {
 
   static absolutePath(name: string): string {
     return AttachmentStore.dir + '/' + AttachmentStore.nameFromUri(name);
+  }
+
+  /** Parent directory of the attachment directory, where `workspace` lives. */
+  private static filesRoot(): string {
+    const cut: number = AttachmentStore.dir.lastIndexOf('/');
+    return cut < 0 ? AttachmentStore.dir : AttachmentStore.dir.substring(0, cut);
+  }
+
+  /**
+   * Resolve either an attachment name/URI or a `minis://` resource link to an
+   * absolute path. Tool results use `minis://workspace` and `minis://browser`;
+   * generated images and user photos use `attachment:<name>`.
+   */
+  static imagePath(uri: string): string {
+    if (uri.toLowerCase().indexOf('minis://') === 0) {
+      const resource: MinisResource | null = parseMinisResource(uri);
+      if (resource !== null) {
+        if (resource.scope === MINIS_WORKSPACE) {
+          return AttachmentStore.filesRoot() + '/workspace/' + resource.path;
+        }
+        if (resource.scope === MINIS_BROWSER) {
+          return AttachmentStore.filesRoot() + '/workspace/' +
+            BROWSER_ARTIFACT_DIR + '/' + resource.path;
+        }
+        return AttachmentStore.dir + '/' + resource.path;
+      }
+    }
+    // Historical tool results stored workspace-relative paths without a
+    // scheme (for example `.minis-browser/shot-…`); prefer the workspace copy
+    // when it exists, otherwise treat the value as an attachment name.
+    const plain: string = AttachmentStore.nameFromUri(uri);
+    if (plain.indexOf('/') >= 0) {
+      const candidate: string = AttachmentStore.filesRoot() + '/workspace/' + plain;
+      try {
+        if (fs.accessSync(candidate)) {
+          return candidate;
+        }
+      } catch (e) {
+      }
+    }
+    return AttachmentStore.absolutePath(uri);
   }
 
   static uriFor(name: string): string {

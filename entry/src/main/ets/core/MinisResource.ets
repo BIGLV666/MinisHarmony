@@ -12,9 +12,12 @@ import { normalizeRelativePath } from './Workspace';
 export const MINIS_SCHEME: string = 'minis://';
 export const MINIS_WORKSPACE: string = 'workspace';
 export const MINIS_ATTACHMENTS: string = 'attachments';
+/** Browser artifacts live in `<workspace>/.minis-browser`. */
+export const MINIS_BROWSER: string = 'browser';
+export const BROWSER_ARTIFACT_DIR: string = '.minis-browser';
 
 export interface MinisResource {
-  /** `workspace` or `attachments`. */
+  /** `workspace`, `attachments` or `browser`. */
   scope: string;
   /** Normalised relative path; empty means the directory root. */
   path: string;
@@ -36,7 +39,8 @@ export function parseMinisResource(uri: string): MinisResource | null {
   // a single slash is not a resource link.
   const slash: number = rest.indexOf('/');
   const scope: string = (slash < 0 ? rest : rest.substring(0, slash)).toLowerCase();
-  if (scope !== MINIS_WORKSPACE && scope !== MINIS_ATTACHMENTS) {
+  if (scope !== MINIS_WORKSPACE && scope !== MINIS_ATTACHMENTS &&
+    scope !== MINIS_BROWSER) {
     return null;
   }
   let encoded: string = slash < 0 ? '' : rest.substring(slash + 1);
@@ -55,6 +59,13 @@ export function parseMinisResource(uri: string): MinisResource | null {
     return null;
   }
   return { scope: scope, path: path };
+}
+
+/** Build a `minis://` URL with each path segment percent-encoded. */
+export function resourceUrl(scope: string, path: string): string {
+  const encoded: string = path.split('/').map((segment: string): string =>
+    encodeURIComponent(segment)).join('/');
+  return MINIS_SCHEME + scope + '/' + encoded;
 }
 
 /** Directory and leaf name for opening a preview at a specific file. */

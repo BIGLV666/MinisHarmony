@@ -661,9 +661,16 @@ mp3/m4a/wav/ogg/aac/flac，大小上限按类型分为视频 100 MB、音频 20 
 `[视频]/[音频] <文件名>` 文本 part（模型据此知道附件存在），以及 `PART_FILE`
 媒体 part（uri + mimeType）。协议转换只读取文本，忽略 `PART_FILE`；如果一条消息
 没有任何文本，只有媒体 part，转换会跳过它——所以文本提示是必需的。
-`MessageBubble` 按 mime 前缀把 `PART_FILE` 分成视频/音频，用 ArkUI `Video`
-控件内联播放（`controls(true)`、`autoPlay(false)`），输入栏预览则用 ▶/♪ 占位块。
-编辑消息时保留非文本 part，媒体不会丢失。
+`MessageBubble` 按 mime 前缀把 `PART_FILE` 分成视频/音频：视频用 ArkUI `Video`
+控件内联播放（`controls(true)`、`autoPlay(false)`、首帧封面），音频用
+`AudioPlayerView`。该组件首次点播放才创建 `AVPlayer`，避免长会话为每个语音条
+常驻解码器；`stateChange`/`timeUpdate`/`durationUpdate` 驱动按钮、进度条与
+`mediaClock` 时钟，`SliderChangeMode.End` 时才 seek，播完再点先回到 0，组件销毁
+时 `release()`。输入栏预览仍用 ▶/♪ 占位块。编辑消息时保留非文本 part，媒体不会
+丢失。
+
+工作区面板用 `core/MediaType` 的扩展名判断把图片、视频与音频改为内联预览；其余
+文件继续走 HTML（ArkWeb）、只读文本或二进制说明，头部「导出」对所有类型一致。
 
 ## 用量统计与存储
 

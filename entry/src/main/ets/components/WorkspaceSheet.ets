@@ -1,6 +1,9 @@
 import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
 import { FileEntry, formatFileSize, parentRelative } from '../core/FileListing';
+import { mediaKindOf } from '../core/MediaType';
+import { resolveWorkspacePath } from '../core/Workspace';
+import { AudioPlayerView } from './AudioPlayerView';
 import {
   WorkspaceListing,
   WorkspacePreview,
@@ -34,6 +37,9 @@ export struct WorkspaceSheet {
   @State previewTruncated: boolean = false;
   @State previewHtml: boolean = false;
   @State previewPath: string = '';
+  /** `video`/`audio`/`image` when the preview plays media inline. */
+  @State previewMedia: string = '';
+  @State previewAbsolute: string = '';
   private htmlController: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear(): void {
@@ -57,9 +63,29 @@ export struct WorkspaceSheet {
   }
 
   /**
+   * Images, video and audio render inline. Returns false for everything else
+   * so the caller can fall through to HTML or the read-only text preview.
+   */
+  private openMedia(name: string, relative: string): boolean {
+    const kind: string = mediaKindOf(name);
+    if (kind.length === 0) {
+      return false;
+    }
+    this.previewName = name;
+    this.previewPath = relative;
+    this.previewError = '';
+    this.previewText = '';
+    this.previewTruncated = false;
+    this.previewHtml = false;
+    this.previewMedia = kind;
+    this.previewAbsolute = resolveWorkspacePath(this.workspaceRoot, relative);
+    return true;
+  }
+
+  /**
    * Show the containing directory and open the linked file beside it. HTML
-   * artifacts render in a Web view (matching OpenMinis's file preview); every
-   * other type keeps the read-only text preview.
+   * artifacts render in a Web view (matching OpenMinis's file preview); media
+   * plays inline; every other type keeps the read-only text preview.
    */
   private reveal(relative: string): void {
     this.path = parentRelative(relative);
@@ -74,6 +100,11 @@ export struct WorkspaceSheet {
       this.previewText = '';
       this.previewTruncated = false;
       this.previewHtml = true;
+      this.previewMedia = '';
+      this.previewAbsolute = '';
+      return;
+    }
+    if (this.openMedia(name, relative)) {
       return;
     }
     const preview: WorkspacePreview =
@@ -81,6 +112,8 @@ export struct WorkspaceSheet {
     this.previewName = name;
     this.previewPath = relative;
     this.previewHtml = false;
+    this.previewMedia = '';
+    this.previewAbsolute = '';
     this.previewError = preview.ok ? '' : preview.error;
     this.previewText = preview.text;
     this.previewTruncated = preview.truncated;
@@ -100,6 +133,8 @@ export struct WorkspaceSheet {
     this.previewTruncated = false;
     this.previewHtml = false;
     this.previewPath = '';
+    this.previewMedia = '';
+    this.previewAbsolute = '';
   }
 
   private enterDir(entry: FileEntry): void {
@@ -116,6 +151,11 @@ export struct WorkspaceSheet {
       this.previewText = '';
       this.previewTruncated = false;
       this.previewHtml = true;
+      this.previewMedia = '';
+      this.previewAbsolute = '';
+      return;
+    }
+    if (this.openMedia(entry.name, entry.path)) {
       return;
     }
     const preview: WorkspacePreview =
@@ -126,6 +166,8 @@ export struct WorkspaceSheet {
     this.previewText = preview.text;
     this.previewTruncated = preview.truncated;
     this.previewHtml = false;
+    this.previewMedia = '';
+    this.previewAbsolute = '';
   }
 
   /** Hand the current file to the system picker, including binaries. */
@@ -290,6 +332,31 @@ export struct WorkspaceSheet {
           .mixedMode(MixedMode.All)
           .backgroundColor($r('app.color.code_bg'))
           .borderRadius(9)
+      } else if (this.previewMedia === 'video') {
+        Video({
+          src: 'file://' + this.previewAbsolute,
+          posterOptions: { showFirstFrame: true }
+        })
+          .width('100%')
+          .height(240)
+          .borderRadius(9)
+          .backgroundColor('#000000')
+          .objectFit(ImageFit.Contain)
+          .autoPlay(false)
+          .controls(true)
+      } else if (this.previewMedia === 'audio') {
+        Row() {
+          AudioPlayerView({ path: this.previewAbsolute })
+        }
+        .width('100%')
+        .justifyContent(FlexAlign.Center)
+      } else if (this.previewMedia === 'image') {
+        Image('file://' + this.previewAbsolute)
+          .width('100%')
+          .height(300)
+          .borderRadius(9)
+          .objectFit(ImageFit.Contain)
+          .backgroundColor($r('app.color.code_bg'))
       } else {
         Scroll() {
           Text(this.previewText)

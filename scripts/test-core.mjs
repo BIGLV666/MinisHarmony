@@ -80,6 +80,8 @@ copyCore('SandboxProtocol');
 copyCore('EventLog');
 copyCore('EditPatch');
 copyCore('Memory');
+copyCore('MediaTime');
+copyCore('MediaType');
 copyCore('ContextBudget', ['Types']);
 copyCore('MarkdownExport', ['Types']);
 copyCore('ShareCard', ['MarkdownExport']);
@@ -225,6 +227,8 @@ const log = await import(pathToFileURL(join(tmp, 'EventLog.mts')).href);
 const edit = await import(pathToFileURL(join(tmp, 'EditPatch.mts')).href);
 const catalog = await import(pathToFileURL(join(tmp, 'ToolCatalog.mts')).href);
 const memory = await import(pathToFileURL(join(tmp, 'Memory.mts')).href);
+const mediaTime = await import(pathToFileURL(join(tmp, 'MediaTime.mts')).href);
+const mediaType = await import(pathToFileURL(join(tmp, 'MediaType.mts')).href);
 const budget = await import(pathToFileURL(join(tmp, 'ContextBudget.mts')).href);
 const exporter = await import(pathToFileURL(join(tmp, 'MarkdownExport.mts')).href);
 const toolArgs = await import(pathToFileURL(join(tmp, 'ToolArgs.mts')).href);
@@ -1203,6 +1207,25 @@ test('memory lines can be listed, rewritten and removed in place', () => {
   assert.equal(memory.removeMemoryLine('a\nb\n', 0), 'b\n');
   assert.equal(memory.removeMemoryLine('a', -1), 'a');
   assert.equal(memory.memoryLineAt('a\n\nb', 1), '');
+});
+
+test('audio clock labels handle missing and long positions', () => {
+  assert.equal(mediaTime.mediaClock(0), '0:00');
+  assert.equal(mediaTime.mediaClock(-500), '0:00');
+  assert.equal(mediaTime.mediaClock(Number.NaN), '0:00');
+  assert.equal(mediaTime.mediaClock(Number.POSITIVE_INFINITY), '0:00');
+  assert.equal(mediaTime.mediaClock(5000), '0:05');
+  assert.equal(mediaTime.mediaClock(61000), '1:01');
+  assert.equal(mediaTime.mediaClock(3600000), '60:00');
+});
+
+test('media preview kind follows the file extension', () => {
+  assert.equal(mediaType.mediaKindOf('clip.MP4'), 'video');
+  assert.equal(mediaType.mediaKindOf('notes/voice.mp3'), 'audio');
+  assert.equal(mediaType.mediaKindOf('cover.jpeg'), 'image');
+  assert.equal(mediaType.mediaKindOf('README.md'), '');
+  assert.equal(mediaType.mediaKindOf('no-extension'), '');
+  assert.equal(mediaType.mediaKindOf('trailing.'), '');
 });
 
 test('tool catalogue exposes file_edit with a safe schema', () => {

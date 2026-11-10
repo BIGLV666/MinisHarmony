@@ -16,6 +16,7 @@ import {
 import { AttachmentStore } from '../service/AttachmentStore';
 import { formatRelative, formatTokens } from '../service/Format';
 import { MarkdownView } from './MarkdownView';
+import { AudioPlayerView } from './AudioPlayerView';
 import { i18nVariants, t } from '../core/I18n';
 import { MinisResource } from '../core/MinisResource';
 
@@ -519,14 +520,7 @@ export struct MessageBubble {
           .controls(true)
       }, (part: MessagePart) => 'video:' + part.uri)
       ForEach(this.audios(), (part: MessagePart) => {
-        Video({ src: 'file://' + AttachmentStore.absolutePath(part.uri) })
-          .width(240)
-          .height(54)
-          .borderRadius(10)
-          .backgroundColor('#000000')
-          .objectFit(ImageFit.Contain)
-          .autoPlay(false)
-          .controls(true)
+        AudioPlayerView({ path: AttachmentStore.absolutePath(part.uri) })
       }, (part: MessagePart) => 'audio:' + part.uri)
       if (this.images().length > 0) {
         ForEach(this.images(), (part: MessagePart) => {

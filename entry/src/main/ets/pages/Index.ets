@@ -88,6 +88,7 @@ import { mergeBackupSettings } from '../core/Backup';
 import { parseBackupSessions } from '../core/SessionExport';
 import { SyncMergeResult, mergeSessionSets } from '../core/SyncMerge';
 import { parseDeepLink, DeepLink } from '../core/DeepLink';
+import { MINIS_WORKSPACE, MinisResource } from '../core/MinisResource';
 import {
   ScheduledTask,
   TaskRun,
@@ -166,6 +167,7 @@ struct Index {
   @State showSettings: boolean = false;
   @State showModels: boolean = false;
   @State showWorkspace: boolean = false;
+  @State workspaceInitial: string = '';
   @State showTasks: boolean = false;
   @State tasks: ScheduledTask[] = [];
   @State taskRuns: TaskRun[] = [];
@@ -667,6 +669,20 @@ struct Index {
 
   private toast(message: string): void {
     this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 });
+  }
+
+  /**
+   * A `minis://workspace/<path>` link in a reply opens the read-only file
+   * preview. Attachment links are not previewable yet; the message already
+   * renders their images inline.
+   */
+  private openMinisResource(resource: MinisResource): void {
+    if (resource.scope === MINIS_WORKSPACE) {
+      this.workspaceInitial = resource.path;
+      this.showWorkspace = true;
+      return;
+    }
+    this.toast(t('附件链接请在消息中直接查看'));
   }
 
   /**
@@ -2795,7 +2811,8 @@ struct Index {
       onOpenLink: (url: string) => {
         this.browserUrl = url;
         this.showBrowser = true;
-      }
+      },
+      onOpenMinis: (resource: MinisResource) => this.openMinisResource(resource)
     })
   }
 
@@ -2915,6 +2932,7 @@ struct Index {
           onSave: (next: AppSettings) => this.applySettings(next),
           onToast: (message: string) => this.toast(message),
           onBrowseWorkspace: () => {
+            this.workspaceInitial = '';
             this.showWorkspace = true;
           },
           onExportDiagnostics: () => this.exportDiagnostics(),
@@ -2955,8 +2973,10 @@ struct Index {
       if (this.showWorkspace) {
         WorkspaceSheet({
           workspaceRoot: this.workspaceRoot,
+          initialPath: this.workspaceInitial,
           onClose: () => {
             this.showWorkspace = false;
+            this.workspaceInitial = '';
           }
         })
       }

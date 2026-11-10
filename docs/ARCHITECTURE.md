@@ -510,7 +510,9 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 `core/DeepLink.ets` 只接受三种会话形式（`session` / `chat` / `s`）与 `new`，
 忽略查询串与片段，未知路径返回 null。UI 收到链接时清空 AppStorage；如果
 bootstrap 还没结束就先缓存，等会话列表加载完再跳转，否则冷启动会找不到目标。
-`minis://file/...` 没有实现，因为工作区预览目前只能从文件页进入。
+`minis://workspace/<path>` 与 `minis://attachments/<path>` 作为 Markdown 资源链接
+由 `core/MinisResource.ets` 解析：前者直接打开工作区预览并定位到文件，后者暂只
+提示在消息中查看。`minis://file/...` 这种外部深链仍未实现。
 
 ## 接收应用分享
 

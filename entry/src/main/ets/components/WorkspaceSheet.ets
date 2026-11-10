@@ -15,6 +15,8 @@ import { t } from '../core/I18n';
 export struct WorkspaceSheet {
   @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop workspaceRoot: string = '';
+  /** A `minis://workspace/...` link opens straight into this file. */
+  @Prop initialPath: string = '';
   onClose: () => void = () => {
   };
 
@@ -27,7 +29,24 @@ export struct WorkspaceSheet {
   @State previewTruncated: boolean = false;
 
   aboutToAppear(): void {
+    if (this.initialPath.length > 0) {
+      this.reveal(this.initialPath);
+      return;
+    }
     this.reload();
+  }
+
+  /** Show the containing directory and open the linked file beside it. */
+  private reveal(relative: string): void {
+    this.path = parentRelative(relative);
+    this.reload();
+    const preview: WorkspacePreview =
+      previewWorkspaceFile(this.workspaceRoot, relative);
+    const cut: number = relative.lastIndexOf('/');
+    this.previewName = cut < 0 ? relative : relative.substring(cut + 1);
+    this.previewError = preview.ok ? '' : preview.error;
+    this.previewText = preview.text;
+    this.previewTruncated = preview.truncated;
   }
 
   private reload(): void {

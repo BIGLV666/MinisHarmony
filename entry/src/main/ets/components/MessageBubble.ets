@@ -14,6 +14,7 @@ import { AttachmentStore } from '../service/AttachmentStore';
 import { formatRelative, formatTokens } from '../service/Format';
 import { MarkdownView } from './MarkdownView';
 import { i18nVariants, t } from '../core/I18n';
+import { MinisResource } from '../core/MinisResource';
 
 /**
  * Per-message reasoning display state. The list rebuilds a bubble whenever
@@ -65,6 +66,7 @@ export struct MessageBubble {
   onSnapshot: () => void = () => {
   };
   onOpenLink: ((url: string) => void) | null = null;
+  onOpenMinis: ((resource: MinisResource) => void) | null = null;
 
   private isUser(): boolean {
     return this.message.role === 'user';
@@ -248,7 +250,11 @@ export struct MessageBubble {
       }
       .width('100%')
 
-      MarkdownView({ text: this.content(), onOpenLink: this.onOpenLink })
+      MarkdownView({
+        text: this.content(),
+        onOpenLink: this.onOpenLink,
+        onOpenMinis: this.onOpenMinis
+      })
     }
     .width('100%')
     .padding({ left: 14, right: 14, top: 10, bottom: 10 })
@@ -499,7 +505,11 @@ export struct MessageBubble {
       }
 
       if (this.content().length > 0) {
-        MarkdownView({ text: this.content(), onOpenLink: this.onOpenLink })
+        MarkdownView({
+          text: this.content(),
+          onOpenLink: this.onOpenLink,
+          onOpenMinis: this.onOpenMinis
+        })
       } else if (this.message.streaming && this.calls().length === 0) {
         this.thinking()
       }

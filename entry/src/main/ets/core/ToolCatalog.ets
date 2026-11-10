@@ -211,7 +211,8 @@ export function builtinToolDefinitions(): ToolDefinition[] {
         t('/var/minis/workspace，记忆目录挂载在 /var/minis/memory，聊天附件（图片等）在 ') +
         t('/var/minis/attachments，导入的技能在 /var/minis/skills，用它们读写用户文件。') +
         t('沙箱可以访问网络（与 App 共用网络连接），可用 curl、wget、git、pip、npm 等工具；') +
-        t('已预装 Node.js 22 与 npm、git、bash、curl、jq、pip、ssh、rsync、unzip。'),
+        t('已预装 Node.js 22 与 npm、git、bash、curl、jq、pip、ssh、rsync、unzip。') +
+        t('在回复中可用 [文件名](minis://workspace/相对路径) 链接生成的文件，用户点击即可预览。'),
       parameters: parametersOf(shellFields, ['command'])
     },
     {

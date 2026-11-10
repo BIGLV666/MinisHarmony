@@ -46,6 +46,7 @@ copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
 copyCore('ToolProtocol', ['Types']);
 copyCore('Workspace');
+copyCore('MinisResource', ['Workspace']);
 copyCore('Terminal');
 copyCore('SandboxProtocol');
 copyCore('EventLog');
@@ -204,6 +205,7 @@ const widgetData = await import(pathToFileURL(join(tmp, 'WidgetData.mts')).href)
 const highlight = await import(pathToFileURL(join(tmp, 'CodeHighlight.mts')).href);
 const share = await import(pathToFileURL(join(tmp, 'SharePayload.mts')).href);
 const deepLink = await import(pathToFileURL(join(tmp, 'DeepLink.mts')).href);
+const minisResource = await import(pathToFileURL(join(tmp, 'MinisResource.mts')).href);
 const backup = await import(pathToFileURL(join(tmp, 'Backup.mts')).href);
 const backupCrypto = await import(pathToFileURL(join(tmp, 'BackupCrypto.mts')).href);
 const imageGen = await import(pathToFileURL(join(tmp, 'ImageGen.mts')).href);
@@ -1782,6 +1784,25 @@ test('minis deep links resolve sessions and new chats only', () => {
   assert.equal(deepLink.parseDeepLink('minis://file/a.txt'), null);
   assert.equal(deepLink.parseDeepLink('https://example.com'), null);
   assert.equal(deepLink.parseDeepLink(''), null);
+});
+
+test('minis resource links resolve workspace and attachment files', () => {
+  assert.deepEqual(minisResource.parseMinisResource('minis://workspace/notes/a.md'),
+    { scope: 'workspace', path: 'notes/a.md' });
+  assert.deepEqual(minisResource.parseMinisResource('MINIS://Workspace/%E6%97%A5%E5%BF%97.md'),
+    { scope: 'workspace', path: '日志.md' });
+  assert.deepEqual(minisResource.parseMinisResource('minis://attachments/pic.png'),
+    { scope: 'attachments', path: 'pic.png' });
+  assert.deepEqual(minisResource.parseMinisResource('minis://workspace'),
+    { scope: 'workspace', path: '' });
+  // Traversal, absolute paths, bad escapes and other hosts are rejected.
+  assert.equal(minisResource.parseMinisResource('minis://workspace/../secret'), null);
+  assert.equal(minisResource.parseMinisResource('minis://workspace//etc/passwd'), null);
+  assert.equal(minisResource.parseMinisResource('minis://workspace/%zz'), null);
+  assert.equal(minisResource.parseMinisResource('minis://session/abc'), null);
+  assert.equal(minisResource.parseMinisResource('https://example.com/x'), null);
+  assert.deepEqual(minisResource.splitResourcePath('notes/a.md'), ['notes', 'a.md']);
+  assert.deepEqual(minisResource.splitResourcePath('a.md'), ['', 'a.md']);
 });
 
 test('workspace listing sorts directories first and formats sizes', () => {

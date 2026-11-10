@@ -21,6 +21,7 @@ import {
   highlightCode
 } from '../core/CodeHighlight';
 import { t } from '../core/I18n';
+import { MinisResource, parseMinisResource } from '../core/MinisResource';
 
 @Component
 export struct MarkdownView {
@@ -30,6 +31,8 @@ export struct MarkdownView {
   @StorageProp('fontScale') fontScale: number = 1;
   /** When set, http(s) links open in the in-app browser. */
   onOpenLink: ((url: string) => void) | null = null;
+  /** When set, `minis://workspace/...` links open a workspace preview. */
+  onOpenMinis: ((resource: MinisResource) => void) | null = null;
   /**
    * Offscreen snapshot cards cannot host ArkWeb, so display math falls back to
    * the Unicode approximation there. The interactive chat view keeps KaTeX.
@@ -88,6 +91,15 @@ export struct MarkdownView {
 
   /** In-app browser when the host provides a handler, system browser otherwise. */
   private openLink(url: string): void {
+    const resource: MinisResource | null = parseMinisResource(url);
+    if (resource !== null) {
+      if (this.onOpenMinis !== null) {
+        this.onOpenMinis(resource);
+      } else {
+        this.getUIContext().getPromptAction().showToast({ message: t('不支持的链接类型') });
+      }
+      return;
+    }
     if (!isOpenableUrl(url)) {
       this.getUIContext().getPromptAction().showToast({ message: t('不支持的链接类型') });
       return;

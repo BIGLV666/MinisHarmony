@@ -10,6 +10,7 @@ import { capsForModel, contextPercent, formatWindow } from '../core/ModelCaps';
 import { formatTokens } from '../service/Format';
 import { MessageBubble } from './MessageBubble';
 import { t } from '../core/I18n';
+import { MinisResource } from '../core/MinisResource';
 
 const SUGGESTIONS: string[] = [
   '帮我写一个鸿蒙 ArkTS 页面',
@@ -78,6 +79,7 @@ export struct ChatView {
     (message: ChatMessage, question: string) => {
     };
   onOpenLink: ((url: string) => void) | null = null;
+  onOpenMinis: ((resource: MinisResource) => void) | null = null;
 
   /** Nearest preceding user message, used as the header question on the card. */
   private questionFor(message: ChatMessage): string {
@@ -541,7 +543,8 @@ export struct ChatView {
                   onEdit: () => this.onEdit(message.id),
                   onRewind: () => this.onRewind(message.id),
                   onSnapshot: () => this.onSnapshot(message, this.questionFor(message)),
-                  onOpenLink: this.onOpenLink
+                  onOpenLink: this.onOpenLink,
+                  onOpenMinis: this.onOpenMinis
                 })
               }
               .width('100%')

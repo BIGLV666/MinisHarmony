@@ -1,22 +1,23 @@
 import { fileIo as fs } from '@kit.CoreFileKit';
 import {
   MEMORY_CONTEXT_CHARS,
+  MEMORY_LOG_LIMIT,
   MemoryFile,
+  MemoryLogEntry,
   buildMemoryContext,
   dayKey,
   isEditableMemoryFile,
   memoryEntry,
+  memoryLogsJson,
+  mergeMemoryLog,
   oneLine,
+  parseMemoryLogs,
   searchMemoryFiles
 } from '../core/Memory';
 import { t } from '../core/I18n';
 
-export interface MemoryLogEntry {
-  at: number;
-  text: string;
-}
-
 const GLOBAL_FILE: string = 'GLOBAL.md';
+const LOG_FILE: string = '.logs.json';
 const DEFAULT_DAYS: number = 7;
 const CONTEXT_DAYS: number = 3;
 const CACHE_MS: number = 3000;
@@ -32,11 +33,30 @@ export class MemoryStore {
   private static cacheAt: number = 0;
   private static recentLogs: MemoryLogEntry[] = [];
 
-  private static logLine(text: string): void {
-    MemoryStore.recentLogs.unshift({ at: Date.now(), text: text });
-    if (MemoryStore.recentLogs.length > 50) {
-      MemoryStore.recentLogs = MemoryStore.recentLogs.slice(0, 50);
+  /** Log persistence is best-effort: a read-only dir must not break memory. */
+  private static persistLogs(): void {
+    if (MemoryStore.root.length === 0) {
+      return;
     }
+    try {
+      const file = fs.openSync(
+        MemoryStore.root + '/' + LOG_FILE,
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+      );
+      try {
+        fs.writeSync(file.fd, memoryLogsJson(MemoryStore.recentLogs));
+      } finally {
+        fs.closeSync(file);
+      }
+    } catch (e) {
+      // The panel still shows this session's rows.
+    }
+  }
+
+  private static logLine(text: string): void {
+    MemoryStore.recentLogs = mergeMemoryLog(
+      MemoryStore.recentLogs, { at: Date.now(), text: text }, MEMORY_LOG_LIMIT);
+    MemoryStore.persistLogs();
   }
 
   /** Newest-first read/write history for the in-chat memory panel. */
@@ -53,6 +73,7 @@ export class MemoryStore {
     } catch (e) {
       // First write reports the failure.
     }
+    MemoryStore.recentLogs = parseMemoryLogs(MemoryStore.readIfExists(LOG_FILE));
   }
 
   static isReady(): boolean {

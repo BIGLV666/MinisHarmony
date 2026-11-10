@@ -1164,6 +1164,28 @@ test('memory context is headed and capped', () => {
   assert.equal(memory.buildMemoryContext([], 100), '');
 });
 
+test('memory logs persist newest first and drop junk rows', () => {
+  assert.deepEqual(memory.parseMemoryLogs(''), []);
+  assert.deepEqual(memory.parseMemoryLogs('nope'), []);
+  assert.deepEqual(memory.parseMemoryLogs('[{"at":0,"text":"x"}]'), []);
+  const parsed = memory.parseMemoryLogs(JSON.stringify([
+    { at: 3, text: '检索记忆：x' },
+    { at: 2, text: '   ' },
+    { at: 1, text: '保存记忆文件 GLOBAL.md' }
+  ]));
+  assert.deepEqual(parsed, [
+    { at: 3, text: '检索记忆：x' },
+    { at: 1, text: '保存记忆文件 GLOBAL.md' }
+  ]);
+  let logs = memory.mergeMemoryLog([], { at: 5, text: 'new' }, 2);
+  logs = memory.mergeMemoryLog(logs, { at: 6, text: 'newer' }, 2);
+  assert.deepEqual(logs.map((row) => row.text), ['newer', 'new']);
+  logs = memory.mergeMemoryLog(logs, { at: 7, text: 'newest' }, 2);
+  assert.deepEqual(logs.map((row) => row.text), ['newest', 'newer']);
+  assert.deepEqual(memory.mergeMemoryLog([], { at: 1, text: 'a' }, 0).length, 1);
+  assert.equal(JSON.parse(memory.memoryLogsJson(logs)).length, 2);
+});
+
 test('tool catalogue exposes file_edit with a safe schema', () => {
   const tools = catalog.builtinToolDefinitions();
   const owner = tools.find((tool) => tool.name === 'file_edit');

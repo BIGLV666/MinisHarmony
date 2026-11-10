@@ -18,8 +18,15 @@ export interface MemoryHit {
   order: number;
 }
 
+export interface MemoryLogEntry {
+  at: number;
+  text: string;
+}
+
 export const MEMORY_ENTRY_CHARS: number = 500;
 export const MEMORY_CONTEXT_CHARS: number = 4000;
+/** Read/write history rows kept for the in-chat memory panel. */
+export const MEMORY_LOG_LIMIT: number = 50;
 
 function pad2(value: number): string {
   return value < 10 ? '0' + value.toString() : value.toString();
@@ -59,6 +66,48 @@ export function oneLine(text: string): string {
 
 export function memoryEntry(date: Date, content: string): string {
   return '- ' + clockKey(date) + ' ' + oneLine(content);
+}
+
+/** Newest-first log list, capped; malformed rows are dropped on read. */
+export function parseMemoryLogs(raw: string): MemoryLogEntry[] {
+  if (raw.trim().length === 0) {
+    return [];
+  }
+  let parsed: Object | null = null;
+  try {
+    parsed = JSON.parse(raw) as Object;
+  } catch (e) {
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const list: Object[] = parsed as Object[];
+  const out: MemoryLogEntry[] = [];
+  for (let i = 0; i < list.length && out.length < MEMORY_LOG_LIMIT; i++) {
+    const item: Record<string, Object> = list[i] as Record<string, Object>;
+    const at: number = typeof item.at === 'number' ? item.at as number : 0;
+    const text: string = typeof item.text === 'string' ? item.text as string : '';
+    if (at > 0 && text.trim().length > 0) {
+      out.push({ at: at, text: text });
+    }
+  }
+  return out;
+}
+
+/** Prepend one row and trim to the limit; returns a fresh array. */
+export function mergeMemoryLog(
+  logs: MemoryLogEntry[],
+  entry: MemoryLogEntry,
+  limit: number
+): MemoryLogEntry[] {
+  const cap: number = limit > 0 ? limit : MEMORY_LOG_LIMIT;
+  const next: MemoryLogEntry[] = [entry].concat(logs);
+  return next.length > cap ? next.slice(0, cap) : next;
+}
+
+export function memoryLogsJson(logs: MemoryLogEntry[]): string {
+  return JSON.stringify(logs);
 }
 
 /** Split a query into lowercase terms; empty input means "list recent". */

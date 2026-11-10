@@ -122,8 +122,8 @@ import { ScreenshotOutcome, saveShareCard } from '../service/Screenshot';
 import { shareCardFileName } from '../core/ShareCard';
 import { shareCardView } from '../components/ShareCardView';
 import { AttachmentStore } from '../service/AttachmentStore';
-import { MemoryLogEntry, MemoryStore } from '../service/MemoryStore';
-import { MemoryFile } from '../core/Memory';
+import { MemoryStore } from '../service/MemoryStore';
+import { MemoryFile, MemoryLogEntry } from '../core/Memory';
 import {
   isMcpDisabled,
   normalizeMcpDisabled,

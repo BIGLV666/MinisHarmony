@@ -1787,6 +1787,19 @@ test('shared want payloads pick text and stream URIs defensively', () => {
   assert.equal(share.isTextualShare('text/markdown'), true);
   assert.equal(share.isTextualShare('application/json'), true);
   assert.equal(share.isTextualShare('image/png'), false);
+
+  assert.deepEqual(
+    share.imageUrisFromShare(undefined, 'file://photo.png', 'image/png'),
+    ['file://photo.png']);
+  assert.deepEqual(
+    share.imageUrisFromShare(
+      { 'ability.params.stream': ['file://a.jpg', 'file://note.txt', 'file://a.jpg'] },
+      '', 'image/jpeg'),
+    ['file://a.jpg', 'file://note.txt']);
+  assert.deepEqual(
+    share.imageUrisFromShare(undefined, 'file://doc.pdf', 'application/pdf'), []);
+  assert.equal(
+    share.imageUrisFromShare(undefined, 'file://x.png', 'image/png').length, 1);
 });
 
 test('minis deep links resolve sessions and new chats only', () => {

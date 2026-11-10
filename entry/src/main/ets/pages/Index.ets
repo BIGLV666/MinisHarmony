@@ -147,6 +147,7 @@ struct Index {
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
   @StorageProp('pendingShareText') @Watch('onSharedText') sharedText: string = '';
+  @StorageProp('pendingShareImages') @Watch('onSharedImages') sharedImages: string = '';
   @StorageProp('pendingDeepLink') @Watch('onDeepLink') deepLink: string = '';
   @State settings: AppSettings = defaultSettings();
   /** Session-level thinking override mirrored for the chat header. */
@@ -235,6 +236,7 @@ struct Index {
   aboutToAppear(): void {
     this.bootstrap();
     this.onSharedText();
+    this.onSharedImages();
     this.onDeepLink();
   }
 
@@ -475,6 +477,65 @@ struct Index {
     this.draft = text;
     AppStorage.setOrCreate<string>('pendingShareText', '');
     this.toast(t('已填入分享内容'));
+  }
+
+  /** Another app shared images: copy them into the attachment directory. */
+  private onSharedImages(): void {
+    const raw: string = this.sharedImages;
+    if (raw.length === 0) {
+      return;
+    }
+    AppStorage.setOrCreate<string>('pendingShareImages', '');
+    this.importSharedImages(raw).catch((error: Error) => {
+    });
+  }
+
+  private async importSharedImages(raw: string): Promise<void> {
+    const uris: string[] = [];
+    try {
+      const parsed: Object = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+      const list: Object[] = parsed as Object[];
+      for (let i = 0; i < list.length; i++) {
+        const item: Object = list[i];
+        if (typeof item === 'string' && (item as string).length > 0) {
+          uris.push(item as string);
+        }
+      }
+    } catch (e) {
+      return;
+    }
+    const next: ChatAttachment[] = this.pendingAttachments.slice();
+    let failed: number = 0;
+    let added: number = 0;
+    for (let i = 0; i < uris.length; i++) {
+      const info = await AttachmentStore.saveFromUri(uris[i]);
+      if (info === null) {
+        failed++;
+        continue;
+      }
+      next.push({
+        uri: AttachmentStore.uriFor(info.name),
+        mimeType: info.mimeType,
+        path: AttachmentStore.absolutePath(info.name)
+      });
+      added++;
+    }
+    this.pendingAttachments = next;
+    if (failed > 0) {
+      this.toast(failed.toString() + t(' 张图片无法读取（格式或大小不支持）'));
+    }
+    if (added > 0) {
+      const session: StoredSession | null = this.findSession(this.currentId);
+      const modelId: string = session !== null
+        ? effectiveSettings(this.settings, session.meta).modelId
+        : this.settings.modelId;
+      if (!capsForModel(modelId).vision) {
+        this.toast(t('当前模型未标记视觉能力，图片可能被拒绝'));
+      }
+    }
   }
 
   onPageShow(): void {

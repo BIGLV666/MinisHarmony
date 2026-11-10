@@ -60,3 +60,42 @@ export function isTextualShare(type: string): boolean {
   return type.length === 0 || type.indexOf('text/') === 0 ||
     type === 'application/json' || type === 'application/xml';
 }
+
+const IMAGE_SUFFIXES: string[] = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'];
+
+function isImageUri(uri: string, type: string): boolean {
+  if (type.indexOf('image/') === 0) {
+    return true;
+  }
+  const lower: string = uri.toLowerCase();
+  for (let i = 0; i < IMAGE_SUFFIXES.length; i++) {
+    if (lower.endsWith(IMAGE_SUFFIXES[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Collect image URIs from a share Want (direct `uri` plus
+ * `ability.params.stream`), preserving order and de-duplicating. The caller
+ * copies them into the attachment directory; at most four are accepted.
+ */
+export function imageUrisFromShare(
+  parameters: Record<string, Object> | undefined,
+  uri: string,
+  type: string
+): string[] {
+  const content: SharedContent = sharedFromWant(parameters, uri, type);
+  const uris: string[] = [];
+  if (uri.length > 0 && isImageUri(uri, type)) {
+    uris.push(uri);
+  }
+  for (let i = 0; i < content.uris.length; i++) {
+    const candidate: string = content.uris[i];
+    if (isImageUri(candidate, type) && uris.indexOf(candidate) < 0) {
+      uris.push(candidate);
+    }
+  }
+  return uris.slice(0, 4);
+}

@@ -41,6 +41,10 @@
               {
                 "scheme": "file",
                 "type": "text/plain"
+              },
+              {
+                "scheme": "file",
+                "type": "image/*"
               }
             ]
           },

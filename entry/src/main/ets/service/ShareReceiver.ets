@@ -1,9 +1,10 @@
 import { Want } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
-import { sharedFromWant, isTextualShare } from '../core/SharePayload';
+import { sharedFromWant, isTextualShare, imageUrisFromShare } from '../core/SharePayload';
 
 export const PENDING_SHARE_KEY: string = 'pendingShareText';
+export const PENDING_SHARE_IMAGES_KEY: string = 'pendingShareImages';
 
 const MAX_SHARED_FILE: number = 512 * 1024;
 const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
@@ -75,5 +76,14 @@ export async function handleShareWant(want: Want): Promise<void> {
   const text: string = await textFromShare(want);
   if (text.length > 0) {
     AppStorage.setOrCreate<string>(PENDING_SHARE_KEY, text);
+  }
+  // Image URIs are copied after the UI initializes AttachmentStore, so raw
+  // URIs are handed over as JSON and consumed by Index.
+  const images: string[] = imageUrisFromShare(
+    want.parameters,
+    want.uri !== undefined ? want.uri : '',
+    want.type !== undefined ? want.type : '');
+  if (images.length > 0) {
+    AppStorage.setOrCreate<string>(PENDING_SHARE_IMAGES_KEY, JSON.stringify(images));
   }
 }

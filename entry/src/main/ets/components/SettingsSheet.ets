@@ -234,6 +234,11 @@ export struct SettingsSheet {
   @State appLockEnabled: boolean = false;
   @State accentColor: string = '#2F6BFF';
   @State fontScale: number = 1;
+  @State messageFontScale: number = 1;
+  @State inputFontScale: number = 1;
+  @State autoExpandThinking: boolean = false;
+  @State autoFocusInput: boolean = true;
+  @State autoTitleEnabled: boolean = true;
   @State disabledTools: string[] = [];
   @State showLogs: boolean = false;
   @State logRows: LogRow[] = [];
@@ -363,6 +368,11 @@ export struct SettingsSheet {
     this.appLockEnabled = copy.appLockEnabled;
     this.accentColor = copy.accentColor;
     this.fontScale = copy.fontScale;
+    this.messageFontScale = copy.messageFontScale;
+    this.inputFontScale = copy.inputFontScale;
+    this.autoExpandThinking = copy.autoExpandThinking;
+    this.autoFocusInput = copy.autoFocusInput;
+    this.autoTitleEnabled = copy.autoTitleEnabled;
     this.disabledTools = copy.disabledTools.slice();
     this.modelOverrides = normalizeModelOverrides(copy.modelOverrides);
     this.mcpServers = normalizeMcpServers(copy.mcpServers);
@@ -731,6 +741,11 @@ export struct SettingsSheet {
       appLockEnabled: this.appLockEnabled,
       accentColor: this.accentColor,
       fontScale: this.fontScale,
+      messageFontScale: this.messageFontScale,
+      inputFontScale: this.inputFontScale,
+      autoExpandThinking: this.autoExpandThinking,
+      autoFocusInput: this.autoFocusInput,
+      autoTitleEnabled: this.autoTitleEnabled,
       enabledSkills: this.enabledSkills.slice(),
       modelOverrides: normalizeModelOverrides(this.modelOverrides),
       mcpServers: normalizeMcpServers(this.mcpServers),
@@ -2779,7 +2794,7 @@ export struct SettingsSheet {
                 }
                 .width('100%')
 
-                Text(t('正文字号'))
+                Text(t('界面字号'))
                   .fontSize(11)
                   .fontColor($r('app.color.text_secondary'))
                   .width('100%')
@@ -2803,7 +2818,55 @@ export struct SettingsSheet {
                   }, (scale: number) => scale.toString())
                 }
                 .width('100%')
-                Text(t('只影响消息正文与代码的阅读字号；设置页与界面控件保持系统大小。'))
+                Text(t('消息字号'))
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width('100%')
+                Row({ space: 6 }) {
+                  ForEach(FONT_SCALE_OPTIONS, (scale: number) => {
+                    Text(fontScaleLabel(scale))
+                      .layoutWeight(1)
+                      .height(32)
+                      .fontSize(11)
+                      .textAlign(TextAlign.Center)
+                      .fontColor(this.messageFontScale === scale
+                        ? $r('app.color.on_accent')
+                        : $r('app.color.text_secondary'))
+                      .backgroundColor(this.messageFontScale === scale
+                        ? $r('app.color.accent')
+                        : $r('app.color.surface'))
+                      .borderRadius(8)
+                      .onClick(() => {
+                        this.messageFontScale = scale;
+                      })
+                  }, (scale: number) => scale.toString())
+                }
+                .width('100%')
+                Text(t('输入框字号'))
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width('100%')
+                Row({ space: 6 }) {
+                  ForEach(FONT_SCALE_OPTIONS, (scale: number) => {
+                    Text(fontScaleLabel(scale))
+                      .layoutWeight(1)
+                      .height(32)
+                      .fontSize(11)
+                      .textAlign(TextAlign.Center)
+                      .fontColor(this.inputFontScale === scale
+                        ? $r('app.color.on_accent')
+                        : $r('app.color.text_secondary'))
+                      .backgroundColor(this.inputFontScale === scale
+                        ? $r('app.color.accent')
+                        : $r('app.color.surface'))
+                      .borderRadius(8)
+                      .onClick(() => {
+                        this.inputFontScale = scale;
+                      })
+                  }, (scale: number) => scale.toString())
+                }
+                .width('100%')
+                Text(t('三处独立调整：界面用于侧栏与设置，消息用于正文与代码，输入框只影响输入区。'))
                   .fontSize(9)
                   .fontColor($r('app.color.text_tertiary'))
                   .lineHeight(14)
@@ -2876,6 +2939,75 @@ export struct SettingsSheet {
                   .selectedColor($r('app.color.accent'))
                   .onChange((on: boolean) => {
                     this.enterToSend = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text(t('自动展开思考过程'))
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(t('回复完成后仍展开模型返回的思考内容；关闭时只在生成中展开。'))
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.autoExpandThinking })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.autoExpandThinking = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text(t('回复后自动聚焦输入框'))
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(t('一轮回复结束后把光标放回输入框，方便继续追问。'))
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.autoFocusInput })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.autoFocusInput = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text(t('自动生成会话标题'))
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(t('首轮结束后让模型起一个短标题；关闭时使用首句截断。'))
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.autoTitleEnabled })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.autoTitleEnabled = on;
                   })
               }
               .width('100%')

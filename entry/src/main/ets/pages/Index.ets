@@ -74,6 +74,7 @@ import {
   mergeConfigAudit
 } from '../core/ConfigAudit';
 import { ConfigAuditStore, configSnapshot } from '../service/ConfigAuditStore';
+import { UiStateStore } from '../service/UiStateStore';
 import {
   cleanTitle,
   firstUserText,
@@ -720,12 +721,20 @@ struct Index {
     this.tasks = await LocalStore.loadScheduledTasks();
     this.taskRuns = await LocalStore.loadTaskRuns();
     if (loaded.length > 0) {
-      this.currentId = loaded[0].meta.id;
-      this.messages = loaded[0].messages.slice();
+      const lastId: string = UiStateStore.lastSession(context);
+      let initial: StoredSession = loaded[0];
+      for (let i = 0; i < loaded.length; i++) {
+        if (loaded[i].meta.id === lastId) {
+          initial = loaded[i];
+          break;
+        }
+      }
+      this.currentId = initial.meta.id;
+      this.messages = initial.messages.slice();
       this.syncThinkingOverride();
       this.mobileChat = true;
-      if (this.hasPendingBackgroundResult(loaded[0])) {
-        this.runAgent(loaded[0], '', false);
+      if (this.hasPendingBackgroundResult(initial)) {
+        this.runAgent(initial, '', false);
       }
     } else {
       this.createChat(false);
@@ -821,6 +830,9 @@ struct Index {
    * request fails, so offline use is unaffected.
    */
   private maybeAutoTitle(session: StoredSession): void {
+    if (!this.settings.autoTitleEnabled) {
+      return;
+    }
     if (this.titleJobs.indexOf(session.meta.id) >= 0 || !hasAnswer(session.messages)) {
       return;
     }
@@ -1077,6 +1089,7 @@ struct Index {
     this.store = [session].concat(this.store);
     this.refreshSessions();
     this.currentId = meta.id;
+    this.rememberSession(meta.id);
     this.messages = [];
     this.thinkingOverride = '';
     this.compactNotice = '';
@@ -1086,6 +1099,19 @@ struct Index {
     this.mobileChat = true;
     if (persist) {
       this.persistSoon();
+    }
+  }
+
+  /** Restored at launch so the app reopens where the user left off. */
+  private rememberSession(id: string): void {
+    if (id.length === 0) {
+      return;
+    }
+    try {
+      const context: common.UIAbilityContext =
+        getContext(this) as common.UIAbilityContext;
+      UiStateStore.rememberSession(context, id);
+    } catch (e) {
     }
   }
 
@@ -1099,6 +1125,7 @@ struct Index {
       return;
     }
     this.currentId = id;
+    this.rememberSession(id);
     this.messages = session.messages.slice();
     this.syncThinkingOverride();
     this.compactNotice = '';
@@ -1699,6 +1726,7 @@ struct Index {
     this.store = [session].concat(this.store);
     this.refreshSessions();
     this.currentId = meta.id;
+    this.rememberSession(meta.id);
     this.messages = copied.slice();
     this.syncThinkingOverride();
     this.mobileChat = true;
@@ -2741,6 +2769,10 @@ struct Index {
   private applyAppearance(settings: AppSettings): void {
     AppStorage.setOrCreate<string>('accentColor', settings.accentColor);
     AppStorage.setOrCreate<number>('fontScale', settings.fontScale);
+    AppStorage.setOrCreate<number>('messageFontScale', settings.messageFontScale);
+    AppStorage.setOrCreate<number>('inputFontScale', settings.inputFontScale);
+    AppStorage.setOrCreate<boolean>('autoExpandThinking', settings.autoExpandThinking);
+    AppStorage.setOrCreate<boolean>('autoFocusInput', settings.autoFocusInput);
   }
 
   /** Record which settings keys changed, without touching secret values. */
@@ -2810,7 +2842,8 @@ struct Index {
     }
     if (key === 'temperature' || key === 'maxTokens' ||
       key === 'maxAgentTurns' || key === 'contextBudgetChars' ||
-      key === 'autoCompactPercent' || key === 'fontScale') {
+      key === 'autoCompactPercent' || key === 'fontScale' ||
+      key === 'messageFontScale' || key === 'inputFontScale') {
       if (typeof parsed !== 'number') {
         return false;
       }
@@ -2828,6 +2861,10 @@ struct Index {
         next.contextBudgetChars = value;
       } else if (key === 'autoCompactPercent') {
         next.autoCompactPercent = value;
+      } else if (key === 'messageFontScale') {
+        next.messageFontScale = value;
+      } else if (key === 'inputFontScale') {
+        next.inputFontScale = value;
       } else {
         next.fontScale = value;
       }
@@ -2841,7 +2878,8 @@ struct Index {
       key === 'autoCompact' || key === 'loggingEnabled' ||
       key === 'memoryEnabled' || key === 'backgroundEnabled' ||
       key === 'enterToSend' || key === 'appLockEnabled' ||
-      key === 'webDavAutoSync') {
+      key === 'autoExpandThinking' || key === 'autoFocusInput' ||
+      key === 'autoTitleEnabled' || key === 'webDavAutoSync') {
       if (typeof parsed !== 'boolean') {
         return false;
       }
@@ -2878,6 +2916,12 @@ struct Index {
         next.enterToSend = value;
       } else if (key === 'appLockEnabled') {
         next.appLockEnabled = value;
+      } else if (key === 'autoExpandThinking') {
+        next.autoExpandThinking = value;
+      } else if (key === 'autoFocusInput') {
+        next.autoFocusInput = value;
+      } else if (key === 'autoTitleEnabled') {
+        next.autoTitleEnabled = value;
       } else {
         next.webDavAutoSync = value;
       }

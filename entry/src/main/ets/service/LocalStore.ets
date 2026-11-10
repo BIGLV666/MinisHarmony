@@ -132,6 +132,13 @@ function normalizeSettings(source: AppSettings): AppSettings {
     appLockEnabled: source.appLockEnabled === true,
     accentColor: normalizeAccentColor(source.accentColor),
     fontScale: clampFontScale(source.fontScale),
+    messageFontScale: clampFontScale(source.messageFontScale !== undefined
+      ? source.messageFontScale : source.fontScale),
+    inputFontScale: clampFontScale(source.inputFontScale !== undefined
+      ? source.inputFontScale : source.fontScale),
+    autoExpandThinking: source.autoExpandThinking === true,
+    autoFocusInput: source.autoFocusInput !== false,
+    autoTitleEnabled: source.autoTitleEnabled !== false,
     soulId: normalizeSoulId(source.soulId),
     enabledSkills: normalizeToolNames(source.enabledSkills),
     modelOverrides: normalizeModelOverrides(source.modelOverrides),

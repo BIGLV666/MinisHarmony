@@ -31,7 +31,7 @@ const SUGGESTIONS: string[] = [
 export struct ChatView {
   @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop @Watch('onMessagesChanged') messages: ChatMessage[] = [];
-  @Prop streaming: boolean = false;
+  @Prop @Watch('onStreamingChanged') streaming: boolean = false;
   @Prop modelId: string = '';
   @Prop title: string = t('新对话');
   @Prop isWide: boolean = true;
@@ -49,6 +49,8 @@ export struct ChatView {
   @Prop canUndoCompact: boolean = false;
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @StorageProp('fontScale') fontScale: number = 1;
+  @StorageProp('inputFontScale') inputFontScale: number = 1;
+  @StorageProp('autoFocusInput') autoFocusInput: boolean = true;
   @Link @Watch('onDraftChanged') draft: string;
   @Prop attachments: ChatAttachment[] = [];
   /** Workspace whose files are offered by the `@` menu. */
@@ -181,6 +183,20 @@ export struct ChatView {
         // The list is not attached yet (empty -> first message transition).
       }
     }, 40);
+  }
+
+  /** Put the cursor back in the composer once a reply settles. */
+  onStreamingChanged(): void {
+    if (this.streaming || !this.autoFocusInput) {
+      return;
+    }
+    setTimeout(() => {
+      try {
+        focusControl.requestFocus('composerInput');
+      } catch (e) {
+        // The composer may be hidden behind another panel.
+      }
+    }, 120);
   }
 
   private canSend(): boolean {
@@ -669,7 +685,7 @@ export struct ChatView {
           .id('composerInput')
           .layoutWeight(1)
           .constraintSize({ minHeight: 42, maxHeight: 150 })
-          .fontSize(scaleFont(15, this.fontScale))
+          .fontSize(scaleFont(15, this.inputFontScale))
           .fontColor($r('app.color.text_primary'))
           .placeholderColor($r('app.color.text_tertiary'))
           .backgroundColor(Color.Transparent)

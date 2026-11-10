@@ -182,6 +182,11 @@ export function parseBackupSettings(text: string): AppSettings | null {
   base.appLockEnabled = boolOr(raw.appLockEnabled, false);
   base.accentColor = stringOr(raw.accentColor, base.accentColor);
   base.fontScale = numberOr(raw.fontScale, 1);
+  base.messageFontScale = numberOr(raw.messageFontScale, base.fontScale);
+  base.inputFontScale = numberOr(raw.inputFontScale, base.fontScale);
+  base.autoExpandThinking = boolOr(raw.autoExpandThinking, false);
+  base.autoFocusInput = boolOr(raw.autoFocusInput, true);
+  base.autoTitleEnabled = boolOr(raw.autoTitleEnabled, true);
   base.soulId = stringOr(raw.soulId, 'general');
   base.enabledSkills = normalizeToolNames(raw.enabledSkills);
   base.modelOverrides = Array.isArray(raw.modelOverrides) ? raw.modelOverrides : [];

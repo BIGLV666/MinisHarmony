@@ -861,12 +861,29 @@ extra_body 必须是 JSON 对象；失败时提示并拒绝保存。运行时若
 
 ## 主题色与字号
 
-`AppSettings.accentColor`（`#RRGGBB`，默认 `#2F6BFF`）与 `fontScale`（0.9–1.3）由
-`normalizeAccentColor()` / `clampFontScale()` 校验。`Index` 在启动和保存设置时调用
-`AppStorage.setOrCreate()`，`MarkdownView`、`MessageBubble`、`ChatView`、`SidebarView`
-用 `@StorageProp` 读取，因此不需要逐层传参。强调色替换了发送按钮、用户气泡、工具卡片、
-链接与选中态；字号通过 `scaleFont()` 放大正文、标题、代码与表格，设置页本身保持系统
-字号。颜色预设与档位标签放在 `core/Appearance.ets`，其余为纯设置字段。
+`AppSettings.accentColor`（`#RRGGBB`，默认 `#2F6BFF`）与三个字号
+（`fontScale` / `messageFontScale` / `inputFontScale`，均 0.9–1.3）由
+`normalizeAccentColor()` / `clampFontScale()` 校验。旧数据只有 `fontScale` 时，
+消息与输入框字号在 `cloneSettings` / `LocalStore.normalizeSettings` 中回退到它。
+`Index` 在启动和保存设置时调用 `AppStorage.setOrCreate()`，`MarkdownView`、
+`MessageBubble`、`ChatView`、`SidebarView` 用 `@StorageProp` 读取，因此不需要逐层
+传参。`fontScale` 用于侧栏、设置与界面控件，`messageFontScale` 用于消息正文、代码
+与表格，`inputFontScale` 只用于输入框；`scaleFont()` 负责换算。强调色替换了发送
+按钮、用户气泡、工具卡片、链接与选中态。颜色预设与档位标签放在
+`core/Appearance.ets`，其余为纯设置字段。
+
+## 启动恢复与输入焦点
+
+`service/UiStateStore.ets` 用 preferences `minis_ui_state` 保存 `lastSessionId`。
+`Index.selectSession`、`createChat` 与 fork 后都会更新；`bootstrap` 加载完会话后优先
+打开这个 id，不存在（已删除/被导入覆盖）则回退到排序后的第一条。该状态不属于设置，
+因此不进入备份或配置审计。
+
+`autoFocusInput`（默认开）由 `ChatView` 监听 `streaming` 从 true 变为 false：延迟
+120ms 后 `focusControl.requestFocus('composerInput')`，避免键盘被仍在收尾的列表
+挤掉。`autoExpandThinking` 写入 AppStorage，`MessageBubble` 在创建时决定思考块的
+初始展开状态：手动切换过的消息仍以用户选择为准。`autoTitleEnabled`（默认开）关闭后
+`maybeAutoTitle` 直接返回，标题保留首句截断。
 
 ## 每会话参数
 

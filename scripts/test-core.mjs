@@ -642,6 +642,17 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(legacy.backgroundEnabled, true);
   assert.equal(legacy.thinkingLevel, 'off');
   assert.equal(legacy.enterToSend, false);
+  const scaled = types.cloneSettings({
+    ...settings,
+    fontScale: 1.2,
+    messageFontScale: undefined,
+    inputFontScale: undefined
+  });
+  assert.equal(scaled.messageFontScale, 1.2, 'legacy message scale follows fontScale');
+  assert.equal(scaled.inputFontScale, 1.2);
+  assert.equal(types.cloneSettings({ ...settings, autoExpandThinking: true }).autoExpandThinking, true);
+  assert.equal(types.cloneSettings({ ...settings, autoTitleEnabled: false }).autoTitleEnabled, false);
+  assert.equal(types.cloneSettings({ ...settings, autoFocusInput: false }).autoFocusInput, false);
   assert.equal(types.cloneSettings({ ...settings, enterToSend: true }).enterToSend, true);
   assert.equal(
     types.cloneSettings({ ...settings, thinkingLevel: 'medium' }).thinkingLevel,

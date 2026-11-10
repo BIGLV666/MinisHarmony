@@ -8,6 +8,7 @@ import {
   TOOL_ERROR,
   TOOL_RUNNING,
   reasoningOf,
+  scaleFont,
   textOf,
   toolCallsOf
 } from '../core/Types';
@@ -50,6 +51,8 @@ export struct MessageBubble {
   };
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @State reasoningOpen: boolean = false;
+  @StorageProp('autoExpandThinking') autoExpandThinking: boolean = false;
+  @StorageProp('messageFontScale') messageFontScale: number = 1;
   @State openToolId: string = '';
   @State previewOpen: boolean = false;
   @State previewPath: string = '';
@@ -106,7 +109,8 @@ export struct MessageBubble {
     // choice for the rest of the turn and after it settles.
     this.reasoningOpen = state.manual
       ? state.open
-      : (this.message.streaming && this.reasoning().length > 0);
+      : ((this.message.streaming || this.autoExpandThinking) &&
+        this.reasoning().length > 0);
   }
 
   private reasoningState(): ReasoningState {
@@ -497,8 +501,8 @@ export struct MessageBubble {
         }, (part: MessagePart) => part.uri)
       }
       Text(this.content())
-        .fontSize(15)
-        .lineHeight(23)
+        .fontSize(scaleFont(15, this.messageFontScale))
+        .lineHeight(scaleFont(23, this.messageFontScale))
         .fontColor($r('app.color.on_accent'))
         .copyOption(CopyOptions.LocalDevice)
         .width('100%')

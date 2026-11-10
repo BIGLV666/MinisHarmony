@@ -116,6 +116,16 @@ export interface AppSettings {
   accentColor: string;
   /** Reading scale for chat text, 0.9–1.3. */
   fontScale: number;
+  /** Reading scale for assistant/user message bodies. */
+  messageFontScale: number;
+  /** Reading scale for the composer input. */
+  inputFontScale: number;
+  /** Open settled reasoning blocks instead of only while streaming. */
+  autoExpandThinking: boolean;
+  /** Focus the composer when a reply finishes. */
+  autoFocusInput: boolean;
+  /** Let the model name new conversations automatically. */
+  autoTitleEnabled: boolean;
   /** Built-in persona prepended to the system prompt. */
   soulId: string;
   /** Skill ids (imported SKILL.md files) injected into the system prompt. */
@@ -548,6 +558,11 @@ export function defaultSettings(): AppSettings {
     appLockEnabled: false,
     accentColor: DEFAULT_ACCENT_COLOR,
     fontScale: 1,
+    messageFontScale: 1,
+    inputFontScale: 1,
+    autoExpandThinking: false,
+    autoFocusInput: true,
+    autoTitleEnabled: true,
     soulId: 'general',
     enabledSkills: [],
     modelOverrides: [],
@@ -653,6 +668,13 @@ export function cloneSettings(source: AppSettings): AppSettings {
     appLockEnabled: source.appLockEnabled === true,
     accentColor: normalizeAccentColor(source.accentColor),
     fontScale: clampFontScale(source.fontScale),
+    messageFontScale: clampFontScale(source.messageFontScale !== undefined
+      ? source.messageFontScale : source.fontScale),
+    inputFontScale: clampFontScale(source.inputFontScale !== undefined
+      ? source.inputFontScale : source.fontScale),
+    autoExpandThinking: source.autoExpandThinking === true,
+    autoFocusInput: source.autoFocusInput !== false,
+    autoTitleEnabled: source.autoTitleEnabled !== false,
     soulId: source.soulId !== undefined && source.soulId.length > 0
       ? source.soulId
       : 'general',

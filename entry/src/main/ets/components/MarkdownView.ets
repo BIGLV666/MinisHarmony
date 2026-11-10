@@ -38,7 +38,7 @@ export struct MarkdownView {
   @StorageProp('i18nVersion') i18nVersion: number = 0;
   @Prop @Watch('onTextChanged') text: string = '';
   @StorageProp('accentColor') accent: string = '#2F6BFF';
-  @StorageProp('fontScale') fontScale: number = 1;
+  @StorageProp('messageFontScale') fontScale: number = 1;
   /** When set, http(s) links open in the in-app browser. */
   onOpenLink: ((url: string) => void) | null = null;
   /** When set, `minis://workspace/...` links open a workspace preview. */

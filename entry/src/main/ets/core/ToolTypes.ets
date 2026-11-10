@@ -90,6 +90,14 @@ export interface ImageGenHandler {
 }
 
 /**
+ * Optional capability behind `config`. The index owns the live settings and
+ * the audit trail, so the runtime only forwards the validated argument JSON.
+ */
+export interface ConfigHandler {
+  execute(argumentsJson: string): ToolResult;
+}
+
+/**
  * Optional listener for workspace writes. The index implements it with the
  * per-session ledger so storage accounting knows which chat produced a file.
  */

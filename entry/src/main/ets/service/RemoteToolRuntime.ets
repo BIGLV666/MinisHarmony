@@ -62,7 +62,7 @@ export class RemoteToolRuntime implements ToolRuntime {
         name === 'clipboard_read' || name === 'clipboard_write' ||
         name === 'browser_use' || name === 'generate_image' ||
         name === 'calendar' || name === 'contacts' ||
-        name === 'location' || name === 'weather') {
+        name === 'location' || name === 'weather' || name === 'config') {
         continue;
       }
       if ((name === 'write_file' || name === 'file_edit') && !this.allowWrite) {

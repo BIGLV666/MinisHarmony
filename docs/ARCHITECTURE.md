@@ -713,7 +713,19 @@ MCP / 模型覆盖 / 分组 / 子代理只存条目数，密钥原文与结构�
 `CONFIG_RESTORABLE_KEYS` 限定为标量、字符串与字符串数组；`applyAuditedValue`
 逐键校验 JSON 类型（枚举只接受已知值，数字要求有限），成功后走正常保存流程，
 因此还原动作本身也会生成一条反向记录。密钥与结构化设置的行标为「仅记录」。
-当前没有面向代理的 `config` 写入工具，`actor` 字段预留为 `user` / `agent`。
+每条记录带 `actor`（`user` / `agent`），设置页分别标为「手动修改」「代理修改」。
+
+代理侧由 `core/AgentConfig.ets` 与 `service/AgentConfigTool.ets` 提供 `config` 工具，
+白名单只有 12 个展示/生成类键：temperature、maxTokens、thinkingLevel、enterToSend、
+autoExpandThinking、autoFocusInput、autoTitleEnabled、autoGroupingEnabled、
+fontScale、messageFontScale、inputFontScale、accentColor。`get` 返回全部允许键的
+`key = value` 或单键值；`set` 逐键校验（温度 0–2、maxTokens 为 1–1000000 的整数、
+思考级别四档、开关只收 true/false、字号 0.9–1.3、强调色 `#RRGGBB`），返回
+`cloneSettings` 副本，值未变化时不重写。`LocalToolRuntime` 仅在注入了
+`ConfigHandler` 时暴露该工具；`Index` 注入的回调走 `applyAgentSettings`，用
+`recordConfigChanges(prev, next, 'agent')` 记账后保存并应用外观。API Key、令牌、
+地址、工具权限、提示词、MCP 与技能不在白名单内；`RemoteToolRuntime` 明确剔除
+`config`，远程沙箱无法改动平板设置。
 
 ## 会话级 MCP 开关
 

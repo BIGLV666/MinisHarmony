@@ -91,6 +91,17 @@ export function builtinToolDefinitions(): ToolDefinition[] {
   const clipboardWriteFields: FieldEntry[] = [
     field('text', 'string', t('要写入系统剪贴板的纯文本。'))
   ];
+  const configFields: FieldEntry[] = [
+    field('action', 'string', t('get（默认）读取允许的配置项；set 修改一个配置项。')),
+    field('key', 'string',
+      t('配置项名称。get 省略时返回全部允许项；set 时必填。') +
+        t('允许：temperature、maxTokens、thinkingLevel、enterToSend、') +
+        t('autoExpandThinking、autoFocusInput、autoTitleEnabled、') +
+        t('autoGroupingEnabled、fontScale、messageFontScale、inputFontScale、accentColor。')),
+    field('value', 'string',
+      t('set 的新值，按配置项类型解析：布尔用 true/false，数字直接写，') +
+        t('思考级别用 off/low/medium/high，强调色用 #RRGGBB。'))
+  ];
   const subagentFields: FieldEntry[] = [
     field('action', 'string',
       t('delegate（默认）启动子代理；status 查看本对话的子代理；steer 纠偏运行中的子代理；') +
@@ -289,6 +300,13 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       name: 'clipboard_write',
       description: t('把纯文本写入设备剪贴板，覆盖原有内容。需要在设置中开启剪贴板工具。'),
       parameters: parametersOf(clipboardWriteFields, ['text'])
+    },
+    {
+      name: 'config',
+      description: t('读取或修改部分非敏感设置：温度、最大输出、思考级别、字号、强调色、') +
+        t('输入与自动标题等开关。API Key、令牌、地址、工具权限、提示词与技能不允许由代理修改。') +
+        t('每次修改都会写入配置变更记录，来源标为 agent。'),
+      parameters: parametersOf(configFields, ['action'])
     },
     {
       name: 'browser_use',

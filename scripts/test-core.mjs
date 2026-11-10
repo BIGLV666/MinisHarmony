@@ -114,6 +114,7 @@ copyCore('Backup', ['Types', 'SessionExport', 'ModelOverride', 'McpProtocol', 'M
 copyCore('BackupCrypto', ['Backup', 'SessionExport']);
 copyCore('ImageGen', ['OpenCodeRules']);
 copyCore('FastMode');
+copyCore('AgentConfig', ['Types']);
 copyCore('AnthropicProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 copyCore('GeminiProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
 copyCore('ResponsesProtocol', ['Types', 'ToolProtocol', 'ToolTypes', 'SseParser']);
@@ -144,6 +145,7 @@ function markTypeOnly(name, from, names) {
   writeFileSync(file, source);
 }
 
+markTypeOnly('AgentConfig', 'Types', ['AppSettings', 'ThinkingLevel']);
 markTypeOnly('ToolCatalog', 'ToolTypes', ['ToolDefinition', 'ToolParameters', 'ToolProperty']);
 markTypeOnly('ToolProtocol', 'Types', ['ChatMessage']);
 markTypeOnly('SessionExport', 'Types', ['ChatMessage', 'MessagePart', 'StoredSession']);
@@ -231,6 +233,7 @@ const memory = await import(pathToFileURL(join(tmp, 'Memory.mts')).href);
 const mediaTime = await import(pathToFileURL(join(tmp, 'MediaTime.mts')).href);
 const mediaType = await import(pathToFileURL(join(tmp, 'MediaType.mts')).href);
 const sessionStorage = await import(pathToFileURL(join(tmp, 'SessionStorage.mts')).href);
+const agentConfig = await import(pathToFileURL(join(tmp, 'AgentConfig.mts')).href);
 const budget = await import(pathToFileURL(join(tmp, 'ContextBudget.mts')).href);
 const exporter = await import(pathToFileURL(join(tmp, 'MarkdownExport.mts')).href);
 const toolArgs = await import(pathToFileURL(join(tmp, 'ToolArgs.mts')).href);
@@ -4240,4 +4243,98 @@ test('paste files use a stable local name and workspace path', () => {
   assert.equal(paste.isPastedAttachment('minis://workspace/pasted/a.txt', 'image/png'),
     false);
   assert.equal(paste.pastePlaceholder('pasted/a.txt').indexOf('pasted/a.txt') > 0, true);
+});
+
+test('agent config whitelist excludes credentials and control surfaces', () => {
+  for (const key of ['temperature', 'maxTokens', 'thinkingLevel', 'enterToSend',
+    'autoExpandThinking', 'autoFocusInput', 'autoTitleEnabled',
+    'autoGroupingEnabled', 'fontScale', 'messageFontScale', 'inputFontScale',
+    'accentColor']) {
+    assert.equal(agentConfig.agentConfigKeyAllowed(key), true, key);
+  }
+  for (const key of ['apiKey', 'baseUrl', 'modelId', 'systemPrompt',
+    'toolsEnabled', 'disabledTools', 'mcpServers', 'skills', 'webdavUrl',
+    'sandboxToken', '']) {
+    assert.equal(agentConfig.agentConfigKeyAllowed(key), false, key);
+  }
+});
+
+test('agent config snapshot lists writable values only', () => {
+  const settings = types.defaultSettings();
+  settings.apiKey = 'sk-secret';
+  settings.temperature = 0.4;
+  settings.thinkingLevel = 'high';
+  settings.enterToSend = false;
+  const snapshot = agentConfig.agentConfigSnapshot(settings);
+  assert.equal(snapshot.indexOf('temperature = 0.4') >= 0, true);
+  assert.equal(snapshot.indexOf('thinkingLevel = high') >= 0, true);
+  assert.equal(snapshot.indexOf('enterToSend = false') >= 0, true);
+  assert.equal(snapshot.indexOf('sk-secret'), -1);
+  assert.equal(snapshot.split('\n').length, agentConfig.AGENT_CONFIG_KEYS.length);
+  assert.equal(agentConfig.agentConfigValue(settings, 'fontScale'), '1');
+  assert.equal(agentConfig.agentConfigValue(settings, 'missing'), '');
+});
+
+test('agent config applies valid values on a clone', () => {
+  const settings = types.defaultSettings();
+  const before = settings.temperature;
+  const temp = agentConfig.applyAgentConfig(settings, 'temperature', ' 0.7 ');
+  assert.equal(temp.ok, true);
+  assert.equal(temp.changed, true);
+  assert.equal(temp.settings.temperature, 0.7);
+  assert.equal(settings.temperature, before, 'original object untouched');
+  assert.equal(temp.settings === settings, false);
+  assert.equal(temp.message, '已更新配置：temperature = 0.7');
+
+  const level = agentConfig.applyAgentConfig(settings, 'thinkingLevel', 'medium');
+  assert.equal(level.ok, true);
+  assert.equal(level.settings.thinkingLevel, 'medium');
+
+  const tokens = agentConfig.applyAgentConfig(settings, 'maxTokens', '4096');
+  assert.equal(tokens.settings.maxTokens, 4096);
+
+  const flag = agentConfig.applyAgentConfig(settings, 'autoTitleEnabled', 'false');
+  assert.equal(flag.ok, true);
+  assert.equal(flag.settings.autoTitleEnabled, false);
+
+  const scale = agentConfig.applyAgentConfig(settings, 'inputFontScale', '1.2');
+  assert.equal(scale.settings.inputFontScale, 1.2);
+
+  const accent = agentConfig.applyAgentConfig(settings, 'accentColor', '#AbCdEf');
+  assert.equal(accent.ok, true);
+  assert.equal(accent.settings.accentColor, '#AbCdEf');
+});
+
+test('agent config rejects bad values without touching settings', () => {
+  const settings = types.defaultSettings();
+  const cases = [
+    ['temperature', '2.5', '温度需要 0–2 之间的数字。'],
+    ['temperature', 'abc', '温度需要 0–2 之间的数字。'],
+    ['maxTokens', '0', '最大输出需要 1–1000000 之间的整数。'],
+    ['maxTokens', '10.5', '最大输出需要 1–1000000 之间的整数。'],
+    ['thinkingLevel', 'max', '思考级别只能是 off、low、medium 或 high。'],
+    ['enterToSend', 'yes', '这个配置项需要 true 或 false。'],
+    ['fontScale', '0.5', '字号需要 0.9–1.3 之间的数字。'],
+    ['messageFontScale', '2', '字号需要 0.9–1.3 之间的数字。'],
+    ['accentColor', '#FFF', '强调色需要 #RRGGBB 格式。'],
+    ['apiKey', 'sk-x', '这个配置项不允许由代理修改：apiKey'],
+    ['temperature', '  ', '配置值不能为空。']
+  ];
+  for (const [key, value, message] of cases) {
+    const outcome = agentConfig.applyAgentConfig(settings, key, value);
+    assert.equal(outcome.ok, false, key + '=' + value);
+    assert.equal(outcome.changed, false);
+    assert.equal(outcome.settings, settings);
+    assert.equal(outcome.message, message);
+  }
+  assert.equal(settings.apiKey, types.defaultSettings().apiKey);
+});
+
+test('agent config reports unchanged values without a rewrite', () => {
+  const settings = types.defaultSettings();
+  const same = agentConfig.applyAgentConfig(settings, 'temperature',
+    String(settings.temperature));
+  assert.equal(same.ok, true);
+  assert.equal(same.changed, false);
+  assert.equal(same.message, '配置未变化：temperature');
 });

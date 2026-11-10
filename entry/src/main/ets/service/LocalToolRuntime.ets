@@ -4,6 +4,7 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import {
   BrowserHandler,
+  ConfigHandler,
   DeviceToolsHandler,
   ImageGenHandler,
   ImageGenRequest,
@@ -183,6 +184,7 @@ export class LocalToolRuntime implements ToolRuntime {
   private device: DeviceToolsHandler | null;
   private shell: ShellHandler | null;
   private writes: WorkspaceWriteHandler | null;
+  private config: ConfigHandler | null;
   private imageCache: Map<string, string> = new Map();
 
   constructor(
@@ -197,7 +199,8 @@ export class LocalToolRuntime implements ToolRuntime {
     imageGen: ImageGenHandler | null = null,
     device: DeviceToolsHandler | null = null,
     shell: ShellHandler | null = null,
-    writes: WorkspaceWriteHandler | null = null
+    writes: WorkspaceWriteHandler | null = null,
+    config: ConfigHandler | null = null
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
@@ -211,6 +214,7 @@ export class LocalToolRuntime implements ToolRuntime {
     this.device = device;
     this.shell = shell;
     this.writes = writes;
+    this.config = config;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -238,6 +242,9 @@ export class LocalToolRuntime implements ToolRuntime {
         continue;
       }
       if (memoryTool && !this.memoryEnabled) {
+        continue;
+      }
+      if (name === 'config' && this.config === null) {
         continue;
       }
       if (name === 'read_image' && !this.imagesEnabled) {
@@ -318,6 +325,12 @@ export class LocalToolRuntime implements ToolRuntime {
       }
       if (name === 'clipboard_write') {
         return await this.clipboardWrite(argumentsJson);
+      }
+      if (name === 'config') {
+        if (this.config === null) {
+          return { ok: false, content: t('配置工具不可用。') };
+        }
+        return this.config.execute(argumentsJson);
       }
       if (name === 'search_text') {
         return this.searchText(argumentsJson);

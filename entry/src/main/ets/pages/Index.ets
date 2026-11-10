@@ -131,6 +131,7 @@ import {
   SessionWriteRecorder,
   WorkspaceLedger
 } from '../service/WorkspaceLedger';
+import { AgentConfigTool } from '../service/AgentConfigTool';
 import {
   MemoryFile,
   MemoryLine,
@@ -3110,7 +3111,10 @@ struct Index {
         settings.imageGenEnabled ? new SettingsImageGen(settings) : null,
         new DeviceTools(getContext(this) as common.UIAbilityContext, settings),
         shell,
-        new SessionWriteRecorder(sessionId)
+        new SessionWriteRecorder(sessionId),
+        new AgentConfigTool(
+          () => this.settings,
+          (next: AppSettings) => this.applyAgentSettings(next))
       );
     }
     const meta: StoredSession | null = this.findSession(sessionId);
@@ -3238,9 +3242,13 @@ struct Index {
   }
 
   /** Record which settings keys changed, without touching secret values. */
-  private recordConfigChanges(prev: AppSettings, next: AppSettings): void {
+  private recordConfigChanges(
+    prev: AppSettings,
+    next: AppSettings,
+    actor: string = 'user'
+  ): void {
     const added: ConfigAuditEntry[] = diffConfig(
-      configSnapshot(prev), configSnapshot(next), Date.now(), 'user');
+      configSnapshot(prev), configSnapshot(next), Date.now(), actor);
     if (added.length === 0) {
       return;
     }
@@ -3472,6 +3480,16 @@ struct Index {
     } catch (e) {
     }
     this.toast(t('配置变更记录已清空'));
+  }
+
+  /** Settings changed by the model through the `config` tool. */
+  private applyAgentSettings(next: AppSettings): void {
+    this.recordConfigChanges(this.settings, next, 'agent');
+    this.settings = next;
+    this.applyAppearance(next);
+    LocalStore.saveSettings(next).catch((error: Error) => {
+      this.toast(t('设置保存失败'));
+    });
   }
 
   private applySettings(next: AppSettings): void {

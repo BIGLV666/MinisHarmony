@@ -3526,10 +3526,17 @@ export struct SettingsSheet {
                     .width('100%')
                     .maxLines(2)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(formatDateTime(entry.at))
-                    .fontSize(9)
-                    .fontColor($r('app.color.text_tertiary'))
-                    .width('100%')
+                  Row({ space: 6 }) {
+                    Text(entry.actor === 'agent' ? t('代理修改') : t('手动修改'))
+                      .fontSize(9)
+                      .fontColor(entry.actor === 'agent'
+                        ? $r('app.color.accent') : $r('app.color.text_tertiary'))
+                    Text(formatDateTime(entry.at))
+                      .fontSize(9)
+                      .fontColor($r('app.color.text_tertiary'))
+                      .layoutWeight(1)
+                  }
+                  .width('100%')
                 }
                 .width('100%')
                 .padding(8)

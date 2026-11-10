@@ -709,6 +709,17 @@ export function imagePart(uri: string, mimeType: string): MessagePart {
   return part;
 }
 
+/**
+ * Non-image attachment (video/audio). Models receive a text placeholder; the
+ * part stays in history so the bubble can play the file inline.
+ */
+export function filePart(uri: string, mimeType: string): MessagePart {
+  const part: MessagePart = makePart(PART_FILE);
+  part.uri = uri;
+  part.mimeType = mimeType;
+  return part;
+}
+
 export function reasoningPart(text: string): MessagePart {
   const part: MessagePart = makePart(PART_REASONING);
   part.text = text;

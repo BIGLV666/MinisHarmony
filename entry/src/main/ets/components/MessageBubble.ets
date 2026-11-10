@@ -2,6 +2,7 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import {
   ChatMessage,
   MessagePart,
+  PART_FILE,
   PART_IMAGE,
   TOOL_DONE,
   TOOL_ERROR,
@@ -177,6 +178,27 @@ export struct MessageBubble {
   private openPreview(part: MessagePart): void {
     this.previewPath = AttachmentStore.absolutePath(part.uri);
     this.previewOpen = true;
+  }
+
+  /** Video/audio attachments stay as file parts and play inline. */
+  private media(kind: string): MessagePart[] {
+    const result: MessagePart[] = [];
+    for (let i = 0; i < this.message.parts.length; i++) {
+      const part: MessagePart = this.message.parts[i];
+      if (part.kind === PART_FILE && part.uri.length > 0 &&
+        part.mimeType.startsWith(kind)) {
+        result.push(part);
+      }
+    }
+    return result;
+  }
+
+  private videos(): MessagePart[] {
+    return this.media('video/');
+  }
+
+  private audios(): MessagePart[] {
+    return this.media('audio/');
   }
 
   private toolKey(part: MessagePart): string {
@@ -444,6 +466,26 @@ export struct MessageBubble {
   @Builder
   userBubble() {
     Column({ space: 6 }) {
+      ForEach(this.videos(), (part: MessagePart) => {
+        Video({ src: 'file://' + AttachmentStore.absolutePath(part.uri) })
+          .width(240)
+          .height(150)
+          .borderRadius(10)
+          .backgroundColor('#000000')
+          .objectFit(ImageFit.Contain)
+          .autoPlay(false)
+          .controls(true)
+      }, (part: MessagePart) => 'video:' + part.uri)
+      ForEach(this.audios(), (part: MessagePart) => {
+        Video({ src: 'file://' + AttachmentStore.absolutePath(part.uri) })
+          .width(240)
+          .height(54)
+          .borderRadius(10)
+          .backgroundColor('#000000')
+          .objectFit(ImageFit.Contain)
+          .autoPlay(false)
+          .controls(true)
+      }, (part: MessagePart) => 'audio:' + part.uri)
       if (this.images().length > 0) {
         ForEach(this.images(), (part: MessagePart) => {
           Image('file://' + AttachmentStore.absolutePath(part.uri))

@@ -9,6 +9,8 @@ import {
 } from '../core/MinisResource';
 
 const MAX_ATTACHMENT_BYTES: number = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES: number = 100 * 1024 * 1024;
+const MAX_AUDIO_BYTES: number = 20 * 1024 * 1024;
 const ATTACHMENT_PREFIX: string = 'attachment:';
 
 export interface AttachmentInfo {
@@ -113,7 +115,51 @@ export class AttachmentStore {
     if (ext === 'bmp') {
       return 'image/bmp';
     }
+    if (ext === 'mp4') {
+      return 'video/mp4';
+    }
+    if (ext === 'webm') {
+      return 'video/webm';
+    }
+    if (ext === 'mov') {
+      return 'video/quicktime';
+    }
+    if (ext === 'm4v') {
+      return 'video/x-m4v';
+    }
+    if (ext === 'mkv') {
+      return 'video/x-matroska';
+    }
+    if (ext === 'mp3') {
+      return 'audio/mpeg';
+    }
+    if (ext === 'm4a') {
+      return 'audio/mp4';
+    }
+    if (ext === 'wav') {
+      return 'audio/wav';
+    }
+    if (ext === 'ogg') {
+      return 'audio/ogg';
+    }
+    if (ext === 'aac') {
+      return 'audio/aac';
+    }
+    if (ext === 'flac') {
+      return 'audio/flac';
+    }
     return '';
+  }
+
+  /** Per-kind size caps: video files are much larger than photos. */
+  private static maxBytesFor(mime: string): number {
+    if (mime.startsWith('video/')) {
+      return MAX_VIDEO_BYTES;
+    }
+    if (mime.startsWith('audio/')) {
+      return MAX_AUDIO_BYTES;
+    }
+    return MAX_ATTACHMENT_BYTES;
   }
 
   private static extensionOf(uri: string): string {
@@ -141,7 +187,8 @@ export class AttachmentStore {
     }
     try {
       const stat = fs.statSync(sourceUri);
-      if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_ATTACHMENT_BYTES) {
+      if (!stat.isFile() || stat.size <= 0 ||
+        stat.size > AttachmentStore.maxBytesFor(mime)) {
         return null;
       }
       const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
@@ -206,7 +253,8 @@ export class AttachmentStore {
     if (mime.length === 0) {
       mime = AttachmentStore.mimeFor(AttachmentStore.extensionOf(name));
     }
-    if (mime.length === 0) {
+    if (mime.length === 0 || mime.startsWith('video/') || mime.startsWith('audio/')) {
+      // Only images travel as data URLs; media files stay as file parts.
       return '';
     }
     try {

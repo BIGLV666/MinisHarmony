@@ -16,6 +16,7 @@ import {
   cloneSettings,
   cycleThinkingLevel,
   defaultSettings,
+  filePart,
   imagePart,
   newChatMessage,
   rewindMessages,
@@ -1770,6 +1771,57 @@ struct Index {
     }
   }
 
+  /** Copy picked media into the sandbox and append it to the composer. */
+  private async attachPicked(uris: string[], failedLabel: string): Promise<void> {
+    const next: ChatAttachment[] = this.pendingAttachments.slice();
+    let failed: number = 0;
+    for (let i = 0; i < uris.length; i++) {
+      const info = await AttachmentStore.saveFromUri(uris[i]);
+      if (info === null) {
+        failed++;
+        continue;
+      }
+      next.push({
+        uri: AttachmentStore.uriFor(info.name),
+        mimeType: info.mimeType,
+        path: AttachmentStore.absolutePath(info.name)
+      });
+    }
+    this.pendingAttachments = next;
+    if (failed > 0) {
+      this.toast(failed.toString() + failedLabel);
+    }
+  }
+
+  /** Pick up to four videos from the gallery. */
+  private async pickVideos(): Promise<void> {
+    try {
+      const options: picker.PhotoSelectOptions = new picker.PhotoSelectOptions();
+      options.MIMEType = picker.PhotoViewMIMETypes.VIDEO_TYPE;
+      options.maxSelectNumber = 4;
+      const photoPicker: picker.PhotoViewPicker = new picker.PhotoViewPicker();
+      const result: picker.PhotoSelectResult = await photoPicker.select(options);
+      await this.attachPicked(result.photoUris,
+        t(' 个视频无法读取（格式或大小不支持）'));
+    } catch (e) {
+      this.toast(t('选择视频失败'));
+    }
+  }
+
+  /** Pick up to four audio clips from the system audio picker. */
+  private async pickAudio(): Promise<void> {
+    try {
+      const options: picker.AudioSelectOptions = new picker.AudioSelectOptions();
+      options.maxSelectNumber = 4;
+      const audioPicker: picker.AudioViewPicker = new picker.AudioViewPicker();
+      const uris: string[] = await audioPicker.select(options);
+      await this.attachPicked(uris,
+        t(' 个音频无法读取（格式或大小不支持）'));
+    } catch (e) {
+      this.toast(t('选择音频失败'));
+    }
+  }
+
   private removeAttachment(index: number): void {
     const next: ChatAttachment[] = [];
     for (let i = 0; i < this.pendingAttachments.length; i++) {
@@ -2026,7 +2078,16 @@ struct Index {
     if (fresh) {
       const parts: MessagePart[] = [];
       for (let i = 0; i < attachments.length; i++) {
-        parts.push(imagePart(attachments[i].uri, attachments[i].mimeType));
+        const uri: string = attachments[i].uri;
+        const mime: string = attachments[i].mimeType;
+        if (mime.startsWith('video/') || mime.startsWith('audio/')) {
+          const label: string = mime.startsWith('video/') ? t('视频') : t('音频');
+          parts.push(textPart('[' + label + '] ' +
+            AttachmentStore.nameFromUri(uri)));
+          parts.push(filePart(uri, mime));
+        } else {
+          parts.push(imagePart(uri, mime));
+        }
       }
       this.agent.start(userText, parts);
     } else {
@@ -3541,6 +3602,8 @@ struct Index {
       onClearQueued: () => this.clearQueuedPrompts(),
       onStop: () => this.stopStream(),
       onPickImage: () => this.pickImages(),
+      onPickVideo: () => this.pickVideos(),
+      onPickAudio: () => this.pickAudio(),
       onTakePhoto: () => this.takePhoto(),
       onRemoveAttachment: (index: number) => this.removeAttachment(index),
       onSettings: () => {

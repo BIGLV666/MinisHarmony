@@ -583,6 +583,21 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 空消息。`read_image` 与用户附件共用同一条 `image_url` 通路，但开关互不影响。
 模型能力表未标记视觉时只提示，不阻止发送。
 
+### 视频与音频附件
+
+输入栏的「视频」用 `PhotoViewPicker`（`VIDEO_TYPE`，最多 4 个），「音频」用
+`AudioViewPicker`（最多 4 个）。`AttachmentStore` 接受 mp4/webm/mov/m4v/mkv 与
+mp3/m4a/wav/ogg/aac/flac，大小上限按类型分为视频 100 MB、音频 20 MB、图片 10 MB；
+`dataUrl()` 对音视频直接返回空串，媒体永远不会变成 base64 进入请求。
+
+发送时 `Index.runAgent()` 为媒体生成两部分：一条
+`[视频]/[音频] <文件名>` 文本 part（模型据此知道附件存在），以及 `PART_FILE`
+媒体 part（uri + mimeType）。协议转换只读取文本，忽略 `PART_FILE`；如果一条消息
+没有任何文本，只有媒体 part，转换会跳过它——所以文本提示是必需的。
+`MessageBubble` 按 mime 前缀把 `PART_FILE` 分成视频/音频，用 ArkUI `Video`
+控件内联播放（`controls(true)`、`autoPlay(false)`），输入栏预览则用 ▶/♪ 占位块。
+编辑消息时保留非文本 part，媒体不会丢失。
+
 ## 深链
 
 `module.json5` 注册 `minis` scheme，action 为 `ohos.want.action.viewData`，并带

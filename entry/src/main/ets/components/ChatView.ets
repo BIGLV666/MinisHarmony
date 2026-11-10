@@ -69,6 +69,10 @@ export struct ChatView {
   };
   onPickImage: () => void = () => {
   };
+  onPickVideo: () => void = () => {
+  };
+  onPickAudio: () => void = () => {
+  };
   onTakePhoto: () => void = () => {
   };
   onRemoveAttachment: (index: number) => void = (index: number) => {
@@ -461,6 +465,19 @@ export struct ChatView {
     this.refreshMention(this.draft);
   }
 
+  private isVideo(item: ChatAttachment): boolean {
+    return item.mimeType.startsWith('video/');
+  }
+
+  private isAudio(item: ChatAttachment): boolean {
+    return item.mimeType.startsWith('audio/');
+  }
+
+  private mediaName(item: ChatAttachment): string {
+    const prefix: string = 'attachment:';
+    return item.uri.startsWith(prefix) ? item.uri.substring(prefix.length) : item.uri;
+  }
+
   private mentionMatches(): FileEntry[] {
     return filterMentionFiles(this.mentionFiles, this.mentionQuery, 5);
   }
@@ -563,11 +580,31 @@ export struct ChatView {
         Row({ space: 8 }) {
           ForEach(this.attachments, (item: ChatAttachment, index: number) => {
             Stack({ alignContent: Alignment.TopEnd }) {
-              Image('file://' + item.path)
+              if (this.isVideo(item) || this.isAudio(item)) {
+                Column({ space: 2 }) {
+                  Text(this.isVideo(item) ? '▶' : '♪')
+                    .fontSize(17)
+                    .fontColor(Color.White)
+                  Text(this.mediaName(item))
+                    .fontSize(7)
+                    .fontColor('#CCFFFFFF')
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width(48)
+                    .textAlign(TextAlign.Center)
+                }
                 .width(56)
                 .height(56)
+                .justifyContent(FlexAlign.Center)
+                .backgroundColor('#1A1A1A')
                 .borderRadius(9)
-                .objectFit(ImageFit.Cover)
+              } else {
+                Image('file://' + item.path)
+                  .width(56)
+                  .height(56)
+                  .borderRadius(9)
+                  .objectFit(ImageFit.Cover)
+              }
               Text('✕')
                 .fontSize(10)
                 .fontColor(Color.White)
@@ -596,8 +633,18 @@ export struct ChatView {
           Text(t('图片'))
             .fontSize(11)
             .fontColor($r('app.color.text_secondary'))
-            .padding({ left: 6, right: 6, top: 10, bottom: 10 })
+            .padding({ left: 5, right: 5, top: 10, bottom: 10 })
             .onClick(() => this.onPickImage())
+          Text(t('视频'))
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+            .padding({ left: 5, right: 5, top: 10, bottom: 10 })
+            .onClick(() => this.onPickVideo())
+          Text(t('音频'))
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+            .padding({ left: 5, right: 5, top: 10, bottom: 10 })
+            .onClick(() => this.onPickAudio())
           Text(t('拍照'))
             .fontSize(11)
             .fontColor($r('app.color.text_secondary'))

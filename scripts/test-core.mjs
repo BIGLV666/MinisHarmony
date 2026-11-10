@@ -835,6 +835,16 @@ test('user image parts become multimodal content', () => {
   assert.deepEqual(api3, [{ role: 'user', content: 'hi' }]);
 });
 
+test('file parts stay out of the payload but keep the text note', () => {
+  const user = types.newChatMessage('u4', 'user', '[视频] a.mp4');
+  user.parts.push(types.filePart('attachment:a.mp4', 'video/mp4'));
+  const api = proto.toApiMessages([user], () => 'data:video/mp4;base64,XXX');
+  assert.deepEqual(api, [{ role: 'user', content: '[视频] a.mp4' }]);
+  const onlyFile = types.newChatMessage('u5', 'user', '');
+  onlyFile.parts.push(types.filePart('attachment:b.mp4', 'video/mp4'));
+  assert.deepEqual(proto.toApiMessages([onlyFile], () => 'x'), []);
+});
+
 test('workspace path jail rejects escapes', () => {
   assert.equal(workspace.normalizeRelativePath('../etc/passwd'), null);
   assert.equal(workspace.normalizeRelativePath('/etc/passwd'), null);

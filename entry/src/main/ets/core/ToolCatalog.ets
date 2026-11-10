@@ -123,7 +123,8 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       t('动作：open/navigate 打开网址，click 点击，type 输入，text/get_text 取文本，html 取 HTML，') +
         t('eval/execute_js 执行 JS，scroll 滚动，get_page_info 页面信息，find_elements 查找元素，') +
         t('hover 悬停，get_readable 提取正文，get_backbone 获取 DOM 骨架，') +
-        t('get_cookies/set_cookies 读写 Cookie，set_user_agent 切换 UA，set_viewport 调整视口，') +
+        t('get_cookies/set_cookies 读写 Cookie（get 只返回名称与长度，值写入工作区 env 文件），') +
+        t('set_user_agent 切换 UA，set_viewport 调整或重置视口，') +
         t('scroll_and_collect 边滚动边收集，wait_for_dom_stable 等待 DOM 稳定，') +
         t('screenshot 截图并保存到工作区，fetch 下载 URL 原始字节到工作区并返回链接，') +
         t('back/forward/reload 导航，wait 等待，title/url 读取当前页。')),
@@ -147,9 +148,13 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     field('user_agent', 'string', t('set_user_agent 的值：default 恢复默认，mobile/desktop 使用内置 UA，') +
       t('其他字符串按原样设置。')),
     field('max_depth', 'number', t('get_backbone 的 DOM 深度，默认 5，最大 12。')),
-    field('timeout', 'number', t('wait_for_dom_stable 的最长等待毫秒数，默认 5000，最大 20000。')),
+    field('timeout', 'number', t('wait_for_dom_stable 的最长等待毫秒数，默认 10000，最大 20000。')),
     field('viewport_width', 'number', t('set_viewport 的宽度（CSS 像素），默认 412，最大 4000。')),
-    field('viewport_height', 'number', t('set_viewport 的高度（CSS 像素），默认 915，最大 4000。'))
+    field('viewport_height', 'number', t('set_viewport 的高度（CSS 像素），默认 915，最大 4000。')),
+    field('reset', 'boolean', t('set_viewport 时传 true 恢复默认视口，忽略宽高。')),
+    field('keyword', 'string', t('get_cookies 可选：只返回名称匹配的 Cookie。')),
+    field('fuzzy', 'boolean', t('get_cookies 的 keyword 匹配方式：true（默认）包含即可，') +
+      t('false 要求名称完全相同。'))
   ];
   const calendarFields: FieldEntry[] = [
     field('action', 'string', t('list（默认）查看时间范围内的事件；create 新建一条事件。')),

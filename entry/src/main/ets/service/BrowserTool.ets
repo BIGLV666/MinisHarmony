@@ -150,6 +150,9 @@ interface BrowserArgs {
   timeout?: number;
   viewport_width?: number;
   viewport_height?: number;
+  reset?: boolean;
+  keyword?: string;
+  fuzzy?: boolean;
 }
 
 interface ViewportInfo {
@@ -307,6 +310,10 @@ function safeFileName(name: string): string {
   return out;
 }
 
+function shellQuote(value: string): string {
+  return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
 function formatBytes(size: number): string {
   if (size < 1024) {
     return size.toString() + ' B';
@@ -439,18 +446,78 @@ export class BrowserTool implements BrowserHandler {
     }
   }
 
-  private async readCookies(): Promise<ToolResult> {
+  /**
+   * Read cookies without echoing values into the transcript. Matching pairs
+   * go to a shell-sourceable env file in the workspace (the OpenMinis
+   * offload pattern); the tool result only lists names and lengths.
+   */
+  private async readCookies(keyword: string, fuzzy: boolean): Promise<ToolResult> {
     const url: string = await this.currentUrl();
     if (url.length === 0) {
       return { ok: false, content: t('页面尚未打开，无法读取 Cookie。') };
     }
+    const root: string = BrowserHost.workspaceRoot();
     try {
       const raw: string = webview.WebCookieManager.fetchCookieSync(url);
       if (raw.length === 0) {
         return { ok: true, content: t('当前页面没有 Cookie。') };
       }
-      return { ok: true, content: truncate(t('Cookie（') + url + t('）：\n') + raw,
-        MAX_CHARS) };
+      const wanted: string = keyword.trim().toLowerCase();
+      const names: string[] = [];
+      const envLines: string[] = [];
+      const used: Set<string> = new Set<string>();
+      const parts: string[] = raw.split(';');
+      for (let i = 0; i < parts.length; i++) {
+        const pair: string = parts[i].trim();
+        const eq: number = pair.indexOf('=');
+        if (eq <= 0) {
+          continue;
+        }
+        const name: string = pair.substring(0, eq).trim();
+        const value: string = pair.substring(eq + 1);
+        const lower: string = name.toLowerCase();
+        if (wanted.length > 0 &&
+          (fuzzy ? lower.indexOf(wanted) < 0 : lower !== wanted)) {
+          continue;
+        }
+        names.push(name + ' · ' + value.length.toString() + t(' 字符'));
+        let envName: string = 'MINIS_COOKIE_' +
+          name.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
+        if (used.has(envName)) {
+          let suffix: number = 2;
+          while (used.has(envName + '_' + suffix.toString())) {
+            suffix++;
+          }
+          envName = envName + '_' + suffix.toString();
+        }
+        used.add(envName);
+        envLines.push('export ' + envName + '=' + shellQuote(value));
+      }
+      if (names.length === 0) {
+        return {
+          ok: true,
+          content: t('没有匹配的 Cookie（共 ') + parts.length.toString() + t(' 项）。')
+        };
+      }
+      let content: string = t('Cookie（') + url + t('）：') +
+        names.length.toString() + t(' 条\n') + names.join('\n');
+      if (root.length > 0) {
+        const dir: string = root + '/.minis-browser';
+        const name: string = 'env_cookies_' + Date.now().toString() + '.sh';
+        const path: string = dir + '/' + name;
+        fs.mkdirSync(dir, true);
+        const file: fs.File = fs.openSync(path,
+          fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+        try {
+          fs.writeSync(file.fd, envLines.join('\n') + '\n');
+        } finally {
+          fs.closeSync(file);
+        }
+        const relative: string = '.minis-browser/' + name;
+        content += t('\n已写入 ') + relative + t('，可在 shell 中执行 ') +
+          '. /var/minis/workspace/' + relative + t(' 后使用 MINIS_COOKIE_* 变量');
+      }
+      return { ok: true, content: truncate(content, MAX_CHARS) };
     } catch (e) {
       const error: Error = e as Error;
       return { ok: false, content: t('读取 Cookie 失败：') + error.message };
@@ -826,7 +893,8 @@ export class BrowserTool implements BrowserHandler {
       }
 
       if (action === 'get_cookies') {
-        return await this.readCookies();
+        const keyword: string = args.keyword !== undefined ? args.keyword : '';
+        return await this.readCookies(keyword, args.fuzzy !== false);
       }
 
       if (action === 'set_cookies') {
@@ -859,6 +927,13 @@ export class BrowserTool implements BrowserHandler {
       }
 
       if (action === 'set_viewport') {
+        if (args.reset === true) {
+          if (!BrowserHost.resizeViewport(0, 0)) {
+            return { ok: false, content: t('当前视图无法调整视口。') };
+          }
+          await sleep(200);
+          return { ok: true, content: t('已恢复默认视口。') };
+        }
         const width: number = clampNumber(args.viewport_width, 412, 200, 4000);
         const height: number = clampNumber(args.viewport_height, 915, 200, 4000);
         if (!BrowserHost.resizeViewport(width, height)) {
@@ -869,7 +944,7 @@ export class BrowserTool implements BrowserHandler {
       }
 
       if (action === 'wait_for_dom_stable') {
-        const limit: number = clampNumber(args.timeout, 5000, 500, 20000);
+        const limit: number = clampNumber(args.timeout, 10000, 500, 20000);
         const began: number = Date.now();
         let previous: string = '';
         let stable: number = 0;
@@ -895,7 +970,7 @@ export class BrowserTool implements BrowserHandler {
             stable = 0;
           }
           previous = signature;
-          await sleep(250);
+          await sleep(500);
         }
         return { ok: true, content: t('等待 DOM 稳定超时（') + limit.toString() + t(' ms），页面可能仍在更新。') };
       }

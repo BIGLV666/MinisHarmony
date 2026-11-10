@@ -464,9 +464,29 @@ exportedOn, session}`，其中 `session` 与 `LocalStore` 的 `StoredSession` �
 `AppSettings.enterToSend`（默认关闭）由设置页与 `ChatView` 的 `@Prop` 共享。
 开启时 `TextArea.enterKeyType` 为 `EnterKeyType.Send`，并挂 `onSubmit`；关闭时用
 `EnterKeyType.NEW_LINE`。按 SDK 约定 `NEW_LINE` 不会触发 `onSubmit`，因此同一段
-回调不会在换行模式下误发送。`onSubmit` 复用了发送按钮的 `canSend()`
-（非空且不在流式输出中），流式期间按 Enter 不会打断或重复发起请求。
+回调不会在换行模式下误发送。`onSubmit` 与发送按钮走同一个 `sendMessage()`：
+生成中不会打断或重复发起请求，而是把内容放进排队队列（见下节）。
 输入框下方的提示文字随设置切换，避免用户猜测当前行为。
+
+## 生成中排队发送
+
+生成期间 `sendMessage()` 不再直接拒绝：本地命令仍提示「请先停止当前生成」，普通
+输入交给 `queuePrompt()`。队列元素是 `QueuedPrompt`（文本、附件快照、入队时的
+会话 ID），`enqueueQueued()` / `dropQueued()` 都返回新数组，方便 `@State` 触发
+刷新。队列同时存在于两处：
+
+- **运行时**：`AgentRuntime.injectUserMessage()` 把消息与图片 part 推入
+  `pendingInputs`，在下一个模型请求边界（工具结果全部回填后）调用
+  `drainPendingInputs()` 插入为真实 user 消息。插入发生在请求之间，因此不会破坏
+  当前流式响应的 tool_call 配对。
+- **界面**：`Index.queuedPrompts` 用于显示「排队中 N / 清空」与「↑ 排队」按钮。
+  运行时真正注入后经 `onInputsDrained(count)` 回传条数，界面据此扣减，避免停止后
+  把已经进入历史的条目再发一遍。
+
+停止、出错或工具循环自然结束后，`flushQueuedPrompts()` 在没有活动运行时执行队首
+（必要时先创建会话、自动压缩），一次只发一条，剩余条目继续等待下一轮结束。切换
+会话时属于旧会话的条目直接丢弃并提示「已取消」——与 OpenMinis 一样，排队消息
+不会跨会话迁移。
 
 ## 视觉输入
 

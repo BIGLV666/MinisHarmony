@@ -23,6 +23,12 @@ import {
   textOf,
   textPart
 } from '../core/Types';
+import {
+  QueuedPrompt,
+  dropQueued,
+  enqueueQueued,
+  queuedParts
+} from '../core/PromptQueue';
 import { capsForModel } from '../core/ModelCaps';
 import { BACKGROUND_PREFIX, PROGRESS_PREFIX } from '../core/SubagentJob';
 import { ToolRuntime } from '../core/ToolTypes';
@@ -166,6 +172,8 @@ struct Index {
   @State draft: string = '';
   @State pendingAttachments: ChatAttachment[] = [];
   @State streaming: boolean = false;
+  /** Prompts typed while generating; injected at the next model boundary. */
+  @State queuedPrompts: QueuedPrompt[] = [];
   @State compacting: boolean = false;
   /** One-line notice shown above the composer after a compaction. */
   @State compactNotice: string = '';
@@ -1590,7 +1598,7 @@ struct Index {
   private async sendMessage(): Promise<void> {
     const text: string = this.draft.trim();
     const attachments: ChatAttachment[] = this.pendingAttachments.slice();
-    if ((text.length === 0 && attachments.length === 0) || this.streaming) {
+    if (text.length === 0 && attachments.length === 0) {
       return;
     }
     if (this.compacting) {
@@ -1598,6 +1606,10 @@ struct Index {
       return;
     }
     if (text.length > 0 && text.startsWith('/')) {
+      if (this.streaming) {
+        this.toast(t('请先停止当前生成'));
+        return;
+      }
       this.handleCommand(text);
       return;
     }
@@ -1628,6 +1640,14 @@ struct Index {
       return;
     }
 
+    // A prompt sent mid-generation is queued instead of rejected: the runtime
+    // injects it before the next model request, or the UI resends it once the
+    // current run settles.
+    if (this.streaming) {
+      this.queuePrompt(text, attachments);
+      return;
+    }
+
     // Summarise old turns before the next request when the last reported
     // usage is already near the window. A failure keeps the history as-is.
     await this.autoCompactBeforeSend();
@@ -1655,6 +1675,103 @@ struct Index {
     this.draft = '';
     this.pendingAttachments = [];
     this.runAgent(session, text, true, attachments);
+  }
+
+  /** Queue a mid-generation prompt and hand it to the running agent. */
+  private queuePrompt(text: string, attachments: ChatAttachment[]): void {
+    const item: QueuedPrompt = new QueuedPrompt(text, attachments, this.currentId);
+    this.queuedPrompts = enqueueQueued(this.queuedPrompts, item);
+    this.draft = '';
+    this.pendingAttachments = [];
+    if (this.agent !== null &&
+      this.agent.injectUserMessage(text, queuedParts(item))) {
+      // The runtime reports back how many entries it inserted; then the
+      // matching FIFO heads are dropped.
+      return;
+    }
+    // The run settled between the click and here; send it as a fresh turn.
+    setTimeout(() => this.flushQueuedPrompts(), 0);
+  }
+
+  private clearQueuedPrompts(): void {
+    this.queuedPrompts = [];
+    // Also discard the runtime copies, otherwise prompts the user just cleared
+    // would still appear in the transcript at the next request boundary.
+    if (this.agent !== null) {
+      this.agent.clearUserQueued();
+    }
+  }
+
+  /**
+   * Send the oldest queued prompt as a normal turn. Entries the runtime
+   * already injected were removed by the `onInputsDrained` callback, so this
+   * only handles leftovers from stopped/cancelled runs.
+   */
+  private flushQueuedPrompts(): void {
+    if (this.streaming || this.compacting || this.agent !== null ||
+      this.queuedPrompts.length === 0 || !this.ready) {
+      return;
+    }
+    const item: QueuedPrompt = this.queuedPrompts[0];
+    if (item.sessionId !== this.currentId) {
+      // Switching sessions while a run is stopping must not leak the prompt
+      // into another conversation.
+      this.queuedPrompts = dropQueued(this.queuedPrompts, 1);
+      this.toast(t('已取消'));
+      setTimeout(() => this.flushQueuedPrompts(), 0);
+      return;
+    }
+    this.queuedPrompts = dropQueued(this.queuedPrompts, 1);
+    this.sendQueuedPrompt(item);
+  }
+
+  private sendQueuedPrompt(item: QueuedPrompt): void {
+    const text: string = item.text.trim();
+    const attachments: ChatAttachment[] = item.attachments.slice();
+    const claudeLogin: boolean =
+      this.settings.preset === 'anthropic' && OAuthService.hasClaudeToken();
+    const copilotLogin: boolean =
+      this.settings.preset === 'copilot' && OAuthService.hasCopilotToken();
+    const codexLogin: boolean =
+      this.settings.preset === 'codex' && OAuthService.hasCodexToken();
+    if (this.settings.apiKey.trim().length === 0 && !claudeLogin &&
+      !copilotLogin && !codexLogin) {
+      this.showSettings = true;
+      this.toast(t('请先填写 API Key 或登录账号'));
+      return;
+    }
+    if (this.settings.baseUrl.trim().length === 0) {
+      this.showSettings = true;
+      this.toast(t('请先填写 API 地址'));
+      return;
+    }
+    this.autoCompactBeforeSend().then(() => {
+      if (item.sessionId !== this.currentId) {
+        this.toast(t('已取消'));
+        return;
+      }
+      let session: StoredSession | null = this.findSession(this.currentId);
+      if (session === null) {
+        this.createChat(false);
+        session = this.findSession(this.currentId);
+      }
+      if (session === null) {
+        return;
+      }
+      if (session.messages.length === 0) {
+        session.meta.title = text.length > 0 ? titleFrom(text) : t('图片对话');
+      }
+      session.meta.updatedAt = Date.now();
+      session.meta.modelId = effectiveSettings(this.settings, session.meta).modelId;
+      this.attributeTaskSend(text);
+      this.runAgent(session, text, true, attachments);
+    }).catch(() => {
+      // auto compaction failure is already non-fatal elsewhere; still send.
+      const session: StoredSession | null = this.findSession(this.currentId);
+      if (session !== null && !this.streaming && item.sessionId === this.currentId) {
+        this.runAgent(session, text, true, attachments);
+      }
+    });
   }
 
   private async runAgent(
@@ -1706,10 +1823,15 @@ struct Index {
             const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
             publishDone(context, this.currentTitle());
           }
+          // Leftovers from a stopped run become the next turn.
+          setTimeout(() => this.flushQueuedPrompts(), 0);
         }
       },
       onError: (message: string) => {
         this.toast(message);
+      },
+      onInputsDrained: (count: number) => {
+        this.queuedPrompts = dropQueued(this.queuedPrompts, count);
       }
     }, effective.confirmWriteTools
       ? (name: string, argumentsText: string) =>
@@ -2992,7 +3114,10 @@ struct Index {
       onDismissCompactNotice: () => this.dismissCompactNotice(),
       draft: $draft,
       attachments: this.pendingAttachments,
+      queuedCount: this.queuedPrompts.length,
       onSend: () => this.sendMessage(),
+      onQueue: () => this.sendMessage(),
+      onClearQueued: () => this.clearQueuedPrompts(),
       onStop: () => this.stopStream(),
       onPickImage: () => this.pickImages(),
       onTakePhoto: () => this.takePhoto(),

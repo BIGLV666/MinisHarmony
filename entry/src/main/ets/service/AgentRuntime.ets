@@ -58,6 +58,11 @@ export interface AgentCallbacks {
   /** New snapshot after any visible change. `running` drives the stop button. */
   onUpdate: (messages: ChatMessage[], running: boolean) => void;
   onError: (message: string) => void;
+  /**
+   * Number of user-queued prompts (not steer/background reports) that were
+   * just inserted into the transcript. The UI drops that many FIFO entries.
+   */
+  onInputsDrained?: (count: number) => void;
 }
 
 /**
@@ -71,6 +76,23 @@ interface ToolAccumulator {
   id: string;
   name: string;
   argumentsText: string;
+}
+
+/** One item read at the next model boundary. */
+class PendingInput {
+  text: string;
+  parts: MessagePart[];
+  replacePrefix: string;
+  /** True for prompts the user queued while the run was streaming. */
+  userQueued: boolean;
+
+  constructor(text: string, parts: MessagePart[], replacePrefix: string,
+    userQueued: boolean) {
+    this.text = text;
+    this.parts = parts;
+    this.replacePrefix = replacePrefix;
+    this.userQueued = userQueued;
+  }
 }
 
 /**
@@ -102,7 +124,7 @@ export class AgentRuntime {
   private requestId: string = '';
   private loopGuard: ToolLoopGuard = new ToolLoopGuard();
   /** Steer / background input, read at the next model request boundary. */
-  private pendingInputs: string[] = [];
+  private pendingInputs: PendingInput[] = [];
   private currentTool: string = '';
   /** Primary + fallback models for this turn, and how many have been tried. */
   private models: string[] = [];
@@ -148,13 +170,39 @@ export class AgentRuntime {
     // Progress reports supersede an older unread one instead of piling up.
     if (replacePrefix.length > 0) {
       for (let i = this.pendingInputs.length - 1; i >= 0; i--) {
-        if (this.pendingInputs[i].startsWith(replacePrefix)) {
-          this.pendingInputs[i] = trimmed;
+        if (this.pendingInputs[i].text.startsWith(replacePrefix)) {
+          this.pendingInputs[i].text = trimmed;
           return;
         }
       }
     }
-    this.pendingInputs.push(trimmed);
+    this.pendingInputs.push(new PendingInput(trimmed, [], '', false));
+  }
+
+  /**
+   * Queue a prompt the user sent while the run was streaming. Unlike a steer
+   * it carries image parts and is reported back when inserted, so the UI can
+   * drop exactly the entries the runtime consumed. Returns false when the run
+   * already settled; the caller then resends it as a normal turn.
+   */
+  injectUserMessage(text: string, parts: MessagePart[] = []): boolean {
+    const trimmed: string = text.trim();
+    if ((trimmed.length === 0 && parts.length === 0) || this.finished) {
+      return false;
+    }
+    this.pendingInputs.push(new PendingInput(trimmed, parts, '', true));
+    return true;
+  }
+
+  /** Forget user-queued prompts the user cleared before they reached the model. */
+  clearUserQueued(): void {
+    const kept: PendingInput[] = [];
+    for (let i = 0; i < this.pendingInputs.length; i++) {
+      if (!this.pendingInputs[i].userQueued) {
+        kept.push(this.pendingInputs[i]);
+      }
+    }
+    this.pendingInputs = kept;
   }
 
   /** Pending steer / background texts not yet handed to the model. */
@@ -261,13 +309,28 @@ export class AgentRuntime {
       return;
     }
     const at: number = Math.max(0, this.session.messages.length - 1);
+    let queued: number = 0;
     for (let i = 0; i < this.pendingInputs.length; i++) {
+      const input: PendingInput = this.pendingInputs[i];
       const message: ChatMessage = newChatMessage(
-        util.generateRandomUUID(true), 'user', this.pendingInputs[i]);
+        util.generateRandomUUID(true), 'user', input.text);
+      for (let p = 0; p < input.parts.length; p++) {
+        message.parts.push(input.parts[p]);
+      }
       this.session.messages.splice(at + i, 0, message);
+      if (input.userQueued) {
+        queued++;
+      }
     }
     this.pendingInputs = [];
     this.emit();
+    if (queued > 0) {
+      const callback: ((count: number) => void) | undefined =
+        this.callbacks.onInputsDrained;
+      if (callback !== undefined) {
+        callback(queued);
+      }
+    }
   }
 
   private activeModelId(): string {

@@ -43,7 +43,13 @@ export struct ChatView {
   @StorageProp('fontScale') fontScale: number = 1;
   @Link draft: string;
   @Prop attachments: ChatAttachment[] = [];
+  /** Prompts waiting for the current run to reach a model boundary. */
+  @Prop queuedCount: number = 0;
   onSend: () => void = () => {
+  };
+  onQueue: () => void = () => {
+  };
+  onClearQueued: () => void = () => {
   };
   onPickImage: () => void = () => {
   };
@@ -158,6 +164,11 @@ export struct ChatView {
   private canSend(): boolean {
     return (this.draft.trim().length > 0 || this.attachments.length > 0) &&
       !this.streaming;
+  }
+
+  private canQueue(): boolean {
+    return (this.draft.trim().length > 0 || this.attachments.length > 0) &&
+      this.streaming;
   }
 
   /**
@@ -433,6 +444,21 @@ export struct ChatView {
   @Builder
   composer() {
     Column({ space: 6 }) {
+      if (this.queuedCount > 0) {
+        Row({ space: 8 }) {
+          Text(t('排队中') + ' ' + this.queuedCount.toString())
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+          Blank()
+          Text(t('清空'))
+            .fontSize(11)
+            .fontColor($r('app.color.accent'))
+            .onClick(() => this.onClearQueued())
+        }
+        .width('100%')
+        .padding({ left: 12, right: 12 })
+      }
+
       if (this.attachments.length > 0) {
         Row({ space: 8 }) {
           ForEach(this.attachments, (item: ChatAttachment, index: number) => {
@@ -490,6 +516,19 @@ export struct ChatView {
               this.onSend();
             }
           })
+
+        if (this.streaming && this.canQueue()) {
+          Text('↑')
+            .width(38)
+            .height(38)
+            .borderRadius(19)
+            .textAlign(TextAlign.Center)
+            .fontSize(19)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.on_accent'))
+            .backgroundColor(this.accent)
+            .onClick(() => this.onQueue())
+        }
 
         Text(this.streaming ? '■' : '↑')
           .width(38)

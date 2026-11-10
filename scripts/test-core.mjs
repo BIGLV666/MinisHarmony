@@ -29,6 +29,13 @@ function copyCore(name, deps = []) {
   for (const dep of deps.concat(['I18n'])) {
     source = source.split(`from './${dep}'`).join(`from './${dep}.mts'`);
   }
+  // Node's type stripping erases annotations but keeps named imports, so
+  // interfaces imported alongside runtime values would fail to link.
+  if (name === 'PromptQueue') {
+    source = source.replace(
+      "import { ChatAttachment, MessagePart, imagePart } from './Types.mts';",
+      "import { imagePart } from './Types.mts';");
+  }
   writeFileSync(join(tmp, `${name}.mts`), source);
 }
 
@@ -41,6 +48,7 @@ copyCore('SubagentJob');
 copyCore('WebUrl');
 copyCore('SubAgentRoster');
 copyCore('Types');
+copyCore('PromptQueue', ['Types']);
 copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -179,6 +187,7 @@ const sse = await import(pathToFileURL(join(tmp, 'SseParser.mts')).href);
 const rules = await import(pathToFileURL(join(tmp, 'OpenCodeRules.mts')).href);
 const md = await import(pathToFileURL(join(tmp, 'Markdown.mts')).href);
 const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
+const promptQueue = await import(pathToFileURL(join(tmp, 'PromptQueue.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
@@ -3443,4 +3452,32 @@ test('i18n catalogs fall back through English to the source string', () => {
   i18n.selectI18nLanguage('zh-Hans');
   assert.equal(i18n.t('保存'), '保存');
   assert.equal(i18n.activeI18nLanguage(), 'zh-Hans');
+});
+
+test('prompt queue is FIFO and drops only injected entries', () => {
+  const first = new promptQueue.QueuedPrompt('first', [], 's1');
+  const second = new promptQueue.QueuedPrompt('second', [], 's1');
+  const original = [];
+  const one = promptQueue.enqueueQueued(original, first);
+  const two = promptQueue.enqueueQueued(one, second);
+  assert.equal(original.length, 0, 'enqueue does not mutate its input');
+  assert.deepEqual(two.map((item) => item.text), ['first', 'second']);
+
+  assert.equal(promptQueue.dropQueued(two, 0), two, 'zero drop is a no-op');
+  assert.equal(promptQueue.dropQueued(two, -1), two, 'negative drop is a no-op');
+  assert.deepEqual(promptQueue.dropQueued(two, 1).map((item) => item.text), ['second']);
+  assert.deepEqual(promptQueue.dropQueued(two, 9), [], 'over-drop clamps to empty');
+  assert.equal(two.length, 2, 'drops are copies');
+});
+
+test('queued prompt turns attachments into image parts in order', () => {
+  const item = new promptQueue.QueuedPrompt('look', [
+    { uri: 'attachment:a.png', mimeType: 'image/png', path: '/s/a.png' },
+    { uri: 'attachment:b.jpg', mimeType: 'image/jpeg', path: '/s/b.jpg' }
+  ], 's1');
+  const parts = promptQueue.queuedParts(item);
+  assert.equal(parts.length, 2);
+  assert.deepEqual(parts.map((part) => part.uri), ['attachment:a.png', 'attachment:b.jpg']);
+  assert.deepEqual(parts.map((part) => part.mimeType), ['image/png', 'image/jpeg']);
+  assert.equal(promptQueue.queuedParts(new promptQueue.QueuedPrompt('t', [], 's1')).length, 0);
 });

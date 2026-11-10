@@ -21,6 +21,7 @@ import {
 } from '../core/Mention';
 import { listWorkspaceFiles } from '../service/WorkspaceFiles';
 import { hugePasteInsertion, isPastedAttachment } from '../core/Paste';
+import { KeyCode } from '@kit.InputKit';
 
 const SUGGESTIONS: string[] = [
   '帮我写一个鸿蒙 ArkTS 页面',
@@ -576,6 +577,15 @@ export struct ChatView {
     }
   }
 
+  /** Move the highlight with wrapping; used by the physical arrow keys. */
+  private stepMention(delta: number): void {
+    const count: number = this.mentionMatches().length;
+    if (count <= 0) {
+      return;
+    }
+    this.mentionIndex = (this.mentionIndex + delta + count) % count;
+  }
+
   private chooseMention(entry: FileEntry): void {
     this.draft = replaceMention(this.draft, this.mentionStart, entry.path);
     this.mentionOpen = false;
@@ -767,7 +777,25 @@ export struct ChatView {
             }
             this.draft = value;
           })
-          .enterKeyType(this.enterToSend ? EnterKeyType.Send : EnterKeyType.NEW_LINE)
+          // While the mention menu is open Enter must submit so onSubmit can
+          // pick the highlighted file instead of inserting a newline.
+          .enterKeyType(this.enterToSend || this.mentionOpen
+            ? EnterKeyType.Send : EnterKeyType.NEW_LINE)
+          .onKeyEvent((event: KeyEvent) => {
+            if (!this.mentionOpen || event.type !== KeyType.Down) {
+              return;
+            }
+            if (event.keyCode === KeyCode.KEYCODE_DPAD_DOWN) {
+              this.stepMention(1);
+              event.stopPropagation();
+            } else if (event.keyCode === KeyCode.KEYCODE_DPAD_UP) {
+              this.stepMention(-1);
+              event.stopPropagation();
+            } else if (event.keyCode === KeyCode.KEYCODE_ESCAPE) {
+              this.mentionOpen = false;
+              event.stopPropagation();
+            }
+          })
           .onSubmit(() => {
             // Enter picks the highlighted file while the mention menu is open.
             if (this.mentionOpen) {

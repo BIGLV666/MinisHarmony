@@ -126,6 +126,11 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   libcurl/openssl/readline/libidn2/zstd，不重复占空间；`pip install` 直接
   可用（rootfs 没有 `EXTERNALLY-MANAGED` 标记）。rootfs 现为 5747 个文件、
   zip 49 MB、展开后约 144 MB。
+  `unzip` 与 `zipinfo` 在 apk 包里是硬链接。zip 不保存链接数，而 iSH 挂载时
+  `fakefs_rebuild` 会对同一 inode 的后续路径先 `unlinkat` 再 `linkat` 恢复
+  硬链接；鸿蒙应用沙箱拒绝 `linkat`，于是首次启动后其中一个名字消失
+  （实测是 `unzip`）。`ish-rootfs-tools.py` 因此在解包后把所有 `st_nlink > 1`
+  的普通文件复制成独立 inode，让 `meta.db` 记录不同 inode，重建逻辑不再介入。
 - **网络**：iSH 构建没有 slirp 网卡，但 `fs/sock.c` 把 guest 的
   AF_INET/AF_LOCAL socket 调用转发给**宿主**的 `socket()`，因此 guest 直接
   使用 App 的网络连接（`ohos.permission.INTERNET` 已声明）。构建时写入

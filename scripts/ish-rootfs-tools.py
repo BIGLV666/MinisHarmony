@@ -18,6 +18,7 @@ Run this before create_fakefs.py. It is idempotent.
 import argparse
 import hashlib
 import os
+import shutil
 import subprocess
 import tarfile
 
@@ -130,6 +131,21 @@ def main():
                 if member.isfile() and os.path.islink(target):
                     os.unlink(target)
             archive.extractall(args.data, members=members, filter="tar")
+
+    # unzip and zipinfo are hard links inside the package. The zip archive
+    # cannot carry that link count, and iSH restores it at mount time by
+    # unlinking the second path and linkat()ing it to the first. HarmonyOS
+    # denies linkat() for app files, so one of the two names vanished on the
+    # first boot. Give every path its own inode instead.
+    for dirpath, _, filenames in os.walk(args.data):
+        for name in filenames:
+            path = os.path.join(dirpath, name)
+            if os.path.islink(path):
+                continue
+            if os.lstat(path).st_nlink > 1:
+                tmp = path + ".hardlink-break"
+                shutil.copy2(path, tmp)
+                os.replace(tmp, path)
 
     for rel in ("bin/bash", "usr/bin/curl", "usr/bin/jq", "usr/bin/pip3",
                 "usr/bin/ssh", "usr/bin/scp", "usr/bin/rsync", "usr/bin/unzip",

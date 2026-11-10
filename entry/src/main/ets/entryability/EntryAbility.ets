@@ -90,9 +90,13 @@ export default class EntryAbility extends UIAbility {
       'git --version; echo git_exit=$?';
     // iSH has no slirp: guest sockets are forwarded to the host, so DNS and a
     // raw TCP connect exercise the whole path without depending on a proxy.
+    // Connect to the address DNS returns instead of a fixed public IP: some
+    // networks block 1.1.1.1, which used to fail this check on a working
+    // connection.
     const fifth: string = 'python3 -c "import socket; ' +
-      'print(\'dns\', socket.gethostbyname(\'example.com\')); ' +
-      's = socket.create_connection((\'1.1.1.1\', 443), 15); ' +
+      'h = \'www.baidu.com\'; ip = socket.gethostbyname(h); ' +
+      'print(\'dns\', h, ip); ' +
+      's = socket.create_connection((ip, 443), 15); ' +
       'print(\'tcp\', s.getpeername()); s.close()"; echo net_exit=$?';
     // The tool set OpenMinis promises the model (bash, curl, jq, pip, ssh,
     // rsync, unzip) is unpacked offline; run each one so a missing shared

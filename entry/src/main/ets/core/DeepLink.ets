@@ -10,6 +10,7 @@
  *   minis://open?session=<id>&path=<path>  launcher round-trip
  *   minis://new                    start a new conversation
  *   minis://action/new_chat        quick action
+ *   minis://action/camera_chat     new chat, then open the camera picker
  *   minis://task/<id>              scheduled reminder: restore its prompt
  *   minis://settings[/<path>]      open settings (sub-paths are informational)
  *   minis://views/alarm            open the scheduled-task list
@@ -91,9 +92,15 @@ export function parseDeepLink(uri: string): DeepLink | null {
     return { kind: 'new', value: '' };
   }
   if (host === 'action') {
-    return rawValue.toLowerCase() === 'new_chat'
-      ? { kind: 'new', value: '' }
-      : null;
+    const action: string = rawValue.toLowerCase();
+    if (action === 'new_chat') {
+      return { kind: 'new', value: '' };
+    }
+    if (action === 'camera_chat') {
+      return { kind: 'camera', value: '' };
+    }
+    // `voice_chat` needs CoreSpeechKit, which the public SDK lacks.
+    return null;
   }
   if (host === 'open') {
     const id: string = queryValue(query, 'session');

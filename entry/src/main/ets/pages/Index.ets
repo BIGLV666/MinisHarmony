@@ -271,6 +271,12 @@ struct Index {
       this.createChat();
       return;
     }
+    if (link.kind === 'camera') {
+      this.mobileChat = true;
+      this.createChat();
+      this.takePhoto();
+      return;
+    }
     if (link.kind === 'settings') {
       const sub: string = link.value.toLowerCase();
       if (sub === 'scheduled' || sub === 'scheduled-tasks' ||

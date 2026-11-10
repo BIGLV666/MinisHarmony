@@ -1821,6 +1821,9 @@ test('minis deep links resolve sessions, resources and settings', () => {
     { kind: 'new', value: '' });
   assert.deepEqual(deepLink.parseDeepLink('minis://action/new_chat'),
     { kind: 'new', value: '' });
+  assert.deepEqual(deepLink.parseDeepLink('minis://action/camera_chat'),
+    { kind: 'camera', value: '' });
+  assert.equal(deepLink.parseDeepLink('minis://action/voice_chat'), null);
   assert.deepEqual(deepLink.parseDeepLink('minis://settings'),
     { kind: 'settings', value: '' });
   assert.deepEqual(deepLink.parseDeepLink('minis://settings/providers'),
@@ -1828,7 +1831,6 @@ test('minis deep links resolve sessions, resources and settings', () => {
   assert.deepEqual(deepLink.parseDeepLink('minis://views/alarm'),
     { kind: 'alarm', value: '' });
   assert.equal(deepLink.parseDeepLink('minis://views/other'), null);
-  assert.equal(deepLink.parseDeepLink('minis://action/camera_chat'), null);
   assert.equal(deepLink.parseDeepLink('minis://session/'), null);
   assert.equal(deepLink.parseDeepLink('minis://file/a.txt'), null);
   assert.equal(deepLink.parseDeepLink('https://example.com'), null);

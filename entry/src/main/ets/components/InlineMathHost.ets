@@ -130,8 +130,23 @@ export struct InlineMathHost {
     return new Promise<webview.SnapshotResult>(
       (resolve: (value: webview.SnapshotResult) => void,
         reject: (reason: Error) => void) => {
+        let settled: boolean = false;
+        // A destroyed controller never calls back; time out so the shared
+        // queue cannot stay busy forever after a page rebuild.
+        const timer: number = setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          reject(new Error('inline math snapshot timeout'));
+        }, MEASURE_TIMEOUT_MS);
         this.controller.webPageSnapshot(info,
           (error: BusinessError, result: webview.SnapshotResult) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            clearTimeout(timer);
             if (error) {
               reject(new Error(error.message));
               return;

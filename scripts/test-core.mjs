@@ -66,6 +66,7 @@ copyCore('SessionFolder', ['Types']);
 copyCore('BrowserHistory');
 copyCore('SessionTitle', ['Types']);
 copyCore('Mention');
+copyCore('UsageStats');
 copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -209,6 +210,7 @@ const folders = await import(pathToFileURL(join(tmp, 'SessionFolder.mts')).href)
 const browserHistory = await import(pathToFileURL(join(tmp, 'BrowserHistory.mts')).href);
 const sessionTitle = await import(pathToFileURL(join(tmp, 'SessionTitle.mts')).href);
 const mention = await import(pathToFileURL(join(tmp, 'Mention.mts')).href);
+const usageStats = await import(pathToFileURL(join(tmp, 'UsageStats.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
@@ -3765,4 +3767,84 @@ test('mention filtering skips dirs and matches paths case-insensitively', () => 
   assert.deepEqual(mention.filterMentionFiles(entries, 'SRC/', 10).map((e) => e.path),
     ['src/Main.ets']);
   assert.equal(mention.filterMentionFiles(entries, '', 1).length, 1);
+});
+
+test('dayKey follows the local calendar', () => {
+  assert.equal(usageStats.dayKey(new Date(2026, 0, 5, 23, 59).getTime()), '2026-01-05');
+  assert.equal(usageStats.dayKey(new Date(2026, 10, 9, 0, 0).getTime()), '2026-11-09');
+});
+
+test('parseUsage drops junk and normalizes counts', () => {
+  assert.deepEqual(usageStats.parseUsage(''), []);
+  assert.deepEqual(usageStats.parseUsage('not json'), []);
+  assert.deepEqual(usageStats.parseUsage('{"date":"2026-01-01"}'), []);
+  const raw = JSON.stringify([
+    { date: '2026-01-01', model: ' gpt-5 ', preset: 'fast',
+      prompt: 10.9, completion: 4, requests: 2 },
+    { date: '2026-01-01', model: '', prompt: 1, completion: 1 },
+    { date: 'bad', model: 'x', prompt: 1, completion: 1 },
+    { date: '2026-01-02', model: 'claude', prompt: -5, completion: 'x' }
+  ]);
+  const parsed = usageStats.parseUsage(raw);
+  assert.equal(parsed.length, 2);
+  assert.deepEqual(parsed[0], {
+    date: '2026-01-01', model: 'gpt-5', preset: 'fast',
+    prompt: 10, completion: 4, requests: 2
+  });
+  assert.deepEqual(parsed[1], {
+    date: '2026-01-02', model: 'claude', preset: '',
+    prompt: 0, completion: 0, requests: 0
+  });
+});
+
+test('recordUsage merges the same day/model/preset row', () => {
+  const first = usageStats.recordUsage([], '2026-01-01', 'gpt-5', 'fast', 10, 5);
+  assert.deepEqual(first, [{
+    date: '2026-01-01', model: 'gpt-5', preset: 'fast',
+    prompt: 10, completion: 5, requests: 1
+  }]);
+  const second = usageStats.recordUsage(first, '2026-01-01', 'gpt-5', 'fast', 2, 3);
+  assert.equal(second.length, 1);
+  assert.deepEqual(second[0], {
+    date: '2026-01-01', model: 'gpt-5', preset: 'fast',
+    prompt: 12, completion: 8, requests: 2
+  });
+  const other = usageStats.recordUsage(second, '2026-01-01', 'gpt-5', 'deep', 1, 1);
+  assert.equal(other.length, 2, 'a preset change starts a new row');
+  assert.equal(usageStats.recordUsage(other, '', 'x', '', 1, 1).length, 2,
+    'an empty date is ignored');
+});
+
+test('recordUsage caps the history at the newest rows', () => {
+  let records = [];
+  const limit = usageStats.USAGE_RECORD_LIMIT;
+  for (let i = 0; i < limit + 5; i++) {
+    const day = new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
+    records = usageStats.recordUsage(records, day, 'm' + i.toString(), '', 1, 1);
+  }
+  assert.equal(records.length, limit);
+  assert.equal(records.some((row) => row.model === 'm0'), false,
+    'oldest rows fall off first');
+  assert.equal(records.some((row) => row.model === 'm' + (limit + 4).toString()), true);
+});
+
+test('usage rollups total by model and by day', () => {
+  const records = [
+    { date: '2026-01-01', model: 'a', preset: '', prompt: 10, completion: 5, requests: 1 },
+    { date: '2026-01-02', model: 'a', preset: 'fast', prompt: 20, completion: 1, requests: 2 },
+    { date: '2026-01-02', model: 'b', preset: '', prompt: 3, completion: 4, requests: 1 }
+  ];
+  assert.deepEqual(usageStats.usageTotal(records),
+    { prompt: 33, completion: 10, requests: 4 });
+  const byModel = usageStats.usageByModel(records);
+  assert.deepEqual(byModel.map((row) => row.model), ['a', 'b']);
+  assert.deepEqual(byModel[0],
+    { model: 'a', prompt: 30, completion: 6, requests: 3 });
+  const byDay = usageStats.usageByDay(records, 7);
+  assert.deepEqual(byDay.map((row) => row.date), ['2026-01-02', '2026-01-01']);
+  assert.deepEqual(byDay[0],
+    { date: '2026-01-02', prompt: 23, completion: 5, requests: 3 });
+  assert.equal(usageStats.usageByDay(records, 1).length, 1);
+  assert.equal(usageStats.usageByDay(records, 0).length, 2,
+    'a zero limit keeps every day');
 });

@@ -76,6 +76,7 @@ import {
 } from '../service/WebDav';
 import { BackgroundGuard } from '../service/BackgroundGuard';
 import { LocalStore } from '../service/LocalStore';
+import { UsageStore } from '../service/UsageStore';
 import { LocalToolRuntime } from '../service/LocalToolRuntime';
 import {
   BundleImportOutcome,
@@ -222,6 +223,8 @@ struct Index {
   @State paramsId: string = '';
   /** Session ids whose title request already ran (in-memory; avoids repeats). */
   private titleJobs: string[] = [];
+  /** Assistant message ids already counted in the local usage rollup. */
+  private usageRecorded: string[] = [];
   @State paramModel: string = '';
   @State paramThinking: string = '';
   @State paramPrompt: string = '';
@@ -796,6 +799,32 @@ struct Index {
       return;
     }
     this.requestTitle(session, false);
+  }
+
+  /**
+   * Add the settled turn's last reported token usage to the local rollup.
+   * Only assistant messages that carry usage are counted, and each id once.
+   */
+  private recordUsage(session: StoredSession): void {
+    let last: ChatMessage | null = null;
+    for (let i = session.messages.length - 1; i >= 0; i--) {
+      const message: ChatMessage = session.messages[i];
+      if (message.role === 'assistant' && message.totalTokens > 0) {
+        last = message;
+        break;
+      }
+    }
+    if (last === null || this.usageRecorded.indexOf(last.id) >= 0) {
+      return;
+    }
+    this.usageRecorded.push(last.id);
+    if (this.usageRecorded.length > 300) {
+      this.usageRecorded = this.usageRecorded.slice(this.usageRecorded.length - 300);
+    }
+    const effective: AppSettings = effectiveSettings(this.settings, session.meta);
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    UsageStore.record(context, effective.modelId, effective.preset,
+      last.promptTokens, last.completionTokens);
   }
 
   private forgetTitle(sessionId: string): void {
@@ -2053,6 +2082,7 @@ struct Index {
           this.searchEntries = this.buildSearchIndex();
           this.finishTaskRun(session);
           this.maybeAutoTitle(session);
+          this.recordUsage(session);
           this.scheduleAutoSync();
           BackgroundGuard.end().catch((error: Error) => {});
           keepScreenOn(getContext(this) as common.UIAbilityContext, false)

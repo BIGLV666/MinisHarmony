@@ -58,6 +58,17 @@ import { fetchModelIds, ModelsResult } from '../service/ChatApi';
 import { AppLogger } from '../service/AppLogger';
 import { MemoryStore } from '../service/MemoryStore';
 import {
+  UsageDayTotal,
+  UsageModelTotal,
+  usageByDay,
+  usageByModel,
+  usageTotal
+} from '../core/UsageStats';
+import { UsageStore } from '../service/UsageStore';
+import { DirUsage, clearDirectory, directoryUsage } from '../service/StorageUsage';
+import { formatBytes } from '../core/BrowserHistory';
+import { formatTokens } from '../service/Format';
+import {
   ClaudeLoginStart,
   CodexLoginStart,
   CopilotLoginStart,
@@ -226,6 +237,12 @@ export struct SettingsSheet {
   @State logTall: boolean = false;
   @State showCrashes: boolean = false;
   @State crashRows: string[] = [];
+  @State usageTotalLine: string = '';
+  @State usageModelLines: string[] = [];
+  @State usageDayLines: string[] = [];
+  @State storageLines: string[] = [];
+  /** Which cleanup needs a second tap: attachments / workspace / downloads. */
+  @State storageClear: string = '';
   @State showMemory: boolean = false;
   @State memoryFiles: MemoryFile[] = [];
   @State memoryIndex: number = 0;
@@ -300,6 +317,7 @@ export struct SettingsSheet {
     // UIContext is not attached yet during aboutToAppear; read status on the
     // first idle frame instead.
     setTimeout(() => this.refreshSandboxStatus(), 0);
+    setTimeout(() => this.refreshUsage(), 0);
     this.language = I18nService.current();
     const copy: AppSettings = cloneSettings(this.settings);
     this.preset = copy.preset;
@@ -1151,6 +1169,89 @@ export struct SettingsSheet {
     } finally {
       this.mcpRefreshing = false;
     }
+  }
+
+  private filesDir(): string {
+    return (getContext(this) as common.UIAbilityContext).filesDir;
+  }
+
+  /** Recompute the usage rollups and the three storage buckets. */
+  private refreshUsage(): void {
+    const records = UsageStore.load(getContext(this) as common.UIAbilityContext);
+    const total = usageTotal(records);
+    this.usageTotalLine = t('累计 ') +
+      formatTokens(total.prompt + total.completion) + ' tokens · ' +
+      t('输入 ') + formatTokens(total.prompt) + ' · ' +
+      t('输出 ') + formatTokens(total.completion) + ' · ' +
+      total.requests.toString() + t(' 次请求');
+    const models: UsageModelTotal[] = usageByModel(records);
+    const modelLines: string[] = [];
+    for (let i = 0; i < models.length && i < 5; i++) {
+      const item: UsageModelTotal = models[i];
+      modelLines.push(item.model + ' · ' +
+        formatTokens(item.prompt + item.completion) + ' tokens · ' +
+        item.requests.toString() + t(' 次'));
+    }
+    this.usageModelLines = modelLines;
+    const days: UsageDayTotal[] = usageByDay(records, 7);
+    const dayLines: string[] = [];
+    for (let i = 0; i < days.length; i++) {
+      const item: UsageDayTotal = days[i];
+      dayLines.push(item.date + ' · ' +
+        formatTokens(item.prompt + item.completion) + ' tokens · ' +
+        item.requests.toString() + t(' 次'));
+    }
+    this.usageDayLines = dayLines;
+    this.refreshStorage();
+  }
+
+  private refreshStorage(): void {
+    const root: string = this.filesDir();
+    const attachments: DirUsage = directoryUsage(root + '/attachments');
+    const workspace: DirUsage = directoryUsage(root + '/workspace');
+    const downloads: DirUsage = directoryUsage(root + '/browser-downloads');
+    this.storageLines = [
+      t('附件：') + attachments.files.toString() + t(' 个 · ') +
+        formatBytes(attachments.bytes),
+      t('工作区：') + workspace.files.toString() + t(' 个 · ') +
+        formatBytes(workspace.bytes),
+      t('浏览器下载：') + downloads.files.toString() + t(' 个 · ') +
+        formatBytes(downloads.bytes)
+    ];
+  }
+
+  /** Two-tap cleanup; the second tap removes the bucket's contents. */
+  private clearStorage(target: string): void {
+    if (this.storageClear !== target) {
+      this.storageClear = target;
+      this.onToast(t('再点一次确认清理；此操作不可撤销'));
+      return;
+    }
+    this.storageClear = '';
+    const root: string = this.filesDir();
+    let path: string = root + '/attachments';
+    if (target === 'workspace') {
+      path = root + '/workspace';
+    } else if (target === 'downloads') {
+      path = root + '/browser-downloads';
+    }
+    const removed: number = clearDirectory(path);
+    this.refreshStorage();
+    this.onToast(removed > 0
+      ? t('已清理 ') + removed.toString() + t(' 个文件')
+      : t('没有可清理的文件'));
+  }
+
+  private clearUsage(): void {
+    if (this.storageClear !== 'usage') {
+      this.storageClear = 'usage';
+      this.onToast(t('再点一次确认清空用量统计'));
+      return;
+    }
+    this.storageClear = '';
+    UsageStore.clear(getContext(this) as common.UIAbilityContext);
+    this.refreshUsage();
+    this.onToast(t('已清空用量统计'));
   }
 
   private clearLogs(): void {
@@ -3000,6 +3101,91 @@ export struct SettingsSheet {
               }
             }
             .width('100%')
+
+            this.sectionTitle(t('用量统计与存储'),
+              t('token 按模型与日期累计在本地；附件、工作区与下载可直接清理'))
+            Column({ space: 8 }) {
+              Text(this.usageTotalLine)
+                .fontSize(12)
+                .fontColor($r('app.color.text_primary'))
+                .width('100%')
+              if (this.usageModelLines.length > 0) {
+                Text(t('按模型'))
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .width('100%')
+                ForEach(this.usageModelLines, (line: string) => {
+                  Text(line)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                    .width('100%')
+                }, (line: string) => line)
+              }
+              if (this.usageDayLines.length > 0) {
+                Text(t('最近 7 天'))
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .width('100%')
+                ForEach(this.usageDayLines, (line: string) => {
+                  Text(line)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                    .width('100%')
+                }, (line: string) => line)
+              }
+              Button(t('清空用量统计'))
+                .height(34)
+                .width('100%')
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .backgroundColor($r('app.color.surface_alt'))
+                .borderRadius(9)
+                .onClick(() => this.clearUsage())
+              Divider()
+                .color($r('app.color.border'))
+                .margin({ top: 2, bottom: 2 })
+              ForEach(this.storageLines, (line: string) => {
+                Text(line)
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width('100%')
+              }, (line: string) => line)
+              Row({ space: 6 }) {
+                Button(t('清理附件'))
+                  .layoutWeight(1)
+                  .height(32)
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(8)
+                  .onClick(() => this.clearStorage('attachments'))
+                Button(t('清理工作区'))
+                  .layoutWeight(1)
+                  .height(32)
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(8)
+                  .onClick(() => this.clearStorage('workspace'))
+                Button(t('清理下载'))
+                  .layoutWeight(1)
+                  .height(32)
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor($r('app.color.surface_alt'))
+                  .borderRadius(8)
+                  .onClick(() => this.clearStorage('downloads'))
+              }
+              .width('100%')
+              Text(t('清理会删除文件且不可撤销；会话历史与消息记录不受影响，但引用的图片/视频将无法再打开。'))
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+                .lineHeight(14)
+            }
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(11)
 
             this.sectionTitle(t('远程备份（WebDAV）'), t('上传加密备份到你自己的 WebDAV；换机或多端恢复时不用电脑'))
             Column() {

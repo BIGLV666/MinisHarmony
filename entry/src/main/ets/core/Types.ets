@@ -335,6 +335,16 @@ export interface SessionMeta {
   folderId?: string;
   /** MCP server ids switched off for this session only. */
   mcpDisabled?: string[];
+  /** Transient sidebar badge: background / interrupted / syncing. */
+  statusBadge?: string;
+}
+
+/** Unknown or stale badge values are dropped when sessions load. */
+export function normalizeSessionBadge(value: string | undefined): string {
+  if (value === 'background' || value === 'interrupted' || value === 'syncing') {
+    return value;
+  }
+  return '';
 }
 
 export interface StoredSession {

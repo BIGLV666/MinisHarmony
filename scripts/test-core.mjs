@@ -600,6 +600,11 @@ test('defaults target the canonical Go endpoint and enable tools', () => {
   assert.equal(types.clampFontScale(2), 1.3);
   assert.equal(types.clampFontScale(Number.NaN), 1);
   assert.equal(types.scaleFont(10, 1.15), 12);
+  assert.equal(types.normalizeSessionBadge('background'), 'background');
+  assert.equal(types.normalizeSessionBadge('interrupted'), 'interrupted');
+  assert.equal(types.normalizeSessionBadge('syncing'), 'syncing');
+  assert.equal(types.normalizeSessionBadge('unknown'), '');
+  assert.equal(types.normalizeSessionBadge(undefined), '');
   assert.equal(appearance.fontScaleLabel(0.9), '小');
   assert.equal(appearance.fontScaleLabel(1), '标准');
   assert.equal(appearance.fontScaleLabel(1.15), '大');

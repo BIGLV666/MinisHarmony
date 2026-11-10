@@ -51,6 +51,23 @@ export struct SidebarView {
     return this.selectedIds.indexOf(id) >= 0;
   }
 
+  private hasBadge(item: SessionMeta): boolean {
+    return item.statusBadge !== undefined && item.statusBadge.length > 0;
+  }
+
+  private badgeLabel(value: string): string {
+    if (value === 'background') {
+      return t('后台');
+    }
+    if (value === 'interrupted') {
+      return t('已中断');
+    }
+    if (value === 'syncing') {
+      return t('同步中');
+    }
+    return '';
+  }
+
   private toggleSelected(id: string): void {
     const next: string[] = [];
     let removed: boolean = false;
@@ -229,6 +246,18 @@ export struct SidebarView {
           .fontColor(this.currentId === item.id ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.hasBadge(item)) {
+          Text(this.badgeLabel(item.statusBadge !== undefined ? item.statusBadge : ''))
+            .fontSize(9)
+            .fontColor(item.statusBadge === 'interrupted'
+              ? $r('app.color.danger')
+              : (item.statusBadge === 'syncing'
+                ? $r('app.color.accent')
+                : $r('app.color.text_secondary')))
+            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+            .backgroundColor($r('app.color.surface'))
+            .borderRadius(4)
+        }
         if (item.archived) {
           Text(t('归档'))
             .fontSize(9)
@@ -369,6 +398,7 @@ export struct SidebarView {
                 }, (item: SessionMeta) => item.id + ':' + item.title + ':' + item.updatedAt + ':' +
                   item.modelId + ':' + (this.currentId === item.id ? '1' : '0') + ':' +
                   (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : '') + ':' +
+                (item.statusBadge !== undefined ? item.statusBadge : '') + ':' +
                   (this.selecting && this.isSelected(item.id) ? 's' : ''))
               }
             }
@@ -389,6 +419,7 @@ export struct SidebarView {
               }, (item: SessionMeta) => item.id + ':' + item.title + ':' + item.updatedAt + ':' +
                 item.modelId + ':' + (this.currentId === item.id ? '1' : '0') + ':' +
                 (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : '') + ':' +
+                (item.statusBadge !== undefined ? item.statusBadge : '') + ':' +
                 (this.selecting && this.isSelected(item.id) ? 's' : ''))
             }
           }, (group: SessionGroup) => group.label + ':' + group.sessions.length.toString())

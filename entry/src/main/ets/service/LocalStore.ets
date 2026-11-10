@@ -37,6 +37,7 @@ import {
   cloneSettings,
   defaultSettings,
   normalizeAccentColor,
+  normalizeSessionBadge,
   normalizeSessionFolders,
   normalizeThinkingLevel,
   normalizeToolNames,
@@ -265,7 +266,11 @@ function normalizeSession(source: StoredSession): StoredSession | null {
       promptOverride: source.meta.promptOverride !== undefined ? source.meta.promptOverride : '',
       folderId: source.meta.folderId !== undefined ? source.meta.folderId : '',
       mcpDisabled: normalizeMcpDisabled(
-        source.meta.mcpDisabled !== undefined ? source.meta.mcpDisabled : [])
+        source.meta.mcpDisabled !== undefined ? source.meta.mcpDisabled : []),
+      // A sync badge left over from a killed process is stale, not a fact.
+      statusBadge: source.meta.statusBadge === 'syncing'
+        ? ''
+        : normalizeSessionBadge(source.meta.statusBadge)
     },
     messages: messages
   };

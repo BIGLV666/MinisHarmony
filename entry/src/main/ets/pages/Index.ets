@@ -717,6 +717,13 @@ struct Index {
     McpRegistry.refresh(this.settings.mcpServers).catch((error: Error) => {});
     const loaded: StoredSession[] = await LocalStore.loadSessions();
     this.store = loaded;
+    // A result that arrived while the app was closed has not been answered
+    // yet; the sidebar says so until the session is opened.
+    for (let i = 0; i < loaded.length; i++) {
+      if (this.hasPendingBackgroundResult(loaded[i])) {
+        loaded[i].meta.statusBadge = 'background';
+      }
+    }
     this.refreshSessions();
     this.tasks = await LocalStore.loadScheduledTasks();
     this.taskRuns = await LocalStore.loadTaskRuns();
@@ -733,6 +740,11 @@ struct Index {
       this.messages = initial.messages.slice();
       this.syncThinkingOverride();
       this.mobileChat = true;
+      // Opening a session acknowledges whatever badge it carried.
+      if (initial.meta.statusBadge !== undefined && initial.meta.statusBadge.length > 0) {
+        initial.meta.statusBadge = '';
+        this.refreshSessions();
+      }
       if (this.hasPendingBackgroundResult(initial)) {
         this.runAgent(initial, '', false);
       }
@@ -1115,6 +1127,31 @@ struct Index {
     }
   }
 
+  /** Set or clear the transient sidebar badge and refresh the list. */
+  private setSessionBadge(id: string, badge: string, persist: boolean): void {
+    const session: StoredSession | null = this.findSession(id);
+    if (session === null || session.meta.statusBadge === badge) {
+      return;
+    }
+    session.meta.statusBadge = badge;
+    // Badges do not affect the search index, so skip the full rebuild.
+    this.sessions = this.buildMetaList();
+    if (persist) {
+      this.persistSoon();
+    }
+  }
+
+  private markSyncing(on: boolean): void {
+    for (let i = 0; i < this.store.length; i++) {
+      if (on) {
+        this.store[i].meta.statusBadge = 'syncing';
+      } else if (this.store[i].meta.statusBadge === 'syncing') {
+        this.store[i].meta.statusBadge = '';
+      }
+    }
+    this.sessions = this.buildMetaList();
+  }
+
   private selectSession(id: string): void {
     if (this.streaming) {
       this.toast(t('请先停止当前生成'));
@@ -1124,6 +1161,7 @@ struct Index {
     if (session === null) {
       return;
     }
+    this.setSessionBadge(id, '', true);
     this.currentId = id;
     this.rememberSession(id);
     this.messages = session.messages.slice();
@@ -1603,6 +1641,7 @@ struct Index {
       return;
     }
     this.syncRunning = true;
+    this.markSyncing(true);
     try {
       const download: WebDavDownload = await downloadLatestBackup(settings);
       let remote: StoredSession[] = [];
@@ -1662,6 +1701,7 @@ struct Index {
       }
     } finally {
       this.syncRunning = false;
+      this.markSyncing(false);
     }
   }
 
@@ -2202,6 +2242,10 @@ struct Index {
       this.pendingSkillBody = '';
     }
     const runtime: ToolRuntime = this.makeToolRuntime(effective, session.meta.id);
+    // A new turn supersedes an earlier stop or an unread background result.
+    if (session.meta.statusBadge === 'interrupted' || session.meta.statusBadge === 'background') {
+      session.meta.statusBadge = '';
+    }
     this.streaming = true;
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     keepScreenOn(context, true).catch((error: Error) => {});
@@ -2735,6 +2779,9 @@ struct Index {
       this.agent = null;
     }
     this.streaming = false;
+    // The partial turn stays in the transcript; the sidebar flags it so the
+    // user knows this conversation ended early.
+    this.setSessionBadge(this.currentId, 'interrupted', true);
     BackgroundGuard.end().catch((error: Error) => {});
     keepScreenOn(getContext(this) as common.UIAbilityContext, false)
       .catch((error: Error) => {});

@@ -830,6 +830,23 @@ extra_body 必须是 JSON 对象；失败时提示并拒绝保存。运行时若
 重复提醒。所有调用先检查 `isNotificationEnabled()`，失败一律静默——通知被用户关闭
 或设备不支持时，对话本身不受影响。
 
+## 会话状态角标
+
+`SessionMeta.statusBadge` 是一个可选的展示字段，不参与排序、搜索或模型请求。
+`core/Types.ets` 的 `normalizeSessionBadge()` 只保留 `background`、`interrupted`、
+`syncing` 三个值，其余一律清空。`LocalStore` 读盘时再做一次归一化，并把持久化的
+`syncing` 去掉——同步状态只属于当前进程，进程被杀后残留的值会误导用户。
+
+写入点都很短：用户点停止时 `Index.stopStream()` 标 `interrupted`；WebDAV 同步在
+`syncBackup()` 开始时把全部会话标 `syncing`，`finally` 只清除仍为 `syncing` 的项，
+因此不会覆盖期间新产生的其他角标；启动时若某会话最后一条是 `[后台任务]` 用户消息，
+说明后台结果还没被模型回应，标 `background`。`selectSession()`、新一轮 `runAgent()`
+与启动恢复的当前会话都会清除角标。`SidebarView` 用 `ForEach` 的 key 包含角标值，
+否则仅角标变化时会命中旧 key、复用未更新的行。
+
+`background` 表达「有后台结果待处理」，不是每秒钟的后台进度；后者仍由
+`service/Notify.ets` 的系统通知承担。
+
 ## 屏幕常亮
 
 `service/ScreenWake.ets` 用 `window.getLastWindow()` + `setWindowKeepScreenOn()`

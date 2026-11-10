@@ -126,6 +126,8 @@ export interface AppSettings {
   autoFocusInput: boolean;
   /** Let the model name new conversations automatically. */
   autoTitleEnabled: boolean;
+  /** Offer existing folders to the title request and file the session. */
+  autoGroupingEnabled: boolean;
   /** Built-in persona prepended to the system prompt. */
   soulId: string;
   /** Skill ids (imported SKILL.md files) injected into the system prompt. */
@@ -573,6 +575,7 @@ export function defaultSettings(): AppSettings {
     autoExpandThinking: false,
     autoFocusInput: true,
     autoTitleEnabled: true,
+    autoGroupingEnabled: true,
     soulId: 'general',
     enabledSkills: [],
     modelOverrides: [],
@@ -685,6 +688,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     autoExpandThinking: source.autoExpandThinking === true,
     autoFocusInput: source.autoFocusInput !== false,
     autoTitleEnabled: source.autoTitleEnabled !== false,
+    autoGroupingEnabled: source.autoGroupingEnabled !== false,
     soulId: source.soulId !== undefined && source.soulId.length > 0
       ? source.soulId
       : 'general',

@@ -82,10 +82,21 @@ function summaryInstruction(): string {
  * Title request for the sidebar. Deliberately tiny (one short line), so the
  * answer can be used verbatim after `cleanTitle()` strips quotes/punctuation.
  */
-function titleInstruction(): string {
-  return t('根据给出的对话起一个会话标题。') +
-    t('要求：不超过20个字，只输出标题本身，不要引号、句号、前缀或解释；') +
-    t('优先概括用户想完成的事情，用用户使用的语言。');
+function titleInstruction(folders: string[]): string {
+  if (folders.length === 0) {
+    return t('根据给出的对话起一个会话标题。') +
+      t('要求：不超过20个字，只输出标题本身，不要引号、句号、前缀或解释；') +
+      t('优先概括用户想完成的事情，用用户使用的语言。');
+  }
+  let list: string = '';
+  for (let i = 0; i < folders.length; i++) {
+    list += (i > 0 ? '、' : '') + folders[i];
+  }
+  return t('根据给出的对话起一个会话标题，并判断它属于哪个已有分组。') +
+    t('要求：标题不超过20个字，概括用户想完成的事情，用用户使用的语言；') +
+    t('分组只能从给出的名称中选择，不确定就填空字符串，不要发明新分组；') +
+    t('只输出 JSON：{"title":"…","folder":""}，不要解释。') +
+    t('已有分组：') + list;
 }
 
 export interface ChatCallbacks {
@@ -1170,14 +1181,15 @@ export async function summarizeConversation(
 export async function generateSessionTitle(
   settings: AppSettings,
   sessionId: string,
-  transcript: string
+  transcript: string,
+  folders: string[] = []
 ): Promise<SummaryResult> {
   const problem: string = modelTextProblem(settings, transcript, t('没有可命名的内容'));
   if (problem.length > 0) {
     return { ok: false, text: '', message: problem };
   }
   return await requestModelText(
-    settings, sessionId, transcript, titleInstruction(), 200);
+    settings, sessionId, transcript, titleInstruction(folders), 200);
 }
 
 /** Empty string when the request is usable; otherwise a user-facing reason. */

@@ -558,6 +558,24 @@ ArkUI 的 `TextArea` 没有粘贴事件，只在 `onChange` 给出完整新值�
 读取文件。工具关闭或使用远程沙箱时不做转换：前者模型没有读取工具，后者看不到本机
 工作区，保留原文在输入框反而不会丢内容。
 
+## 自动归入分组
+
+自动分组复用「会话结束后生成标题」这一次模型请求，不额外发请求。`Index.requestTitle()`
+在调用 `generateSessionTitle()` 前用 `offeredFolderNames()` 取候选：开关
+`autoGroupingEnabled` 打开、会话还没有 `folderId` 时才收集 `settings.sessionFolders`
+的名称（trim 后按大小写不敏感去重）。已有分组的会话不提供列表，避免模型把它挪走。
+
+`ChatApi.titleInstruction()` 在列表非空时把提示换成 JSON 形式：要求标题不超过 20 字、
+分组只能从给定名称中选、不确定填空串、只输出 `{"title":"…","folder":""}`；列表为空
+时保持原来的纯标题提示，旧行为不受影响。
+
+回复由 `core/SessionTitle.parseTitleSuggestion()` 解析：取第一个 `{` 到最后一个 `}`，
+`title` 缺失、为 `null` 或清洗后为空都回退纯文本路径；`folder` 交给 `matchFolder()`，
+只有与提供名称大小写不敏感**完全相等**才返回该名称，`null`、空串或模型编造的名称
+一律折叠为空串。`Index.applyTitleFolder()` 再按 id 查一次，且只在会话仍无 `folderId`
+时写入，因此模型回答永远不能新建分组或覆盖用户已有的归类。标题与分组在同一次刷新里
+写回并 `persistSoon()`。
+
 ## 生成中排队发送
 
 生成期间 `sendMessage()` 不再直接拒绝：本地命令仍提示「请先停止当前生成」，普通

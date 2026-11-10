@@ -187,6 +187,7 @@ export function parseBackupSettings(text: string): AppSettings | null {
   base.autoExpandThinking = boolOr(raw.autoExpandThinking, false);
   base.autoFocusInput = boolOr(raw.autoFocusInput, true);
   base.autoTitleEnabled = boolOr(raw.autoTitleEnabled, true);
+  base.autoGroupingEnabled = boolOr(raw.autoGroupingEnabled, true);
   base.soulId = stringOr(raw.soulId, 'general');
   base.enabledSkills = normalizeToolNames(raw.enabledSkills);
   base.modelOverrides = Array.isArray(raw.modelOverrides) ? raw.modelOverrides : [];

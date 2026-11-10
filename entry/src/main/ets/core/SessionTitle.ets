@@ -1,5 +1,16 @@
 import { ChatMessage, textOf } from './Types';
 
+interface TitleReply {
+  title?: string | null;
+  folder?: string | null;
+}
+
+export interface TitleSuggestion {
+  title: string;
+  /** An offered folder name, or '' when the model did not pick one. */
+  folder: string;
+}
+
 /**
  * Model-written session titles. The model is asked for one short line, but
  * providers still add quotes, a "标题：" prefix or a trailing full stop; the
@@ -108,6 +119,50 @@ export function cleanTitle(raw: string): string {
   let cut: string = text.substring(0, TITLE_MAX_CHARS);
   cut = trimTrailing(cut);
   return cut + '…';
+}
+
+function matchFolder(value: string | null | undefined, folders: string[]): string {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  const wanted: string = value.trim().toLowerCase();
+  if (wanted.length === 0) {
+    return '';
+  }
+  for (let i = 0; i < folders.length; i++) {
+    const name: string = folders[i].trim();
+    if (name.length > 0 && name.toLowerCase() === wanted) {
+      return name;
+    }
+  }
+  return '';
+}
+
+/**
+ * Read the optional JSON form used when folders were offered. A plain-text
+ * answer still works (the title-only prompt); an unrecognised folder collapses
+ * to '' so a hallucinated group can never create or move a session.
+ */
+export function parseTitleSuggestion(raw: string, folders: string[]): TitleSuggestion {
+  const start: number = raw.indexOf('{');
+  const end: number = raw.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try {
+      const reply: TitleReply = JSON.parse(raw.substring(start, end + 1)) as TitleReply;
+      if (reply !== null && reply.title !== undefined && reply.title !== null) {
+        const title: string = cleanTitle(reply.title);
+        if (title.length > 0) {
+          return { title: title, folder: matchFolder(reply.folder, folders) };
+        }
+      }
+    } catch (e) {
+      // Fall through to the plain-text form.
+    }
+  }
+  if (raw.indexOf('{') >= 0 || raw.indexOf('}') >= 0) {
+    return { title: '', folder: '' };
+  }
+  return { title: cleanTitle(raw), folder: '' };
 }
 
 /** True when a message contributed text worth titling (tool-only turns do not). */

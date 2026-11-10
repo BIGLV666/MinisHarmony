@@ -239,6 +239,7 @@ export struct SettingsSheet {
   @State autoExpandThinking: boolean = false;
   @State autoFocusInput: boolean = true;
   @State autoTitleEnabled: boolean = true;
+  @State autoGroupingEnabled: boolean = true;
   @State disabledTools: string[] = [];
   @State showLogs: boolean = false;
   @State logRows: LogRow[] = [];
@@ -373,6 +374,7 @@ export struct SettingsSheet {
     this.autoExpandThinking = copy.autoExpandThinking;
     this.autoFocusInput = copy.autoFocusInput;
     this.autoTitleEnabled = copy.autoTitleEnabled;
+    this.autoGroupingEnabled = copy.autoGroupingEnabled;
     this.disabledTools = copy.disabledTools.slice();
     this.modelOverrides = normalizeModelOverrides(copy.modelOverrides);
     this.mcpServers = normalizeMcpServers(copy.mcpServers);
@@ -746,6 +748,7 @@ export struct SettingsSheet {
       autoExpandThinking: this.autoExpandThinking,
       autoFocusInput: this.autoFocusInput,
       autoTitleEnabled: this.autoTitleEnabled,
+      autoGroupingEnabled: this.autoGroupingEnabled,
       enabledSkills: this.enabledSkills.slice(),
       modelOverrides: normalizeModelOverrides(this.modelOverrides),
       mcpServers: normalizeMcpServers(this.mcpServers),
@@ -3008,6 +3011,29 @@ export struct SettingsSheet {
                   .selectedColor($r('app.color.accent'))
                   .onChange((on: boolean) => {
                     this.autoTitleEnabled = on;
+                  })
+              }
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .backgroundColor($r('app.color.surface_alt'))
+              .borderRadius(11)
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text(t('自动归入分组'))
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(t('生成标题时把已有分组提供给模型；只有明确匹配且会话尚未分组时才归入，不会新建分组。'))
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .lineHeight(14)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Toggle({ type: ToggleType.Switch, isOn: this.autoGroupingEnabled })
+                  .selectedColor($r('app.color.accent'))
+                  .onChange((on: boolean) => {
+                    this.autoGroupingEnabled = on;
                   })
               }
               .width('100%')

@@ -3772,6 +3772,29 @@ test('title transcript keeps the first exchange and a long tail', () => {
   assert.equal(longTranscript.includes('最近助手：回答0'), false);
 });
 
+test('title suggestions parse an offered folder and reject invented ones', () => {
+  const folders = ['工作', 'Learning'];
+  const picked = sessionTitle.parseTitleSuggestion(
+    '{"title":"修复登录问题","folder":"工作"}', folders);
+  assert.equal(picked.title, '修复登录问题');
+  assert.equal(picked.folder, '工作');
+  const caseInsensitive = sessionTitle.parseTitleSuggestion(
+    '```json\n{"title":"Fix login","folder":"learning"}\n```', folders);
+  assert.equal(caseInsensitive.title, 'Fix login');
+  assert.equal(caseInsensitive.folder, 'Learning');
+  const invented = sessionTitle.parseTitleSuggestion(
+    '{"title":"新项目","folder":"不存在"}', folders);
+  assert.equal(invented.folder, '');
+  assert.equal(sessionTitle.parseTitleSuggestion(
+    '{"title":"无分组","folder":null}', folders).folder, '');
+  assert.equal(sessionTitle.parseTitleSuggestion(
+    '{"title":"无分组"}', folders).folder, '');
+  assert.equal(sessionTitle.parseTitleSuggestion(
+    '{"title":""}', folders).title, '');
+  assert.equal(sessionTitle.parseTitleSuggestion('普通标题', folders).title, '普通标题');
+  assert.equal(sessionTitle.parseTitleSuggestion('{"broken":', folders).title, '');
+});
+
 test('failed assistant turns do not count as an answer', () => {
   const messages = [
     titleMessage('user', '你好'),

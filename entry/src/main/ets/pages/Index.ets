@@ -76,9 +76,10 @@ import {
 import { ConfigAuditStore, configSnapshot } from '../service/ConfigAuditStore';
 import { UiStateStore } from '../service/UiStateStore';
 import {
-  cleanTitle,
+  TitleSuggestion,
   firstUserText,
   hasAnswer,
+  parseTitleSuggestion,
   titleTranscript
 } from '../core/SessionTitle';
 import { AppLogger } from '../service/AppLogger';
@@ -899,6 +900,58 @@ struct Index {
     }
   }
 
+  /**
+   * Folder names offered to title generation. Auto-grouping only applies to
+   * conversations the user has not filed yet, and only when the setting is on.
+   * Names are deduped case-insensitively so the model sees each group once.
+   */
+  private offeredFolderNames(session: StoredSession): string[] {
+    if (!this.settings.autoGroupingEnabled) {
+      return [];
+    }
+    const current: string = session.meta.folderId !== undefined
+      ? session.meta.folderId : '';
+    if (current.length > 0) {
+      return [];
+    }
+    const names: string[] = [];
+    for (let i = 0; i < this.settings.sessionFolders.length; i++) {
+      const name: string = this.settings.sessionFolders[i].name.trim();
+      if (name.length === 0) {
+        continue;
+      }
+      let seen: boolean = false;
+      for (let j = 0; j < names.length; j++) {
+        if (names[j].toLowerCase() === name.toLowerCase()) {
+          seen = true;
+          break;
+        }
+      }
+      if (!seen) {
+        names.push(name);
+      }
+    }
+    return names;
+  }
+
+  /** Apply a folder the model picked; never create a group from its answer. */
+  private applyTitleFolder(session: StoredSession, folder: string): void {
+    if (folder.length === 0) {
+      return;
+    }
+    const current: string = session.meta.folderId !== undefined
+      ? session.meta.folderId : '';
+    if (current.length > 0) {
+      return;
+    }
+    for (let i = 0; i < this.settings.sessionFolders.length; i++) {
+      if (this.settings.sessionFolders[i].name.toLowerCase() === folder.toLowerCase()) {
+        session.meta.folderId = this.settings.sessionFolders[i].id;
+        return;
+      }
+    }
+  }
+
   /** Ask the model for a title; `manual` also reports failures to the user. */
   private async requestTitle(session: StoredSession, manual: boolean): Promise<void> {
     if (this.titleJobs.indexOf(session.meta.id) >= 0) {
@@ -920,8 +973,9 @@ struct Index {
     }
     const settings: AppSettings =
       await OAuthService.decorate(effectiveSettings(this.settings, session.meta));
+    const folders: string[] = this.offeredFolderNames(session);
     const result: SummaryResult = await generateSessionTitle(
-      settings, session.meta.id, transcript);
+      settings, session.meta.id, transcript, folders);
     if (!result.ok) {
       this.forgetTitle(session.meta.id);
       if (manual) {
@@ -929,7 +983,8 @@ struct Index {
       }
       return;
     }
-    const title: string = cleanTitle(result.text);
+    const suggestion: TitleSuggestion = parseTitleSuggestion(result.text, folders);
+    const title: string = suggestion.title;
     if (title.length === 0) {
       this.forgetTitle(session.meta.id);
       if (manual) {
@@ -938,6 +993,7 @@ struct Index {
       return;
     }
     session.meta.title = title;
+    this.applyTitleFolder(session, suggestion.folder);
     this.refreshSessions();
     this.persistSoon();
     if (manual) {
@@ -2980,7 +3036,8 @@ struct Index {
       key === 'memoryEnabled' || key === 'backgroundEnabled' ||
       key === 'enterToSend' || key === 'appLockEnabled' ||
       key === 'autoExpandThinking' || key === 'autoFocusInput' ||
-      key === 'autoTitleEnabled' || key === 'webDavAutoSync') {
+      key === 'autoTitleEnabled' || key === 'autoGroupingEnabled' ||
+      key === 'webDavAutoSync') {
       if (typeof parsed !== 'boolean') {
         return false;
       }
@@ -3023,6 +3080,8 @@ struct Index {
         next.autoFocusInput = value;
       } else if (key === 'autoTitleEnabled') {
         next.autoTitleEnabled = value;
+      } else if (key === 'autoGroupingEnabled') {
+        next.autoGroupingEnabled = value;
       } else {
         next.webDavAutoSync = value;
       }

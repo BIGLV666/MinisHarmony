@@ -2860,7 +2860,7 @@ struct Index {
   @Builder
   pageBody() {
       if (this.ready) {
-        HiddenBrowser()
+        HiddenBrowser({ workspaceRoot: this.workspaceRoot })
       }
 
       if (!this.ready) {

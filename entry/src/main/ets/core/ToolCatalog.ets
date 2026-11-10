@@ -120,14 +120,36 @@ export function builtinToolDefinitions(): ToolDefinition[] {
   ];
   const browserFields: FieldEntry[] = [
     field('action', 'string',
-      t('动作：open 打开网址，click 点击，type 输入，text 取文本，html 取 HTML，') +
-        t('eval 执行 JS，back/forward/reload 导航，wait 等待，title/url 读取当前页。')),
-    field('url', 'string', t('open 时必填；省略协议时自动补 https://。')),
-    field('selector', 'string', t('click/type/text/html 使用的 CSS 选择器；text/html 省略时取整个页面。')),
+      t('动作：open/navigate 打开网址，click 点击，type 输入，text/get_text 取文本，html 取 HTML，') +
+        t('eval/execute_js 执行 JS，scroll 滚动，get_page_info 页面信息，find_elements 查找元素，') +
+        t('hover 悬停，get_readable 提取正文，get_backbone 获取 DOM 骨架，') +
+        t('get_cookies/set_cookies 读写 Cookie，set_user_agent 切换 UA，set_viewport 调整视口，') +
+        t('scroll_and_collect 边滚动边收集，wait_for_dom_stable 等待 DOM 稳定，') +
+        t('screenshot 截图并保存到工作区，fetch 下载 URL 原始字节到工作区并返回链接，') +
+        t('back/forward/reload 导航，wait 等待，title/url 读取当前页。')),
+    field('url', 'string', t('open/navigate/fetch 的网址；省略协议时自动补 https://。')),
+    field('selector', 'string', t('click/type/text/html/scroll/hover/find_elements 使用的 CSS 选择器；') +
+      t('text/html/get_readable 省略时取整个页面。')),
     field('text', 'string', t('type 时要填入的文本。')),
-    field('script', 'string', t('eval 时要执行的 JavaScript。')),
+    field('script', 'string', t('eval/execute_js 时要执行的 JavaScript，') +
+      t('返回值会转成字符串，最长受 max_chars 限制。')),
     field('max_chars', 'number', t('返回内容的最大字符数，默认 8000，最大 20000。')),
-    field('milliseconds', 'number', t('wait 的毫秒数，默认 500，最大 10000。'))
+    field('milliseconds', 'number', t('wait 的毫秒数，默认 500，最大 10000。')),
+    field('direction', 'string', t('scroll/scroll_and_collect 的方向：down（默认）或 up。')),
+    field('amount', 'number', t('scroll 每次滚动的像素数（默认 600）；scroll_and_collect 每屏像素（默认 800）；') +
+      t('find_elements 最多返回的条数（默认 50，最大 50）。')),
+    field('item_selector', 'string', t('scroll_and_collect 可选：只收集匹配该选择器的条目文本，') +
+      t('适合列表页；省略时收集整页文本。')),
+    field('scroll_count', 'number', t('scroll_and_collect 的滚动次数，默认 5，最大 20。')),
+    field('cookies', 'string', t('set_cookies 的 JSON 数组，如 ') +
+      t('[{"name":"a","value":"1","domain":"example.com"}]；') +
+      t('可含 path/secure/httpOnly/expires（秒）。')),
+    field('user_agent', 'string', t('set_user_agent 的值：default 恢复默认，mobile/desktop 使用内置 UA，') +
+      t('其他字符串按原样设置。')),
+    field('max_depth', 'number', t('get_backbone 的 DOM 深度，默认 5，最大 12。')),
+    field('timeout', 'number', t('wait_for_dom_stable 的最长等待毫秒数，默认 5000，最大 20000。')),
+    field('viewport_width', 'number', t('set_viewport 的宽度（CSS 像素），默认 412，最大 4000。')),
+    field('viewport_height', 'number', t('set_viewport 的高度（CSS 像素），默认 915，最大 4000。'))
   ];
   const calendarFields: FieldEntry[] = [
     field('action', 'string', t('list（默认）查看时间范围内的事件；create 新建一条事件。')),
@@ -260,7 +282,9 @@ export function builtinToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'browser_use',
-      description: t('在内置浏览器中打开网页并交互：导航、点击、输入、读取文本/HTML 或执行 JS。') +
+      description: t('在内置浏览器中打开网页并交互：导航、点击、输入、滚动、读取文本/HTML/正文、') +
+        t('查找元素、读写 Cookie、切换 UA/视口、等待动态内容、截图或执行 JS。') +
+        t('screenshot 会把 PNG 存到工作区 .minis-browser/ 并返回可点击的 minis://workspace 链接。') +
         t('适合需要登录态或 JavaScript 渲染的页面；静态接口请求请优先用 fetch_url。'),
       parameters: parametersOf(browserFields, ['action'])
     },

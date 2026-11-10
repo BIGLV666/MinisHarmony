@@ -2625,6 +2625,22 @@ test('python_execute schema advertises code and a bounded timeout', () => {
   assert.match(tool.parameters.properties.timeout.description, /120/);
 });
 
+test('browser_use schema covers interactive, cookie and screenshot actions', () => {
+  const tools = catalog.builtinToolDefinitions();
+  const tool = tools.find((item) => item.name === 'browser_use');
+  assert.notEqual(tool, undefined);
+  assert.deepEqual(tool.parameters.required, ['action']);
+  for (const name of ['direction', 'amount', 'item_selector', 'scroll_count',
+    'cookies', 'user_agent', 'max_depth', 'timeout',
+    'viewport_width', 'viewport_height']) {
+    assert.notEqual(tool.parameters.properties[name], undefined, name);
+  }
+  assert.equal(tool.parameters.properties.amount.type, 'number');
+  assert.match(tool.parameters.properties.action.description, /screenshot/);
+  assert.match(tool.parameters.properties.action.description, /get_readable/);
+  assert.match(tool.description, /minis:\/\/workspace/);
+});
+
 test('device tool schema advertises the four capabilities', () => {
   const tools = catalog.builtinToolDefinitions();
   for (const name of ['calendar', 'contacts', 'location', 'weather']) {

@@ -18,6 +18,8 @@ export struct SidebarView {
   @Prop searchEntries: SessionSearchEntry[] = [];
   @Prop folders: SessionFolder[] = [];
   @Prop currentId: string = '';
+  /** Sessions with a live background subagent job. */
+  @Prop runningSessionIds: string[] = [];
   @Prop showArchived: boolean = false;
   @Link query: string;
   @State selecting: boolean = false;
@@ -51,7 +53,16 @@ export struct SidebarView {
     return this.selectedIds.indexOf(id) >= 0;
   }
 
+  private isRunning(id: string): boolean {
+    return this.runningSessionIds.indexOf(id) >= 0;
+  }
+
+  /** Live subagent progress wins over the persisted "background" badge. */
   private hasBadge(item: SessionMeta): boolean {
+    if (this.isRunning(item.id)) {
+      return item.statusBadge !== undefined && item.statusBadge.length > 0 &&
+        item.statusBadge !== 'background';
+    }
     return item.statusBadge !== undefined && item.statusBadge.length > 0;
   }
 
@@ -246,6 +257,14 @@ export struct SidebarView {
           .fontColor(this.currentId === item.id ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.isRunning(item.id)) {
+          Text('● ' + t('运行中'))
+            .fontSize(9)
+            .fontColor($r('app.color.accent'))
+            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+            .backgroundColor($r('app.color.surface'))
+            .borderRadius(4)
+        }
         if (this.hasBadge(item)) {
           Text(this.badgeLabel(item.statusBadge !== undefined ? item.statusBadge : ''))
             .fontSize(9)
@@ -399,6 +418,7 @@ export struct SidebarView {
                   item.modelId + ':' + (this.currentId === item.id ? '1' : '0') + ':' +
                   (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : '') + ':' +
                 (item.statusBadge !== undefined ? item.statusBadge : '') + ':' +
+                  (this.isRunning(item.id) ? 'r' : '') + ':' +
                   (this.selecting && this.isSelected(item.id) ? 's' : ''))
               }
             }

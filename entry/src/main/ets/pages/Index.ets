@@ -244,6 +244,8 @@ struct Index {
   @State searchEntries: SessionSearchEntry[] = [];
   @State messages: ChatMessage[] = [];
   @State currentId: string = '';
+  /** Parent sessions whose background subagent currently holds a slot. */
+  @State runningSessions: string[] = [];
   @State draft: string = '';
   @State pendingAttachments: ChatAttachment[] = [];
   @State streaming: boolean = false;
@@ -731,7 +733,19 @@ struct Index {
       this.agent.cancel();
       this.agent = null;
     }
+    SubagentRunner.setJobWatcher(null);
     BackgroundGuard.end().catch((error: Error) => {});
+  }
+
+  /** Keep the sidebar badge in sync with live background subagent jobs. */
+  private setSessionRunning(parentSessionId: string, running: boolean): void {
+    const present: boolean = this.runningSessions.indexOf(parentSessionId) >= 0;
+    if (running && !present) {
+      this.runningSessions = this.runningSessions.concat([parentSessionId]);
+    } else if (!running && present) {
+      this.runningSessions = this.runningSessions.filter(
+        (id: string) => id !== parentSessionId);
+    }
   }
 
   private async bootstrap(): Promise<void> {
@@ -759,6 +773,11 @@ struct Index {
       .catch((error: Error) => {});
     const loaded: StoredSession[] = await LocalStore.loadSessions();
     this.store = loaded;
+    SubagentRunner.setJobWatcher(
+      (parentSessionId: string, running: boolean): void => {
+        this.setSessionRunning(parentSessionId, running);
+      });
+    this.runningSessions = SubagentRunner.runningParents();
     // A result that arrived while the app was closed has not been answered
     // yet; the sidebar says so until the session is opened.
     for (let i = 0; i < loaded.length; i++) {
@@ -4763,6 +4782,7 @@ struct Index {
       searchEntries: this.searchEntries,
       folders: this.settings.sessionFolders,
       currentId: this.currentId,
+      runningSessionIds: this.runningSessions,
       query: $query,
       showArchived: this.showArchived,
       onToggleArchived: () => {

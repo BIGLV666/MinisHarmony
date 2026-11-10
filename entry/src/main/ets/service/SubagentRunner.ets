@@ -133,6 +133,8 @@ export class SubagentRunner implements SubagentHandler {
    * remember the one captured at delegation time.
    */
   private static defaultShell: ShellHandler | null = null;
+  /** UI listener for live "running" badges; one per process. */
+  private static watcher: ((parentSessionId: string, running: boolean) => void) | null = null;
   /** Serializes preference writes so a slower earlier save cannot win. */
   private static saveChain: Promise<void> = Promise.resolve();
 
@@ -154,6 +156,45 @@ export class SubagentRunner implements SubagentHandler {
     this.onChild = onChild;
     this.deliver = deliver;
     this.shell = shell;
+  }
+
+  static setJobWatcher(handler: ((parentSessionId: string, running: boolean) => void) | null): void {
+    SubagentRunner.watcher = handler;
+  }
+
+  /** Parent sessions with a job that took a running slot and has not settled. */
+  static runningParents(): string[] {
+    const parents: string[] = [];
+    SubagentRunner.jobs.forEach((job: LiveJob) => {
+      const parent: string = job.record.parentSessionId;
+      if (job.started && !isTerminalState(job.record.state) &&
+        parents.indexOf(parent) < 0) {
+        parents.push(parent);
+      }
+    });
+    return parents;
+  }
+
+  private static hasRunningJob(parentSessionId: string): boolean {
+    let found: boolean = false;
+    SubagentRunner.jobs.forEach((job: LiveJob) => {
+      if (!found && job.record.parentSessionId === parentSessionId && job.started &&
+        !isTerminalState(job.record.state)) {
+        found = true;
+      }
+    });
+    return found;
+  }
+
+  private static notifyWatcher(parentSessionId: string, running: boolean): void {
+    if (SubagentRunner.watcher === null) {
+      return;
+    }
+    try {
+      SubagentRunner.watcher(parentSessionId, running);
+    } catch (e) {
+      // A closed UI must not break job bookkeeping.
+    }
   }
 
   static setShell(shell: ShellHandler | null): void {
@@ -435,6 +476,7 @@ export class SubagentRunner implements SubagentHandler {
     job.record.currentTool = '';
     job.started = true;
     SubagentRunner.active++;
+    SubagentRunner.notifyWatcher(job.record.parentSessionId, true);
 
     const record: SubagentJobRecord = job.record;
     const childId: string = record.childSessionId;
@@ -517,6 +559,9 @@ export class SubagentRunner implements SubagentHandler {
     const record: SubagentJobRecord = job.record;
     const body: string = text.trim();
     endJob(record, state, body, Date.now());
+    if (!SubagentRunner.hasRunningJob(record.parentSessionId)) {
+      SubagentRunner.notifyWatcher(record.parentSessionId, false);
+    }
     if (job.session !== null && job.onChild !== null && job.session.messages.length > 0) {
       job.session.meta.messageCount = job.session.messages.length;
       job.session.meta.updatedAt = Date.now();

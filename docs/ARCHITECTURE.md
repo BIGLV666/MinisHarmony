@@ -971,6 +971,13 @@ extra_body 必须是 JSON 对象；失败时提示并拒绝保存。运行时若
 `background` 表达「有后台结果待处理」，不是每秒钟的后台进度；后者仍由
 `service/Notify.ets` 的系统通知承担。
 
+另有一个不落盘的实时角标：`SubagentRunner` 的进程级 `setJobWatcher()` 在任务
+拿到运行槽时回调 `(parentSessionId, true)`，在 `settleJob()` 后确认同一父会话
+没有其它运行中任务才回调 `false`；`runningParents()` 供启动时重建状态。`Index`
+把它存进 `runningSessions` 并传给侧栏，`SidebarView` 显示「● 运行中」并让它优先
+于持久化的 `background`。运行状态同样进入 `ForEach` key，所以任务开始/结束时行
+会立即重绘；多任务并行时以「该父会话是否仍有任一任务运行」为准。
+
 ## 屏幕常亮
 
 `service/ScreenWake.ets` 用 `window.getLastWindow()` + `setWindowKeepScreenOn()`

@@ -883,6 +883,11 @@ extra_body 必须是 JSON 对象；失败时提示并拒绝保存。运行时若
 与工具共享同一套「绝对路径 / `..` 拒绝」规则，因此浏览器能看到的范围不会超过模型。
 排序、相对路径计算与大小格式化放在 `core/FileListing.ets`，可在 Node 下单测。
 
+预览头部有「导出」：`ExportService.saveFileCopy()` 用 `DocumentViewPicker.save`
+取得用户选择的目标 URI，再 `fs.copyFileSync` 复制原文件，二进制文件同样可导出。
+导出不经过文本编码，因此不会截断 256 KB，也不需要宽泛存储权限；取消选择返回
+「已取消导出」，失败带系统错误信息，结果经 `onToast` 回到聊天页的全局提示。
+
 ## 应用锁
 
 `service/AppLock.ets` 在 `appLockEnabled` 时调用 `userAuth.getUserAuthInstance()`，

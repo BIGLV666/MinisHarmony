@@ -4790,7 +4790,8 @@ struct Index {
           onClose: () => {
             this.showWorkspace = false;
             this.workspaceInitial = '';
-          }
+          },
+          onToast: (message: string) => this.toast(message)
         })
       }
 

@@ -1,4 +1,5 @@
 import { webview } from '@kit.ArkWeb';
+import { common } from '@kit.AbilityKit';
 import { FileEntry, formatFileSize, parentRelative } from '../core/FileListing';
 import {
   WorkspaceListing,
@@ -6,6 +7,7 @@ import {
   listWorkspace,
   previewWorkspaceFile
 } from '../service/WorkspaceFiles';
+import { ExportOutcome, saveFileCopy } from '../service/ExportService';
 import { t } from '../core/I18n';
 
 /**
@@ -19,6 +21,8 @@ export struct WorkspaceSheet {
   /** A `minis://workspace/...` link opens straight into this file. */
   @Prop initialPath: string = '';
   onClose: () => void = () => {
+  };
+  onToast: (message: string) => void = (message: string) => {
   };
 
   @State path: string = '';
@@ -122,6 +126,20 @@ export struct WorkspaceSheet {
     this.previewText = preview.text;
     this.previewTruncated = preview.truncated;
     this.previewHtml = false;
+  }
+
+  /** Hand the current file to the system picker, including binaries. */
+  private async exportPreview(): Promise<void> {
+    if (this.previewPath.length === 0) {
+      return;
+    }
+    const outcome: ExportOutcome = await saveFileCopy(
+      getContext(this) as common.UIAbilityContext,
+      this.workspaceRoot + '/' + this.previewPath,
+      this.previewName,
+      t('已导出文件')
+    );
+    this.onToast(outcome.message);
   }
 
   private goUp(): void {
@@ -245,6 +263,11 @@ export struct WorkspaceSheet {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .constraintSize({ maxWidth: '50%' })
+        Text(t('导出'))
+          .fontSize(11)
+          .fontColor($r('app.color.accent'))
+          .accessibilityText(t('导出文件'))
+          .onClick(() => this.exportPreview())
       }
       .width('100%')
 

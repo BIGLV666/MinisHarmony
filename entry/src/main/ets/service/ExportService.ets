@@ -65,6 +65,34 @@ export async function saveText(
   }
 }
 
+/**
+ * Copy an existing workspace file to a user-picked destination, byte for byte.
+ * Used by the workspace preview's export action for binaries that cannot be
+ * rendered in place.
+ */
+export async function saveFileCopy(
+  context: common.UIAbilityContext,
+  sourcePath: string,
+  fileName: string,
+  successMessage: string
+): Promise<ExportOutcome> {
+  try {
+    const options: picker.DocumentSaveOptions = new picker.DocumentSaveOptions();
+    options.newFileNames = [fileName];
+    const documentPicker: picker.DocumentViewPicker =
+      new picker.DocumentViewPicker(context);
+    const uris: string[] = await documentPicker.save(options);
+    if (uris.length === 0) {
+      return { ok: false, message: t('已取消导出') };
+    }
+    fs.copyFileSync(sourcePath, uris[0]);
+    return { ok: true, message: successMessage };
+  } catch (e) {
+    const error: BusinessError = e as BusinessError;
+    return { ok: false, message: t('导出失败：') + error.message };
+  }
+}
+
 export async function saveSessionMarkdown(
   context: common.UIAbilityContext,
   session: StoredSession

@@ -730,6 +730,14 @@ MCP / 模型覆盖 / 分组 / 子代理只存条目数，密钥原文与结构�
 分别记录状态，因此多个模型可并行测试，后完成的请求不会覆盖前一个的结果，也不会
 误清另一个模型的「测试中」。测试不修改全局模型选择，只有点「使用」才切换。
 
+图像自检复用同一套行内状态，但单独一组 `imageIds/imageLines/imageUris/imageTestingIds`，
+所以文本测试与图像测试互不覆盖。OpenMinis 按模型目录里的输出模态决定是否提供图像
+测试；本项目的模型表没有模态元数据，因此以「设置里开启图像生成 + 预设是 OpenAI
+兼容协议」为条件（`core/ImageGen.supportsImageGen`，Anthropic/Gemini 原生预设排除）。
+`Index.testModelImage(id)` 用固定英文提示词请求 1024×1024，成功后把
+`AttachmentStore.uriFor()` 写进 `ModelTestOutcome.imageUri`，选择器据此显示缩略图；
+`modelTestLine` 对图像结果显示「耗时 ms · 图像已生成」，失败仍优先显示错误。
+
 ## 深链
 
 `module.json5` 注册 `minis` scheme，action 为 `ohos.want.action.viewData`，并带

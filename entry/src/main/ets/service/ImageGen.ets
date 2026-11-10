@@ -8,7 +8,8 @@ import {
   detectImageExtension,
   imageGenEndpoint,
   normalizeImageSize,
-  parseImageGenResponse
+  parseImageGenResponse,
+  supportsImageGen
 } from '../core/ImageGen';
 import { AttachmentInfo, AttachmentStore } from './AttachmentStore';
 import { ImageGenHandler, ImageGenRequest, ToolResult } from '../core/ToolTypes';
@@ -79,7 +80,7 @@ export async function generateImage(
   size: string,
   model: string
 ): Promise<GeneratedImage> {
-  if (settings.preset === 'anthropic' || settings.preset === 'gemini') {
+  if (!supportsImageGen(settings.preset)) {
     return {
       ok: false,
       message: t('图像生成仅支持 OpenAI 兼容协议，请切换预设或使用自定义端点'),

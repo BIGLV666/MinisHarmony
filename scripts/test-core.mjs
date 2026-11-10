@@ -1824,6 +1824,10 @@ test('image generation builds compatible requests and parses responses', () => {
   assert.equal(imageGen.imageGenEndpoint(''), '');
   assert.equal(imageGen.normalizeImageSize('1792x1024'), '1792x1024');
   assert.equal(imageGen.normalizeImageSize('512x512'), '1024x1024');
+  assert.equal(imageGen.supportsImageGen('opencode'), true);
+  assert.equal(imageGen.supportsImageGen('custom'), true);
+  assert.equal(imageGen.supportsImageGen('anthropic'), false);
+  assert.equal(imageGen.supportsImageGen('gemini'), false);
   const body = JSON.parse(imageGen.buildImageGenBody('img-1', 'a "cat"', 'bad'));
   assert.equal(body.model, 'img-1');
   assert.equal(body.prompt, 'a "cat"');
@@ -3987,6 +3991,13 @@ test('model quick test line formats failure, empty reply and latency', () => {
     { ok: true, text: long, message: '', elapsedMs: 7 });
   assert.equal(line, '7 ms · ' + 'x'.repeat(80) + '…');
   assert.equal(line.endsWith('…'), true);
+  // An image test never has text; the line reports the generated image.
+  assert.equal(modelTest.modelTestLine(
+    { ok: true, text: '', message: '', elapsedMs: 42, imageUri: 'attachment:a.png' }),
+  '42 ms · 图像已生成');
+  assert.equal(modelTest.modelTestLine(
+    { ok: false, text: '', message: 'HTTP 400', elapsedMs: 9, imageUri: 'attachment:a.png' }),
+  'HTTP 400');
 });
 
 test('config audit diffs changed keys and keeps secrets opaque', () => {

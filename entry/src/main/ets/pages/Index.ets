@@ -69,6 +69,7 @@ import {
   summarizeConversation
 } from '../service/ChatApi';
 import { ModelTestOutcome } from '../core/ModelTest';
+import { supportsImageGen } from '../core/ImageGen';
 import {
   CONFIG_AUDIT_LIMIT,
   ConfigAuditEntry,
@@ -111,7 +112,7 @@ import {
 } from '../service/ExportService';
 import { BACKUP_MIN_PASSWORD, isEncryptedBackup } from '../core/BackupCrypto';
 import { decryptBackupText, DecryptOutcome } from '../service/BackupCrypto';
-import { SettingsImageGen } from '../service/ImageGen';
+import { SettingsImageGen, generateImage } from '../service/ImageGen';
 import { DeviceTools } from '../service/DeviceTools';
 import { ShellTool } from '../service/ShellTool';
 import { SandboxIsh } from '../service/SandboxIsh';
@@ -1017,6 +1018,53 @@ struct Index {
       text: result.text,
       message: result.message,
       elapsedMs: Date.now() - started
+    };
+  }
+
+  /**
+   * Image self-test from the picker. OpenMinis picks this test for models
+   * whose output modalities include images; our catalog has no modality
+   * metadata, so the entry is offered whenever image generation is enabled
+   * and the preset speaks the OpenAI-compatible image API.
+   */
+  private async testModelImage(id: string): Promise<ModelTestOutcome> {
+    const started: number = Date.now();
+    if (!this.settings.imageGenEnabled) {
+      return {
+        ok: false,
+        text: '',
+        message: t('图像生成未开启。请先在设置中允许图像生成。'),
+        elapsedMs: Date.now() - started
+      };
+    }
+    if (!supportsImageGen(this.settings.preset)) {
+      return {
+        ok: false,
+        text: '',
+        message: t('图像生成仅支持 OpenAI 兼容协议，请切换预设或使用自定义端点'),
+        elapsedMs: Date.now() - started
+      };
+    }
+    const next: AppSettings = cloneSettings(this.settings);
+    next.modelId = id;
+    const result = await generateImage(
+      next,
+      'A friendly cute mascot logo for an app called Minis, minimalist, centered, soft colors',
+      '1024x1024', id);
+    if (!result.ok || result.attachment === null) {
+      return {
+        ok: false,
+        text: '',
+        message: result.message,
+        elapsedMs: Date.now() - started
+      };
+    }
+    return {
+      ok: true,
+      text: '',
+      message: t('已生成图片'),
+      elapsedMs: Date.now() - started,
+      imageUri: AttachmentStore.uriFor(result.attachment.name)
     };
   }
 
@@ -4734,6 +4782,9 @@ struct Index {
           currentId: this.settings.modelId,
           onPick: (id: string) => this.pickModel(id),
           onTestModel: (id: string) => this.testModel(id),
+          imageTestAvailable: this.settings.imageGenEnabled &&
+            supportsImageGen(this.settings.preset),
+          onTestImage: (id: string) => this.testModelImage(id),
           onClose: () => {
             this.showModels = false;
           }

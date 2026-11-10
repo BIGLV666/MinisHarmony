@@ -18,6 +18,11 @@ export function normalizeImageSize(value: string): string {
 }
 
 /** Append the image endpoint to the configured OpenAI-compatible base URL. */
+/** Anthropic/Gemini native APIs need different image endpoints. */
+export function supportsImageGen(preset: string): boolean {
+  return preset !== 'anthropic' && preset !== 'gemini';
+}
+
 export function imageGenEndpoint(baseUrl: string): string {
   const base: string = normalizeBaseUrl(baseUrl);
   if (base.length === 0) {

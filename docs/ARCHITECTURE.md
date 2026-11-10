@@ -385,6 +385,20 @@ filesDir/memory/
 为边界，用 `Math.round` 计算相差天数，避免夏令时造成的边界抖动。侧栏用
 `ListItemGroup` 渲染组头；搜索时同一函数照常分组，因此搜索结果也带日期上下文。
 
+### 自定义文件夹
+
+用户创建文件夹后（`AppSettings.sessionFolders`），无搜索词时的侧栏改用
+`groupByFolder()`：按文件夹顺序输出，空文件夹也保留，成员按原有排序（置顶优先、
+更新时间倒序），不属于任何现存文件夹的会话进入末尾的「未分组」。折叠状态由
+`SessionFolder.collapsed` 控制，只影响渲染，不改变数据。搜索时仍用日期分组，
+这样结果不会散落在多个文件夹里。
+
+文件夹是纯配置：`SessionMeta.folderId` 只存 id，`core/SessionFolder.ets` 的
+`addFolder` / `renameFolder` / `removeFolder` / `setFolderCollapsed` 全部返回新
+数组，`Index` 通过 `cloneSettings()` 生成新的 `AppSettings` 再整体赋值，保证
+`@State` 与侧栏 `@Prop` 都会刷新。删除文件夹只清空成员上的 `folderId`，会话本身
+不动。新建/移动都不需要模型参与，因此不进事件日志。
+
 ## 全文搜索
 
 `SessionSearchEntry` 是预计算的小写文本块：标题 + 模型 + 所有 text part +

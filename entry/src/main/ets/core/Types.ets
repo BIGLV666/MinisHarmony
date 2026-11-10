@@ -133,6 +133,8 @@ export interface AppSettings {
   webDavAutoSync: boolean;
   /** Epoch ms of the last successful sync; 0 when never synced. */
   webDavLastSyncAt: number;
+  /** User-created sidebar folders; sessions reference them by `folderId`. */
+  sessionFolders: SessionFolder[];
   /** Named subagents; the built-in `helper` is always first. */
   subAgents: SubAgentDefinition[];
   /**
@@ -266,6 +268,45 @@ export interface ChatMessage {
   totalTokens: number;
 }
 
+/** One user-created sidebar folder; the list itself lives in `AppSettings`. */
+export interface SessionFolder {
+  id: string;
+  name: string;
+  collapsed: boolean;
+}
+
+export const MAX_SESSION_FOLDERS: number = 30;
+
+/** Trim, drop empty names/ids, dedupe ids and cap the list. */
+export function normalizeSessionFolders(value: SessionFolder[] | undefined): SessionFolder[] {
+  const result: SessionFolder[] = [];
+  if (value === undefined || !Array.isArray(value)) {
+    return result;
+  }
+  for (let i = 0; i < value.length && result.length < MAX_SESSION_FOLDERS; i++) {
+    const item: SessionFolder = value[i];
+    if (item === null || item === undefined) {
+      continue;
+    }
+    const id: string = typeof item.id === 'string' ? item.id.trim() : '';
+    const name: string = typeof item.name === 'string' ? item.name.trim() : '';
+    if (id.length === 0 || name.length === 0) {
+      continue;
+    }
+    let duplicate: boolean = false;
+    for (let j = 0; j < result.length; j++) {
+      if (result[j].id === id) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {
+      result.push({ id: id, name: name, collapsed: item.collapsed === true });
+    }
+  }
+  return result;
+}
+
 export interface SessionMeta {
   id: string;
   title: string;
@@ -280,6 +321,8 @@ export interface SessionMeta {
   modelOverride?: string;
   thinkingOverride?: string;
   promptOverride?: string;
+  /** Sidebar folder; empty/undefined means "ungrouped". */
+  folderId?: string;
 }
 
 export interface StoredSession {
@@ -512,6 +555,7 @@ export function defaultSettings(): AppSettings {
     webDavPassword: '',
     webDavAutoSync: false,
     webDavLastSyncAt: 0,
+    sessionFolders: [],
     subAgents: defaultAgents()
   };
 }
@@ -617,6 +661,7 @@ export function cloneSettings(source: AppSettings): AppSettings {
     webDavUser: source.webDavUser !== undefined ? source.webDavUser : '',
     webDavPassword: source.webDavPassword !== undefined ? source.webDavPassword : '',
     webDavAutoSync: source.webDavAutoSync === true,
+    sessionFolders: normalizeSessionFolders(source.sessionFolders),
     subAgents: normalizeAgents(source.subAgents),
     oauthToken: source.oauthToken !== undefined ? source.oauthToken : '',
     oauthAccountId: source.oauthAccountId !== undefined ? source.oauthAccountId : '',

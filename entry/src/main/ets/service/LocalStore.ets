@@ -36,6 +36,7 @@ import {
   cloneSettings,
   defaultSettings,
   normalizeAccentColor,
+  normalizeSessionFolders,
   normalizeThinkingLevel,
   normalizeToolNames,
   reasoningPart,
@@ -140,6 +141,7 @@ function normalizeSettings(source: AppSettings): AppSettings {
     webDavAutoSync: source.webDavAutoSync === true,
     webDavLastSyncAt: source.webDavLastSyncAt !== undefined &&
       source.webDavLastSyncAt > 0 ? source.webDavLastSyncAt : 0,
+    sessionFolders: normalizeSessionFolders(source.sessionFolders),
     subAgents: normalizeAgents(source.subAgents),
     // OAuth access tokens are runtime-only; the Asset Store is the only home.
     oauthToken: ''
@@ -252,7 +254,8 @@ function normalizeSession(source: StoredSession): StoredSession | null {
       archived: source.meta.archived === true,
       modelOverride: source.meta.modelOverride !== undefined ? source.meta.modelOverride : '',
       thinkingOverride: source.meta.thinkingOverride !== undefined ? source.meta.thinkingOverride : '',
-      promptOverride: source.meta.promptOverride !== undefined ? source.meta.promptOverride : ''
+      promptOverride: source.meta.promptOverride !== undefined ? source.meta.promptOverride : '',
+      folderId: source.meta.folderId !== undefined ? source.meta.folderId : ''
     },
     messages: messages
   };

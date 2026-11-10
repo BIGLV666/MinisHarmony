@@ -8,6 +8,7 @@ import {
   ChatMessage,
   MessagePart,
   PART_TEXT,
+  SessionFolder,
   SessionMeta,
   SessionSearchEntry,
   StoredSession,
@@ -29,6 +30,15 @@ import {
   enqueueQueued,
   queuedParts
 } from '../core/PromptQueue';
+import {
+  addFolder,
+  countFolderSessions,
+  findFolder,
+  newFolderId,
+  removeFolder,
+  renameFolder,
+  setFolderCollapsed
+} from '../core/SessionFolder';
 import { capsForModel } from '../core/ModelCaps';
 import { BACKGROUND_PREFIX, PROGRESS_PREFIX } from '../core/SubagentJob';
 import { ToolRuntime } from '../core/ToolTypes';
@@ -208,6 +218,12 @@ struct Index {
   @State paramPrompt: string = '';
   @State rewindId: string = '';
   @State showArchived: boolean = false;
+  @State showFolderManager: boolean = false;
+  @State folderDraft: string = '';
+  @State folderEditId: string = '';
+  @State folderEditDraft: string = '';
+  /** Session being moved; its action dialog closes while this is open. */
+  @State folderMoveId: string = '';
   @State ready: boolean = false;
   @State editing: boolean = false;
   @State editId: string = '';
@@ -882,7 +898,7 @@ struct Index {
     this.toast(outcome.message);
   }
 
-  private createChat(persist: boolean = true): void {
+  private createChat(persist: boolean = true, folderId: string = ''): void {
     if (this.streaming) {
       this.toast(t('请先停止当前生成'));
       return;
@@ -896,6 +912,9 @@ struct Index {
       pinned: false,
       archived: false
     };
+    if (folderId.length > 0) {
+      meta.folderId = folderId;
+    }
     const session: StoredSession = { meta: meta, messages: [] };
     this.store = [session].concat(this.store);
     this.refreshSessions();
@@ -978,6 +997,93 @@ struct Index {
     this.refreshSessions();
     this.persistSoon();
     this.toast(session.meta.archived ? t('已归档') : t('已取消归档'));
+  }
+
+  private folderCount(folderId: string): number {
+    return countFolderSessions(this.sessions, folderId);
+  }
+
+  private toggleFolder(id: string): void {
+    const folder = findFolder(this.settings.sessionFolders, id);
+    if (folder === null) {
+      return;
+    }
+    const next: AppSettings = cloneSettings(this.settings);
+    next.sessionFolders = setFolderCollapsed(next.sessionFolders, id, !folder.collapsed);
+    this.settings = next;
+    this.persistSoon();
+  }
+
+  private createFolder(): void {
+    const name: string = this.folderDraft.trim();
+    if (name.length === 0) {
+      return;
+    }
+    const current: AppSettings = cloneSettings(this.settings);
+    const id: string = newFolderId(current.sessionFolders, Date.now());
+    const next: SessionFolder[] = addFolder(current.sessionFolders, name, id);
+    if (next === current.sessionFolders) {
+      return;
+    }
+    current.sessionFolders = next;
+    this.settings = current;
+    this.folderDraft = '';
+    this.persistSoon();
+  }
+
+  private beginFolderRename(id: string): void {
+    const folder = findFolder(this.settings.sessionFolders, id);
+    if (folder === null) {
+      return;
+    }
+    this.folderEditId = id;
+    this.folderEditDraft = folder.name;
+  }
+
+  private commitFolderRename(): void {
+    if (this.folderEditId.length === 0) {
+      return;
+    }
+    const next: AppSettings = cloneSettings(this.settings);
+    next.sessionFolders = renameFolder(next.sessionFolders,
+      this.folderEditId, this.folderEditDraft);
+    this.settings = next;
+    this.folderEditId = '';
+    this.folderEditDraft = '';
+    this.persistSoon();
+  }
+
+  /** Deleting a folder keeps its conversations, now under "未分组". */
+  private deleteFolder(id: string): void {
+    const next: AppSettings = cloneSettings(this.settings);
+    next.sessionFolders = removeFolder(next.sessionFolders, id);
+    this.settings = next;
+    for (let i = 0; i < this.store.length; i++) {
+      if (this.store[i].meta.folderId === id) {
+        this.store[i].meta.folderId = '';
+      }
+    }
+    if (this.folderEditId === id) {
+      this.folderEditId = '';
+      this.folderEditDraft = '';
+    }
+    this.refreshSessions();
+    this.persistSoon();
+  }
+
+  private moveSessionToFolder(folderId: string): void {
+    const session: StoredSession | null = this.findSession(this.folderMoveId);
+    this.folderMoveId = '';
+    if (session === null) {
+      return;
+    }
+    session.meta.folderId = folderId;
+    this.refreshSessions();
+    this.persistSoon();
+  }
+
+  private createChatInFolder(folderId: string): void {
+    this.createChat(true, folderId);
   }
 
   /**
@@ -2509,6 +2615,17 @@ struct Index {
             .borderRadius(10)
             .backgroundColor($r('app.color.surface_alt'))
             .onClick(() => this.toggleArchive())
+          Text(t('移动到分组'))
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => {
+              this.folderMoveId = this.actionId;
+              this.actionId = '';
+            })
           Text(t('复制为新会话'))
             .fontSize(14)
             .fontColor($r('app.color.text_primary'))
@@ -2567,6 +2684,208 @@ struct Index {
       }
       .width('82%')
       .constraintSize({ maxWidth: 360 })
+      .padding(18)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  private moveTargetFolder(): string {
+    const session: StoredSession | null = this.findSession(this.folderMoveId);
+    return session !== null && session.meta.folderId !== undefined
+      ? session.meta.folderId
+      : '';
+  }
+
+  @Builder
+  folderMoveDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+        .onClick(() => {
+          this.folderMoveId = '';
+        })
+      Column({ space: 10 }) {
+        Text(t('移动到分组'))
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .width('100%')
+        Column({ space: 4 }) {
+          Text((this.moveTargetFolder().length === 0 ? '✓ ' : '') + t('未分组'))
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+            .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+            .borderRadius(10)
+            .backgroundColor($r('app.color.surface_alt'))
+            .onClick(() => this.moveSessionToFolder(''))
+          ForEach(this.settings.sessionFolders, (folder: SessionFolder) => {
+            Text((this.moveTargetFolder() === folder.id ? '✓ ' : '') + folder.name)
+              .fontSize(14)
+              .fontColor($r('app.color.text_primary'))
+              .width('100%')
+              .padding({ left: 12, right: 12, top: 11, bottom: 11 })
+              .borderRadius(10)
+              .backgroundColor($r('app.color.surface_alt'))
+              .onClick(() => this.moveSessionToFolder(folder.id))
+          }, (folder: SessionFolder) => folder.id + ':' + folder.name + ':' +
+            (this.moveTargetFolder() === folder.id ? '1' : '0'))
+        }
+        .width('100%')
+        Button(t('取消'), { type: ButtonType.Normal })
+          .width('100%')
+          .height(40)
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor(Color.Transparent)
+          .onClick(() => {
+            this.folderMoveId = '';
+          })
+      }
+      .width('82%')
+      .constraintSize({ maxWidth: 360 })
+      .padding(18)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.border') })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  folderManagerDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.overlay'))
+        .onClick(() => {
+          this.showFolderManager = false;
+          this.folderEditId = '';
+        })
+      Column({ space: 10 }) {
+        Text(t('管理分组'))
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .width('100%')
+        Row({ space: 8 }) {
+          TextInput({ text: this.folderDraft, placeholder: t('分组名称') })
+            .layoutWeight(1)
+            .height(38)
+            .fontSize(13)
+            .fontColor($r('app.color.text_primary'))
+            .placeholderColor($r('app.color.text_tertiary'))
+            .backgroundColor($r('app.color.surface_alt'))
+            .borderRadius(10)
+            .padding({ left: 12, right: 12 })
+            .onChange((value: string) => {
+              this.folderDraft = value;
+            })
+            .onSubmit(() => this.createFolder())
+          Text(t('新建分组'))
+            .fontSize(12)
+            .fontColor($r('app.color.on_accent'))
+            .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+            .backgroundColor(this.accent)
+            .borderRadius(10)
+            .onClick(() => this.createFolder())
+        }
+        .width('100%')
+
+        Scroll() {
+          Column({ space: 6 }) {
+            ForEach(this.settings.sessionFolders, (folder: SessionFolder) => {
+              Column({ space: 6 }) {
+                if (this.folderEditId === folder.id) {
+                  Row({ space: 8 }) {
+                    TextInput({ text: this.folderEditDraft, placeholder: t('分组名称') })
+                      .layoutWeight(1)
+                      .height(36)
+                      .fontSize(13)
+                      .fontColor($r('app.color.text_primary'))
+                      .backgroundColor($r('app.color.surface_alt'))
+                      .borderRadius(9)
+                      .padding({ left: 10, right: 10 })
+                      .onChange((value: string) => {
+                        this.folderEditDraft = value;
+                      })
+                      .onSubmit(() => this.commitFolderRename())
+                    Text(t('保存'))
+                      .fontSize(12)
+                      .fontColor(this.accent)
+                      .onClick(() => this.commitFolderRename())
+                  }
+                  .width('100%')
+                } else {
+                  Row({ space: 8 }) {
+                    Text(folder.collapsed ? '▸' : '▾')
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                    Text(folder.name)
+                      .fontSize(13)
+                      .fontColor($r('app.color.text_primary'))
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .layoutWeight(1)
+                    Text(this.folderCount(folder.id).toString())
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                    Text(t('重命名'))
+                      .fontSize(11)
+                      .fontColor(this.accent)
+                      .onClick(() => this.beginFolderRename(folder.id))
+                    Text(t('删除分组'))
+                      .fontSize(11)
+                      .fontColor($r('app.color.danger'))
+                      .onClick(() => this.deleteFolder(folder.id))
+                  }
+                  .width('100%')
+                  .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+                  .borderRadius(10)
+                  .backgroundColor($r('app.color.surface_alt'))
+                }
+              }
+              .width('100%')
+            }, (folder: SessionFolder) => folder.id + ':' + folder.name + ':' +
+              this.folderCount(folder.id).toString() + ':' +
+              (this.folderEditId === folder.id ? this.folderEditDraft : ''))
+            if (this.settings.sessionFolders.length === 0) {
+              Text(t('还没有分组'))
+                .fontSize(12)
+                .fontColor($r('app.color.text_tertiary'))
+                .width('100%')
+                .padding({ top: 8, bottom: 8 })
+            }
+          }
+          .width('100%')
+        }
+        .width('100%')
+        .constraintSize({ maxHeight: 300 })
+        .scrollBar(BarState.Off)
+
+        Button(t('取消'), { type: ButtonType.Normal })
+          .width('100%')
+          .height(40)
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor(Color.Transparent)
+          .onClick(() => {
+            this.showFolderManager = false;
+            this.folderEditId = '';
+          })
+      }
+      .width('82%')
+      .constraintSize({ maxWidth: 380 })
       .padding(18)
       .backgroundColor($r('app.color.surface'))
       .borderRadius(18)
@@ -3072,6 +3391,7 @@ struct Index {
     SidebarView({
       sessions: this.sessions,
       searchEntries: this.searchEntries,
+      folders: this.settings.sessionFolders,
       currentId: this.currentId,
       query: $query,
       showArchived: this.showArchived,
@@ -3089,6 +3409,11 @@ struct Index {
       },
       onExportSelected: (ids: string[]) => {
         this.exportSelectedSessions(ids);
+      },
+      onToggleFolder: (id: string) => this.toggleFolder(id),
+      onNewInFolder: (id: string) => this.createChatInFolder(id),
+      onManageFolders: () => {
+        this.showFolderManager = true;
       }
     })
   }
@@ -3304,6 +3629,14 @@ struct Index {
 
       if (this.actionId.length > 0) {
         this.sessionActionsDialog()
+      }
+
+      if (this.folderMoveId.length > 0) {
+        this.folderMoveDialog()
+      }
+
+      if (this.showFolderManager) {
+        this.folderManagerDialog()
       }
 
       if (this.paramsId.length > 0) {

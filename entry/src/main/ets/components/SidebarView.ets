@@ -1,10 +1,12 @@
 import {
+  SessionFolder,
   SessionGroup,
   SessionMeta,
   SessionSearchEntry,
   groupSessionMetas,
   modelName
 } from '../core/Types';
+import { FolderGroup, groupByFolder } from '../core/SessionFolder';
 import { formatRelative } from '../service/Format';
 import { t } from '../core/I18n';
 
@@ -14,6 +16,7 @@ export struct SidebarView {
   @StorageProp('accentColor') accent: string = '#2F6BFF';
   @Prop sessions: SessionMeta[] = [];
   @Prop searchEntries: SessionSearchEntry[] = [];
+  @Prop folders: SessionFolder[] = [];
   @Prop currentId: string = '';
   @Prop showArchived: boolean = false;
   @Link query: string;
@@ -36,6 +39,12 @@ export struct SidebarView {
   onSettings: () => void = () => {
   };
   onExportSelected: (ids: string[]) => void = (ids: string[]) => {
+  };
+  onToggleFolder: (id: string) => void = (id: string) => {
+  };
+  onNewInFolder: (id: string) => void = (id: string) => {
+  };
+  onManageFolders: () => void = () => {
   };
 
   private isSelected(id: string): boolean {
@@ -98,6 +107,15 @@ export struct SidebarView {
     return groupSessionMetas(this.filtered(), Date.now());
   }
 
+  /** Folders only replace the date buckets in the unfiltered list. */
+  private usingFolders(): boolean {
+    return this.folders.length > 0 && this.query.trim().length === 0;
+  }
+
+  private folderGroups(): FolderGroup[] {
+    return groupByFolder(this.filtered(), this.folders);
+  }
+
   private filtered(): SessionMeta[] {
     const keyword: string = this.query.trim().toLowerCase();
     const result: SessionMeta[] = [];
@@ -149,6 +167,42 @@ export struct SidebarView {
       .fontColor($r('app.color.text_tertiary'))
       .width('100%')
       .padding({ left: 12, top: 8, bottom: 4 })
+  }
+
+  @Builder
+  folderHeader(group: FolderGroup) {
+    Row({ space: 5 }) {
+      if (group.id.length > 0) {
+        Text(group.collapsed ? '▸' : '▾')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+      }
+      Text(group.id.length > 0 ? group.label : t('未分组'))
+        .fontSize(11)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(group.id.length > 0 ? $r('app.color.text_secondary')
+          : $r('app.color.text_tertiary'))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+      Text(group.sessions.length.toString())
+        .fontSize(10)
+        .fontColor($r('app.color.text_tertiary'))
+      if (group.id.length > 0) {
+        Text('＋')
+          .fontSize(13)
+          .fontColor(this.accent)
+          .padding({ left: 6, right: 2 })
+          .onClick(() => this.onNewInFolder(group.id))
+      }
+    }
+    .width('100%')
+    .padding({ left: 12, right: 8, top: 8, bottom: 4 })
+    .onClick(() => {
+      if (group.id.length > 0) {
+        this.onToggleFolder(group.id);
+      }
+    })
   }
 
   @Builder
@@ -276,6 +330,10 @@ export struct SidebarView {
           .fontSize(11)
           .fontColor($r('app.color.text_tertiary'))
           .onClick(() => this.setSelecting(!this.selecting))
+        Text(t('管理分组'))
+          .fontSize(11)
+          .fontColor($r('app.color.text_tertiary'))
+          .onClick(() => this.onManageFolders())
         Blank()
         if (this.selecting) {
           Text(t('导出所选 (') + this.selectedIds.length.toString() + ')')
@@ -287,7 +345,7 @@ export struct SidebarView {
       .width('100%')
       .padding({ left: 4, right: 4 })
 
-      if (this.filtered().length === 0) {
+      if (this.filtered().length === 0 && !this.usingFolders()) {
         Column({ space: 6 }) {
           Text(this.sessions.length === 0 ? t('还没有对话') : t('没有匹配的对话'))
             .fontSize(13)
@@ -299,6 +357,27 @@ export struct SidebarView {
         .width('100%')
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
+      } else if (this.usingFolders()) {
+        List({ space: 3 }) {
+          ForEach(this.folderGroups(), (group: FolderGroup) => {
+            ListItemGroup({ header: this.folderHeader(group) }) {
+              if (!group.collapsed) {
+                ForEach(group.sessions, (item: SessionMeta) => {
+                  ListItem() {
+                    this.sessionRow(item)
+                  }
+                }, (item: SessionMeta) => item.id + ':' + item.title + ':' + item.updatedAt + ':' +
+                  item.modelId + ':' + (this.currentId === item.id ? '1' : '0') + ':' +
+                  (item.pinned ? 'p' : '') + ':' + (item.archived ? 'a' : '') + ':' +
+                  (this.selecting && this.isSelected(item.id) ? 's' : ''))
+              }
+            }
+          }, (group: FolderGroup) => group.id + ':' + group.label + ':' +
+            (group.collapsed ? 'c' : 'o') + ':' + group.sessions.length.toString())
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .scrollBar(BarState.Off)
       } else {
         List({ space: 3 }) {
           ForEach(this.grouped(), (group: SessionGroup) => {

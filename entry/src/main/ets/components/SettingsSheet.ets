@@ -714,6 +714,9 @@ export struct SettingsSheet {
       webDavPassword: this.webDavPassword,
       webDavAutoSync: this.webDavAutoSync,
       webDavLastSyncAt: this.webDavLastSyncAt,
+      sessionFolders: this.settings.sessionFolders !== undefined
+        ? this.settings.sessionFolders
+        : [],
       subAgents: normalizeAgents(this.subAgents)
     };
     return next;

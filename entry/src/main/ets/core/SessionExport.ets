@@ -71,7 +71,8 @@ function settledSession(session: StoredSession, messages: ChatMessage[]): Stored
       archived: session.meta.archived,
       modelOverride: session.meta.modelOverride,
       thinkingOverride: session.meta.thinkingOverride,
-      promptOverride: session.meta.promptOverride
+      promptOverride: session.meta.promptOverride,
+      folderId: session.meta.folderId
     },
     messages: messages
   };
@@ -166,6 +167,7 @@ interface RawMeta {
   modelOverride?: string;
   thinkingOverride?: string;
   promptOverride?: string;
+  folderId?: string;
 }
 
 interface RawSession {
@@ -324,7 +326,10 @@ function importRawSession(
         archived: preserve ? raw.meta.archived === true : false,
         modelOverride: raw.meta.modelOverride !== undefined ? raw.meta.modelOverride : '',
         thinkingOverride: raw.meta.thinkingOverride !== undefined ? raw.meta.thinkingOverride : '',
-        promptOverride: raw.meta.promptOverride !== undefined ? raw.meta.promptOverride : ''
+        promptOverride: raw.meta.promptOverride !== undefined ? raw.meta.promptOverride : '',
+        // Folder ids are local: a normal import lands ungrouped, a backup
+        // restore keeps membership because the folder list is in settings.
+        folderId: preserve && raw.meta.folderId !== undefined ? raw.meta.folderId : ''
       },
       messages: messages
     },

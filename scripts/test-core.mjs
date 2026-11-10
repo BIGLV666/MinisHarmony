@@ -36,6 +36,11 @@ function copyCore(name, deps = []) {
       "import { ChatAttachment, MessagePart, imagePart } from './Types.mts';",
       "import { imagePart } from './Types.mts';");
   }
+  if (name === 'SessionFolder') {
+    source = source.replace(
+      "import { MAX_SESSION_FOLDERS, SessionFolder, SessionMeta } from './Types.mts';",
+      "import { MAX_SESSION_FOLDERS } from './Types.mts';");
+  }
   writeFileSync(join(tmp, `${name}.mts`), source);
 }
 
@@ -49,6 +54,7 @@ copyCore('WebUrl');
 copyCore('SubAgentRoster');
 copyCore('Types');
 copyCore('PromptQueue', ['Types']);
+copyCore('SessionFolder', ['Types']);
 copyCore('SyncMerge', ['Types']);
 copyCore('ToolTypes');
 copyCore('ToolCatalog', ['ToolTypes']);
@@ -188,6 +194,7 @@ const rules = await import(pathToFileURL(join(tmp, 'OpenCodeRules.mts')).href);
 const md = await import(pathToFileURL(join(tmp, 'Markdown.mts')).href);
 const types = await import(pathToFileURL(join(tmp, 'Types.mts')).href);
 const promptQueue = await import(pathToFileURL(join(tmp, 'PromptQueue.mts')).href);
+const folders = await import(pathToFileURL(join(tmp, 'SessionFolder.mts')).href);
 const proto = await import(pathToFileURL(join(tmp, 'ToolProtocol.mts')).href);
 const workspace = await import(pathToFileURL(join(tmp, 'Workspace.mts')).href);
 const terminal = await import(pathToFileURL(join(tmp, 'Terminal.mts')).href);
@@ -3480,4 +3487,78 @@ test('queued prompt turns attachments into image parts in order', () => {
   assert.deepEqual(parts.map((part) => part.uri), ['attachment:a.png', 'attachment:b.jpg']);
   assert.deepEqual(parts.map((part) => part.mimeType), ['image/png', 'image/jpeg']);
   assert.equal(promptQueue.queuedParts(new promptQueue.QueuedPrompt('t', [], 's1')).length, 0);
+});
+
+test('session folders normalize, add, rename, collapse and remove immutably', () => {
+  const normalized = types.normalizeSessionFolders([
+    { id: ' a ', name: ' Work ', collapsed: true },
+    { id: 'a', name: 'duplicate', collapsed: false },
+    { id: '', name: 'no id', collapsed: false },
+    { id: 'b', name: '   ', collapsed: false }
+  ]);
+  assert.deepEqual(normalized, [{ id: 'a', name: 'Work', collapsed: true }]);
+  assert.deepEqual(types.normalizeSessionFolders(undefined), []);
+
+  const base = [];
+  const added = folders.addFolder(base, ' 项目 ', 'folder-1');
+  assert.deepEqual(added, [{ id: 'folder-1', name: '项目', collapsed: false }]);
+  assert.equal(base.length, 0, 'add does not mutate');
+  assert.equal(folders.addFolder(added, '   ', 'folder-2'), added, 'empty name rejected');
+  assert.equal(folders.addFolder(added, 'dup', 'folder-1'), added, 'duplicate id rejected');
+
+  const renamed = folders.renameFolder(added, 'folder-1', ' 归档 ');
+  assert.equal(renamed[0].name, '归档');
+  assert.equal(added[0].name, '项目');
+  assert.equal(folders.renameFolder(added, 'folder-1', '  '), added, 'empty rename rejected');
+
+  const collapsed = folders.setFolderCollapsed(renamed, 'folder-1', true);
+  assert.equal(collapsed[0].collapsed, true);
+  assert.equal(renamed[0].collapsed, false);
+
+  assert.deepEqual(folders.removeFolder(collapsed, 'folder-1'), []);
+  assert.deepEqual(folders.removeFolder(collapsed, 'missing').length, 1);
+  assert.equal(folders.findFolder(collapsed, 'folder-1').name, '归档');
+  assert.equal(folders.findFolder(collapsed, 'missing'), null);
+});
+
+test('new folder ids avoid collisions', () => {
+  const now = 1700000000000;
+  const first = folders.newFolderId([], now);
+  const taken = [{ id: first, name: 'one', collapsed: false }];
+  const second = folders.newFolderId(taken, now);
+  assert.notEqual(second, first);
+  assert.equal(second.startsWith(first + '-'), true);
+});
+
+test('folder grouping keeps folder order, empties and the ungrouped bucket', () => {
+  const make = (id, folderId) => ({
+    id, title: id, updatedAt: 0, modelId: 'm', messageCount: 0,
+    pinned: false, archived: false, folderId
+  });
+  const metas = [
+    make('s1', 'f1'),
+    make('s2', undefined),
+    make('s3', 'f2'),
+    make('s4', 'deleted-folder'),
+    make('s5', 'f1')
+  ];
+  const list = [
+    { id: 'f1', name: 'One', collapsed: false },
+    { id: 'f2', name: 'Two', collapsed: true },
+    { id: 'f3', name: 'Empty', collapsed: false }
+  ];
+  const groups = folders.groupByFolder(metas, list);
+  assert.deepEqual(groups.map((group) => group.id), ['f1', 'f2', 'f3', '']);
+  assert.deepEqual(groups[0].sessions.map((item) => item.id), ['s1', 's5']);
+  assert.deepEqual(groups[1].sessions.map((item) => item.id), ['s3']);
+  assert.equal(groups[1].collapsed, true);
+  assert.equal(groups[2].sessions.length, 0);
+  assert.deepEqual(groups[3].sessions.map((item) => item.id), ['s2', 's4']);
+  assert.equal(groups[3].label, '');
+  assert.equal(folders.countFolderSessions(metas, 'f1'), 2);
+  assert.equal(folders.countFolderSessions(metas, ''), 1, 'only truly unassigned sessions count');
+
+  const noUngrouped = folders.groupByFolder([make('s1', 'f1')], list);
+  assert.equal(noUngrouped.length, 3);
+  assert.equal(noUngrouped[2].id, 'f3');
 });

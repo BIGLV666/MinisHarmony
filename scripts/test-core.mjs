@@ -3977,6 +3977,13 @@ test('usage rollups total by model and by day', () => {
   assert.equal(usageStats.usageByDay(records, 1).length, 1);
   assert.equal(usageStats.usageByDay(records, 0).length, 2,
     'a zero limit keeps every day');
+  const byProvider = usageStats.usageByProvider(records);
+  assert.deepEqual(byProvider.map((row) => row.preset), ['', 'fast']);
+  assert.deepEqual(byProvider[0],
+    { preset: '', prompt: 13, completion: 9, requests: 2 });
+  assert.deepEqual(byProvider[1],
+    { preset: 'fast', prompt: 20, completion: 1, requests: 2 });
+  assert.deepEqual(usageStats.usageByProvider([]), []);
 });
 
 test('MCP session overrides normalize and toggle one server', () => {

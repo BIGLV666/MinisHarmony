@@ -60,8 +60,10 @@ import { MemoryStore } from '../service/MemoryStore';
 import {
   UsageDayTotal,
   UsageModelTotal,
+  UsageProviderTotal,
   usageByDay,
   usageByModel,
+  usageByProvider,
   usageTotal
 } from '../core/UsageStats';
 import { UsageStore } from '../service/UsageStore';
@@ -254,6 +256,7 @@ export struct SettingsSheet {
   @State crashRows: string[] = [];
   @State usageTotalLine: string = '';
   @State usageModelLines: string[] = [];
+  @State usageProviderLines: string[] = [];
   @State usageDayLines: string[] = [];
   @State storageLines: string[] = [];
   /** Which cleanup needs a second tap: attachments / workspace / downloads. */
@@ -1204,6 +1207,25 @@ export struct SettingsSheet {
     return (getContext(this) as common.UIAbilityContext).filesDir;
   }
 
+  private presetLabel(preset: string): string {
+    if (preset === 'opencode') {
+      return 'OpenCode Go';
+    }
+    if (preset === 'anthropic') {
+      return 'Anthropic';
+    }
+    if (preset === 'gemini') {
+      return 'Gemini';
+    }
+    if (preset === 'copilot') {
+      return 'GitHub Copilot';
+    }
+    if (preset === 'codex') {
+      return 'ChatGPT Codex';
+    }
+    return preset === 'custom' ? t('自定义') : t('未知供应商');
+  }
+
   /** Recompute the usage rollups and the three storage buckets. */
   private refreshUsage(): void {
     const records = UsageStore.load(getContext(this) as common.UIAbilityContext);
@@ -1222,6 +1244,15 @@ export struct SettingsSheet {
         item.requests.toString() + t(' 次'));
     }
     this.usageModelLines = modelLines;
+    const providers: UsageProviderTotal[] = usageByProvider(records);
+    const providerLines: string[] = [];
+    for (let i = 0; i < providers.length; i++) {
+      const item: UsageProviderTotal = providers[i];
+      providerLines.push(this.presetLabel(item.preset) + ' · ' +
+        formatTokens(item.prompt + item.completion) + ' tokens · ' +
+        item.requests.toString() + t(' 次'));
+    }
+    this.usageProviderLines = providerLines;
     const days: UsageDayTotal[] = usageByDay(records, 7);
     const dayLines: string[] = [];
     for (let i = 0; i < days.length; i++) {
@@ -3295,6 +3326,18 @@ export struct SettingsSheet {
                   .fontColor($r('app.color.text_tertiary'))
                   .width('100%')
                 ForEach(this.usageModelLines, (line: string) => {
+                  Text(line)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_secondary'))
+                    .width('100%')
+                }, (line: string) => line)
+              }
+              if (this.usageProviderLines.length > 0) {
+                Text(t('按供应商'))
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .width('100%')
+                ForEach(this.usageProviderLines, (line: string) => {
                   Text(line)
                     .fontSize(11)
                     .fontColor($r('app.color.text_secondary'))

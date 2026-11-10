@@ -670,8 +670,9 @@ mp3/m4a/wav/ogg/aac/flac，大小上限按类型分为视频 100 MB、音频 20 
 `core/UsageStats.ets` 是纯函数层：`dayKey` 按设备本地时区生成 `YYYY-MM-DD`；
 `recordUsage` 把一次请求并入「日期 + 模型 + 预设」同一行并累加请求数，行数超过
 `USAGE_RECORD_LIMIT=400` 时按日期保留最新行；`usageTotal` / `usageByModel` /
-`usageByDay` 做总量、按模型（总 token 降序）与按日（倒序）汇总。`parseUsage`
-对坏 JSON、非数组、缺日期或模型的条目直接跳过，计数统一归一为非负整数。
+`usageByProvider` / `usageByDay` 做总量、按模型、按供应商 preset（两者都按总 token
+降序）与按日（倒序）汇总。`parseUsage` 对坏 JSON、非数组、缺日期或模型的条目直接
+跳过，计数统一归一为非负整数。
 
 `service/UsageStore.ets` 把 JSON 存在 preferences `minis_usage_store`，只保存
 token 计数与请求数，不保存提示词或回复内容。`Index` 在每轮结束时取最后一条
@@ -680,8 +681,9 @@ token 计数与请求数，不保存提示词或回复内容。`Index` 在每轮
 
 `service/StorageUsage.ets` 递归统计目录的文件数与字节（深度 8，读取失败即跳过），
 `clearDirectory` 删除目录内容但保留目录本身，单个文件失败不中断其余清理。设置页
-「用量统计与存储」展示累计、按模型前 5、最近 7 天，以及附件、工作区、浏览器下载
-三类占用；清空统计和三类清理都要求二次点按确认。
+「用量统计与存储」展示累计、按模型前 5、按供应商、最近 7 天，以及附件、工作区、
+浏览器下载三类占用；清空统计和三类清理都要求二次点按确认。工作区是全局目录，
+目前没有按会话归属的文件统计。
 
 ## 配置变更审计与回滚
 

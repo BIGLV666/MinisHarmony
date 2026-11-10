@@ -35,6 +35,14 @@ export interface UsageDayTotal {
   requests: number;
 }
 
+export interface UsageProviderTotal {
+  /** Provider preset id, e.g. `opencode`; '' when a legacy row lacks it. */
+  preset: string;
+  prompt: number;
+  completion: number;
+  requests: number;
+}
+
 /** Distinct day/model rows kept; older days fall off first. */
 export const USAGE_RECORD_LIMIT: number = 400;
 
@@ -184,6 +192,40 @@ export function usageByModel(records: UsageRecord[]): UsageModelTotal[] {
     });
   }
   result.sort((a: UsageModelTotal, b: UsageModelTotal) =>
+    (b.prompt + b.completion) - (a.prompt + a.completion));
+  return result;
+}
+
+/** Totals per provider preset, largest token count first. */
+export function usageByProvider(records: UsageRecord[]): UsageProviderTotal[] {
+  const presets: string[] = [];
+  const prompt: number[] = [];
+  const completion: number[] = [];
+  const requests: number[] = [];
+  for (let i = 0; i < records.length; i++) {
+    const item: UsageRecord = records[i];
+    let at: number = presets.indexOf(item.preset);
+    if (at < 0) {
+      presets.push(item.preset);
+      prompt.push(0);
+      completion.push(0);
+      requests.push(0);
+      at = presets.length - 1;
+    }
+    prompt[at] += item.prompt;
+    completion[at] += item.completion;
+    requests[at] += item.requests;
+  }
+  const result: UsageProviderTotal[] = [];
+  for (let i = 0; i < presets.length; i++) {
+    result.push({
+      preset: presets[i],
+      prompt: prompt[i],
+      completion: completion[i],
+      requests: requests[i]
+    });
+  }
+  result.sort((a: UsageProviderTotal, b: UsageProviderTotal) =>
     (b.prompt + b.completion) - (a.prompt + a.completion));
   return result;
 }

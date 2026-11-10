@@ -576,6 +576,28 @@ ArkUI 的 `TextArea` 没有粘贴事件，只在 `onChange` 给出完整新值�
 时写入，因此模型回答永远不能新建分组或覆盖用户已有的归类。标题与分组在同一次刷新里
 写回并 `persistSoon()`。
 
+## 工具卡片停止与「从此处重跑」
+
+运行中的工具卡片在标题行右侧显示一个红色方块。它调用的是整轮停止
+（`ChatView.onStop` → `Index.stopStream()`），不是单工具取消——工具执行器没有
+逐调用的取消句柄，OpenMinis 的同类按钮也接到全局取消上，这里保持一致的语义，
+避免让用户以为只有一张卡片会停。
+
+已结算的卡片展开后提供「从此处重跑」，语义与 OpenMinis 的 *Re-run From Here*
+一致，是**块边界**而不是轮次边界：
+
+- `core/Types.rerunCutFromTool(messages, messageId, key)` 先按 `toolPartKey()`
+  （`toolCallId`，缺失时退回 `名称:参数`）定位工具调用；
+- 保留同一助手消息里目标之前的文本/工具块（`hasPreceding`），删掉目标调用、
+  它之后的块以及之后的所有消息；目标之前只有推理或什么都没有时，整条助手轮次
+  一起丢掉，等价且更简单；
+- 裁剪后历史为空（目标就在第一条消息且没有前置内容）时返回 `null`，不产生无法
+  发送的请求；
+- `Index.rerunFromTool()` 在流式生成时拒绝并提示先停止，否则写回
+  `session.messages`、同步 `messageCount`/`updatedAt`、刷新侧栏并调用
+  `runAgent(session, '', false)`。模型看到的历史正好停在原工具调用之前，因此会
+  重新决定下一步；已删除部分的工具结果不会残留在请求里。
+
 ## 生成中排队发送
 
 生成期间 `sendMessage()` 不再直接拒绝：本地命令仍提示「请先停止当前生成」，普通

@@ -10,7 +10,8 @@ import {
   reasoningOf,
   scaleFont,
   textOf,
-  toolCallsOf
+  toolCallsOf,
+  toolPartKey
 } from '../core/Types';
 import { AttachmentStore } from '../service/AttachmentStore';
 import { formatRelative, formatTokens } from '../service/Format';
@@ -65,6 +66,12 @@ export struct MessageBubble {
   onEdit: () => void = () => {
   };
   onRewind: () => void = () => {
+  };
+  /** Running tool cards expose the same global stop as the composer. */
+  onStop: () => void = () => {
+  };
+  /** Trim the transcript at this tool call and let the model run again. */
+  onRerunTool: (part: MessagePart) => void = (part: MessagePart) => {
   };
   /** Render this turn into a shareable PNG (host builds the offscreen card). */
   onSnapshot: () => void = () => {
@@ -206,9 +213,7 @@ export struct MessageBubble {
   }
 
   private toolKey(part: MessagePart): string {
-    return part.toolCallId.length > 0
-      ? part.toolCallId
-      : part.toolName + ':' + part.argumentsText;
+    return toolPartKey(part);
   }
 
   private isToolOpen(part: MessagePart): boolean {
@@ -359,23 +364,41 @@ export struct MessageBubble {
   toolCard(part: MessagePart) {
     Column({ space: 6 }) {
       Row({ space: 8 }) {
-        Text(part.status === TOOL_RUNNING ? '◌' : (part.isError ? '✕' : '✓'))
-          .fontSize(11)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(part.isError ? $r('app.color.danger') : this.accent)
-        Text(part.toolName)
-          .fontSize(12)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Blank()
-        Text(this.toolStatus(part.status))
-          .fontSize(10)
-          .fontColor($r('app.color.text_tertiary'))
+        Row({ space: 8 }) {
+          Text(part.status === TOOL_RUNNING ? '◌' : (part.isError ? '✕' : '✓'))
+            .fontSize(11)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(part.isError ? $r('app.color.danger') : this.accent)
+          Text(part.toolName)
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Blank()
+          Text(this.toolStatus(part.status))
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+        }
+        .layoutWeight(1)
+        .onClick(() => this.toggleTool(part))
+
+        // OpenMinis exposes a small red stop square on running tool cards.
+        // It routes to the turn-wide stop: tools have no per-call cancel API.
+        if (part.status === TOOL_RUNNING) {
+          Text('■')
+            .fontSize(10)
+            .fontColor($r('app.color.on_accent'))
+            .width(18)
+            .height(18)
+            .textAlign(TextAlign.Center)
+            .backgroundColor($r('app.color.danger'))
+            .borderRadius(4)
+            .accessibilityText(t('停止本次生成'))
+            .onClick(() => this.onStop())
+        }
       }
       .width('100%')
-      .onClick(() => this.toggleTool(part))
 
       // Live output while running, even when the card is collapsed. The model
       // still reads the complete (bounded) result once the call finishes.
@@ -439,6 +462,16 @@ export struct MessageBubble {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
             .copyOption(CopyOptions.LocalDevice)
+        }
+        // Block-boundary retry: keep earlier parts, drop this call and
+        // everything after it, then let the model decide again.
+        if (!this.message.streaming) {
+          Text(t('从此处重跑'))
+            .fontSize(11)
+            .fontColor(this.accent)
+            .padding({ top: 2 })
+            .width('100%')
+            .onClick(() => this.onRerunTool(part))
         }
       }
     }

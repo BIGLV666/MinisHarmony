@@ -21,11 +21,13 @@ import {
   filePart,
   imagePart,
   newChatMessage,
+  rerunCutFromTool,
   rewindMessages,
   searchableText,
   sortSessionMetas,
   textOf,
-  textPart
+  textPart,
+  toolPartKey
 } from '../core/Types';
 import {
   QueuedPrompt,
@@ -1419,6 +1421,36 @@ struct Index {
     this.refreshSessions();
     this.persistSoon();
     this.toast(t('已回退到该消息'));
+  }
+
+  /**
+   * Re-run from a tool call: trim the transcript at the block boundary and
+   * let the model decide again with the same history it had just before the
+   * call. Matches OpenMinis' "Re-run From Here" (including its rule that only
+   * an idle session may be trimmed).
+   */
+  private rerunFromTool(messageId: string, part: MessagePart): void {
+    if (this.streaming) {
+      this.toast(t('请先停止当前生成'));
+      return;
+    }
+    const session: StoredSession | null = this.findSession(this.currentId);
+    if (session === null) {
+      return;
+    }
+    const trimmed: ChatMessage[] | null =
+      rerunCutFromTool(session.messages, messageId, toolPartKey(part));
+    if (trimmed === null) {
+      this.toast(t('无法从此处重跑'));
+      return;
+    }
+    session.messages = trimmed;
+    session.meta.messageCount = trimmed.length;
+    session.meta.updatedAt = Date.now();
+    this.messages = trimmed.slice();
+    this.refreshSessions();
+    this.persistSoon();
+    this.runAgent(session, '', false);
   }
 
   private async exportSession(id: string): Promise<void> {
@@ -4422,6 +4454,8 @@ struct Index {
       onRegenerate: () => this.regenerateLast(),
       onEdit: (id: string) => this.beginEdit(id),
       onRewind: (id: string) => this.requestRewind(id),
+      onRerunTool: (messageId: string, part: MessagePart) =>
+        this.rerunFromTool(messageId, part),
       onSnapshot: (message: ChatMessage, question: string) => {
         this.shareTurn(message, question);
       },

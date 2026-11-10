@@ -1232,6 +1232,47 @@ test('rewind keeps the checkpoint and rejects last or missing ids', () => {
   assert.equal(types.rewindMessages([a], 'a'), null);
 });
 
+test('rerun from a tool call cuts at the block boundary only', () => {
+  const user = types.newChatMessage('u', 'user', 'do it');
+  const assistant = types.newChatMessage('a', 'assistant', '');
+  const call1 = types.toolCallPart('t1', 'shell_execute', '{"command":"ls"}');
+  call1.resultText = 'ok';
+  call1.status = 'done';
+  const call2 = types.toolCallPart('t2', 'read_file', '{"path":"x"}');
+  assistant.parts = [types.textPart('plan'), call1, call2];
+  const later = types.newChatMessage('u2', 'user', 'next');
+
+  const cut = types.rerunCutFromTool([user, assistant, later], 'a', 't2');
+  assert.equal(cut.length, 2);
+  assert.deepEqual(cut.map((message) => message.id), ['u', 'a']);
+  assert.deepEqual(cut[1].parts
+    .filter((part) => part.kind === 'tool_call')
+    .map((part) => part.toolCallId), ['t1']);
+  assert.equal(cut[1].parts[0].text, 'plan');
+
+  // First meaningful block: dropping the whole turn is equivalent.
+  const only = types.newChatMessage('b', 'assistant', '');
+  only.parts = [types.reasoningPart('hmm'), types.toolCallPart('t3', 'now', '{}')];
+  assert.deepEqual(types.rerunCutFromTool([user, only], 'b', 't3')
+    .map((message) => message.id), ['u']);
+
+  // Missing message / non-tool part.
+  assert.equal(types.rerunCutFromTool([user, assistant], 'a', 'nope'), null);
+  assert.equal(types.rerunCutFromTool([user], 'u', 't1'), null);
+
+  // A cut that would leave no history to send is rejected.
+  const first = types.newChatMessage('c', 'assistant', '');
+  first.parts = [types.toolCallPart('t4', 'now', '{}')];
+  assert.equal(types.rerunCutFromTool([first], 'c', 't4'), null);
+
+  // Imported parts without an id fall back to name + arguments.
+  const host = types.newChatMessage('d', 'assistant', '');
+  host.parts = [types.toolCallPart('', 'now', '{}')];
+  assert.equal(types.toolPartKey(host.parts[0]), 'now:{}');
+  assert.deepEqual(types.rerunCutFromTool([user, host], 'd', 'now:{}')
+    .map((message) => message.id), ['u']);
+});
+
 test('compact plans keep the newest user turns and align on a user message', () => {
   const messages = [];
   for (let round = 0; round < 5; round++) {

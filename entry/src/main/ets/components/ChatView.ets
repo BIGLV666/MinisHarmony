@@ -1,6 +1,7 @@
 import {
   ChatAttachment,
   ChatMessage,
+  MessagePart,
   messageKey,
   modelName,
   scaleFont,
@@ -109,6 +110,10 @@ export struct ChatView {
   };
   onRewind: (id: string) => void = (id: string) => {
   };
+  /** Trim at a tool call (block boundary) and let the model run again. */
+  onRerunTool: (messageId: string, part: MessagePart) => void =
+    (messageId: string, part: MessagePart) => {
+    };
   /** Receives the assistant turn plus the question it answers. */
   onSnapshot: (message: ChatMessage, question: string) => void =
     (message: ChatMessage, question: string) => {
@@ -823,6 +828,8 @@ export struct ChatView {
                   onRegenerate: () => this.onRegenerate(),
                   onEdit: () => this.onEdit(message.id),
                   onRewind: () => this.onRewind(message.id),
+                  onStop: () => this.onStop(),
+                  onRerunTool: (part: MessagePart) => this.onRerunTool(message.id, part),
                   onSnapshot: () => this.onSnapshot(message, this.questionFor(message)),
                   onOpenLink: this.onOpenLink,
                   onOpenMinis: this.onOpenMinis

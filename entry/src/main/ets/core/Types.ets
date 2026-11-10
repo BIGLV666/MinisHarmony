@@ -445,6 +445,70 @@ export function rewindMessages(messages: ChatMessage[], messageId: string): Chat
   return null;
 }
 
+/** Stable identity for a tool-call part; imported histories may lack ids. */
+export function toolPartKey(part: MessagePart): string {
+  return part.toolCallId.length > 0
+    ? part.toolCallId
+    : part.toolName + ':' + part.argumentsText;
+}
+
+/**
+ * Block-boundary rerun, mirroring OpenMinis' "Re-run From Here": keep every
+ * block before the target tool call, drop the call itself, its later blocks
+ * and all later messages. When nothing meaningful precedes the call in its
+ * turn, dropping the whole assistant turn is equivalent and cheaper.
+ *
+ * Returns null when the part cannot be found, is not a tool call, or the cut
+ * would leave no history to send.
+ */
+export function rerunCutFromTool(messages: ChatMessage[], messageId: string,
+  key: string): ChatMessage[] | null {
+  for (let i = 0; i < messages.length; i++) {
+    const message: ChatMessage = messages[i];
+    if (message.id !== messageId) {
+      continue;
+    }
+    let partIndex: number = -1;
+    for (let j = 0; j < message.parts.length; j++) {
+      const part: MessagePart = message.parts[j];
+      if (part.kind === PART_TOOL_CALL && toolPartKey(part) === key) {
+        partIndex = j;
+        break;
+      }
+    }
+    if (partIndex < 0) {
+      return null;
+    }
+    let hasPreceding: boolean = false;
+    for (let j = 0; j < partIndex; j++) {
+      const part: MessagePart = message.parts[j];
+      if (part.kind === PART_TOOL_CALL ||
+        (part.kind === PART_TEXT && part.text.trim().length > 0)) {
+        hasPreceding = true;
+        break;
+      }
+    }
+    if (!hasPreceding) {
+      return i > 0 ? messages.slice(0, i) : null;
+    }
+    const kept: ChatMessage = {
+      id: message.id,
+      role: message.role,
+      parts: message.parts.slice(0, partIndex),
+      createdAt: message.createdAt,
+      streaming: false,
+      error: false,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0
+    };
+    const trimmed: ChatMessage[] = messages.slice(0, i);
+    trimmed.push(kept);
+    return trimmed;
+  }
+  return null;
+}
+
 /** Pre-computed lowercase blob used by sidebar full-text search. */
 export interface SessionSearchEntry {
   id: string;

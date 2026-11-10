@@ -5,6 +5,12 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
 import { BrowserHandler, ToolResult } from '../core/ToolTypes';
 import { normalizeWebUrl } from '../core/WebUrl';
+import {
+  MINIS_ATTACHMENTS,
+  MINIS_WORKSPACE,
+  MinisResource,
+  parseMinisResource
+} from '../core/MinisResource';
 import { t } from '../core/I18n';
 
 const PAGE_LOAD_TIMEOUT_MS: number = 20000;
@@ -23,6 +29,7 @@ export class BrowserHostRegistry {
   private pendingDone: ((loaded: boolean) => void) | null = null;
   private waitToken: number = 0;
   private workspace: string = '';
+  private attachments: string = '';
   private viewportHandler: ((width: number, height: number) => void) | null = null;
 
   attach(controller: webview.WebviewController): void {
@@ -57,6 +64,34 @@ export class BrowserHostRegistry {
 
   workspaceRoot(): string {
     return this.workspace;
+  }
+
+  setAttachments(root: string): void {
+    this.attachments = root;
+  }
+
+  /**
+   * Map an in-app `minis://workspace/...` or `minis://attachments/...` URL to
+   * a file URL the hidden webview can load. Returns an empty string for other
+   * scopes or before the roots are known.
+   */
+  resolveResource(url: string): string {
+    const resource: MinisResource | null = parseMinisResource(url);
+    if (resource === null) {
+      return '';
+    }
+    let base: string = '';
+    if (resource.scope === MINIS_WORKSPACE) {
+      base = this.workspace;
+    } else if (resource.scope === MINIS_ATTACHMENTS) {
+      base = this.attachments;
+    }
+    if (base.length === 0) {
+      return '';
+    }
+    const full: string = base + '/' + resource.path;
+    return 'file://' + full.split('/').map((segment: string): string =>
+      encodeURIComponent(segment)).join('/');
   }
 
   /**
@@ -684,18 +719,27 @@ export class BrowserTool implements BrowserHandler {
 
     try {
       if (action === 'open' || action === 'navigate') {
-        const url: string = normalizeWebUrl(args.url !== undefined ? args.url : '');
-        if (url.length === 0) {
+        const requested: string = args.url !== undefined ? args.url.trim() : '';
+        if (requested.length === 0) {
           return { ok: false, content: t('open 需要 url。') };
         }
-        const loaded: boolean = await BrowserHost.load(url);
+        let target: string = '';
+        if (parseMinisResource(requested) !== null) {
+          target = BrowserHost.resolveResource(requested);
+          if (target.length === 0) {
+            return { ok: false, content: t('无法打开本地资源：') + requested };
+          }
+        } else {
+          target = normalizeWebUrl(requested);
+        }
+        const loaded: boolean = await BrowserHost.load(target);
         let title: string = '';
         try {
           title = await this.evaluate('document.title');
         } catch (e) {
           title = '';
         }
-        let text: string = t('已打开 ') + url;
+        let text: string = t('已打开 ') + requested;
         if (title.length > 0) {
           text += t('\n标题：') + title;
         }

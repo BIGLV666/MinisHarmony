@@ -1,4 +1,5 @@
 import { webview } from '@kit.ArkWeb';
+import { common } from '@kit.AbilityKit';
 import { BrowserHost } from '../service/BrowserTool';
 
 /**
@@ -17,6 +18,8 @@ export struct HiddenBrowser {
   aboutToAppear(): void {
     BrowserHost.attach(this.controller);
     BrowserHost.setWorkspace(this.workspaceRoot);
+    const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    BrowserHost.setAttachments(context.filesDir + '/attachments');
     BrowserHost.setViewportHandler((width: number, height: number) => {
       this.viewWidth = width;
       this.viewHeight = height;
@@ -36,7 +39,8 @@ export struct HiddenBrowser {
       .focusable(false)
       .javaScriptAccess(true)
       .domStorageAccess(true)
-      .fileAccess(false)
+      // Local workspace/attachment HTML is opened through file:// URLs.
+      .fileAccess(true)
       .onPageEnd(() => {
         BrowserHost.notifyPageEnd();
       })

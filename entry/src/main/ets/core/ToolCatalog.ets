@@ -120,7 +120,8 @@ export function builtinToolDefinitions(): ToolDefinition[] {
   ];
   const browserFields: FieldEntry[] = [
     field('action', 'string',
-      t('动作：open/navigate 打开网址，click 点击，type 输入，text/get_text 取文本，html 取 HTML，') +
+      t('动作：open/navigate 打开网址（也支持 minis://workspace 与 minis://attachments 的本地页面），') +
+        t('click 点击，type 输入，text/get_text 取文本，html 取 HTML，') +
         t('eval/execute_js 执行 JS，scroll 滚动，get_page_info 页面信息，find_elements 查找元素，') +
         t('hover 悬停，get_readable 提取正文，get_backbone 获取 DOM 骨架，') +
         t('get_cookies/set_cookies 读写 Cookie（get 只返回名称与长度，值写入工作区 env 文件），') +
@@ -128,7 +129,8 @@ export function builtinToolDefinitions(): ToolDefinition[] {
         t('scroll_and_collect 边滚动边收集，wait_for_dom_stable 等待 DOM 稳定，') +
         t('screenshot 截图并保存到工作区，fetch 下载 URL 原始字节到工作区并返回链接，') +
         t('back/forward/reload 导航，wait 等待，title/url 读取当前页。')),
-    field('url', 'string', t('open/navigate/fetch 的网址；省略协议时自动补 https://。')),
+    field('url', 'string', t('open/navigate/fetch 的网址；省略协议时自动补 https://。') +
+      t('open/navigate 也接受 minis://workspace/相对路径 或 minis://attachments/文件名。')),
     field('selector', 'string', t('click/type/text/html/scroll/hover/find_elements 使用的 CSS 选择器；') +
       t('text/html/get_readable 省略时取整个页面。')),
     field('text', 'string', t('type 时要填入的文本。')),

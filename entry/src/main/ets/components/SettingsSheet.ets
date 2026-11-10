@@ -183,9 +183,9 @@ export struct SettingsSheet {
     (url: string, user: string, password: string) => {
     };
   /** Recent settings changes, newest first; host owns persistence. */
-  @Prop loadSessionStorage: () => SessionStorageTotal[] =
+  loadSessionStorage: () => SessionStorageTotal[] =
     (): SessionStorageTotal[] => [];
-  @Prop sessionTitle: (sessionId: string) => string =
+  sessionTitle: (sessionId: string) => string =
     (sessionId: string): string => '';
   onClearSessionStorage: (sessionId: string) => void = (sessionId: string) => {
   };

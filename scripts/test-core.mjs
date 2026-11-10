@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -4388,4 +4388,36 @@ test('browser viewport parses sizes and requires both sides', () => {
   assert.equal(browserViewport.customViewport(0, 915), false);
   assert.equal(browserViewport.customViewport(199, 915), false);
   assert.equal(browserViewport.customViewport(412, 2001), false);
+});
+
+function etsFiles(dir) {
+  const result = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      result.push(...etsFiles(path));
+    } else if (entry.name.endsWith('.ets')) {
+      result.push(path);
+    }
+  }
+  return result;
+}
+
+/**
+ * ArkUI validates decorated variables when the component is created. Function
+ * values fail that check, and the resulting BusinessError terminates the whole
+ * app: a `@Prop` callback added by mistake made the settings sheet kill the
+ * process on open. Callbacks must stay plain members.
+ */
+test('state decorators never wrap function-typed members', () => {
+  const pattern =
+    /@(?:Prop|State|Link|Provide|Consume|StorageProp|StorageLink)\s+([A-Za-z_]\w*)\s*:\s*(?:\([^)]*\)\s*=>|[A-Za-z_]\w*\s*=>|Function\b)/g;
+  const bad = [];
+  for (const file of etsFiles(join(root, 'entry/src/main/ets'))) {
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(pattern)) {
+      bad.push(`${file.split('/ets/')[1]}: ${match[1]}`);
+    }
+  }
+  assert.deepEqual(bad, []);
 });

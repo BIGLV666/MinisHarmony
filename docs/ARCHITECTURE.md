@@ -50,6 +50,16 @@ pages/Index.ets
 依赖方向严格向下：`components` 不直接发请求，`core` 不 import `@kit.*`。
 `AgentRuntime` 不关心工具在哪里执行；`ChatApi` 不关心工具循环。
 
+## 组件回调与状态装饰器
+
+`components` 里的回调（`onSave`、`onSettings`、`loadSessionStorage` 等）一律声明为
+普通成员并带默认空实现，由父组件按名字传入。ArkUI 会在创建组件时校验带装饰器的
+变量：`@Prop` / `@State` / `@Link` 只接受简单值、数组或可观察对象，函数值触发
+`Illegal variable value error`，抛出的 BusinessError 会直接杀掉整个应用进程。
+`loadSessionStorage` 与 `sessionTitle` 曾因为误加 `@Prop`，使设置页一打开就崩溃；
+现在这两个回调与其它回调一样是普通成员。`scripts/test-core.mjs` 里的
+「state decorators never wrap function-typed members」扫描所有 `.ets`，防止再犯。
+
 ## 消息模型：parts
 
 消息不再是一个 `content` 字符串，而是有序的 `MessagePart[]`：

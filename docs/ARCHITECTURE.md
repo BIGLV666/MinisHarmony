@@ -689,8 +689,16 @@ token 计数与请求数，不保存提示词或回复内容。`Index` 在每轮
 `service/StorageUsage.ets` 递归统计目录的文件数与字节（深度 8，读取失败即跳过），
 `clearDirectory` 删除目录内容但保留目录本身，单个文件失败不中断其余清理。设置页
 「用量统计与存储」展示累计、按模型前 5、按供应商、最近 7 天，以及附件、工作区、
-浏览器下载三类占用；清空统计和三类清理都要求二次点按确认。工作区是全局目录，
-目前没有按会话归属的文件统计。
+浏览器下载三类占用；清空统计和三类清理都要求二次点按确认。
+
+工作区仍是共享目录，路径规则不变；按会话归属靠 `service/WorkspaceLedger` 的旁路
+账本：`LocalToolRuntime` 在 `write_file`/`file_edit` 成功后把归一化相对路径与字节数
+交给注入的 `WorkspaceWriteHandler`，`Index` 用 `SessionWriteRecorder(sessionId)`
+记录到 `filesDir/workspace-ledger.json`。同一「会话 + 路径」只保留最后一次写入；
+`clearSession` 跳过符号链接与目录，只删除该会话记录的文件并清掉对应行。附件占用
+从各会话消息里的 `PART_FILE`/`PART_IMAGE` 按 session+uri 去重后统计，只展示不删除。
+`core/SessionStorage` 的解析层会拒绝绝对路径、`..`、反斜杠和空路径段，避免账本被
+篡改后把删除操作带出工作区。shell/Python 直接写文件不经过这两个工具，因此不归属。
 
 ## 配置变更审计与回滚
 

@@ -90,6 +90,14 @@ export interface ImageGenHandler {
 }
 
 /**
+ * Optional listener for workspace writes. The index implements it with the
+ * per-session ledger so storage accounting knows which chat produced a file.
+ */
+export interface WorkspaceWriteHandler {
+  record(relative: string, bytes: number): void;
+}
+
+/**
  * Optional capability behind `browser_use`. Implemented by a handler bound to
  * the hidden ArkWeb view; the runtime only advertises the tool when present.
  */

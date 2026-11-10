@@ -17,6 +17,8 @@ import {
   ThinkingLevel,
   cloneSettings,
   cycleThinkingLevel,
+  PART_FILE,
+  PART_IMAGE,
   defaultSettings,
   filePart,
   imagePart,
@@ -123,6 +125,12 @@ import { shareCardFileName } from '../core/ShareCard';
 import { shareCardView } from '../components/ShareCardView';
 import { AttachmentStore } from '../service/AttachmentStore';
 import { MemoryStore } from '../service/MemoryStore';
+import { SessionAttachmentUsage, SessionStorageTotal } from '../core/SessionStorage';
+import {
+  LedgerClearResult,
+  SessionWriteRecorder,
+  WorkspaceLedger
+} from '../service/WorkspaceLedger';
 import {
   MemoryFile,
   MemoryLine,
@@ -728,6 +736,8 @@ struct Index {
   private async bootstrap(): Promise<void> {
     const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     this.workspaceRoot = context.filesDir + '/workspace';
+    WorkspaceLedger.init(
+      context.filesDir + '/workspace-ledger.json', this.workspaceRoot);
     MemoryStore.init(context.filesDir + '/memory');
     SkillStore.init(context.filesDir + '/skills');
     AttachmentStore.init(context.filesDir + '/attachments');
@@ -2168,6 +2178,55 @@ struct Index {
     );
   }
 
+  private attachmentBytes(uri: string): number {
+    if (!AttachmentStore.isAttachmentUri(uri)) {
+      return 0;
+    }
+    try {
+      return fs.statSync(AttachmentStore.absolutePath(uri)).size;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /** Per-session workspace ledger plus attachment references in messages. */
+  private sessionStorageRows(): SessionStorageTotal[] {
+    const attachments: SessionAttachmentUsage[] = [];
+    for (let i = 0; i < this.store.length; i++) {
+      const session: StoredSession = this.store[i];
+      for (let m = 0; m < session.messages.length; m++) {
+        const parts: MessagePart[] = session.messages[m].parts;
+        for (let p = 0; p < parts.length; p++) {
+          const part: MessagePart = parts[p];
+          if ((part.kind === PART_FILE || part.kind === PART_IMAGE) &&
+            AttachmentStore.isAttachmentUri(part.uri)) {
+            attachments.push({
+              sessionId: session.meta.id,
+              uri: part.uri,
+              bytes: this.attachmentBytes(part.uri)
+            });
+          }
+        }
+      }
+    }
+    return WorkspaceLedger.totals(attachments);
+  }
+
+  private sessionTitleById(sessionId: string): string {
+    const session: StoredSession | null = this.findSession(sessionId);
+    if (session === null || session.meta.title.length === 0) {
+      return t('新对话');
+    }
+    return session.meta.title;
+  }
+
+  private clearSessionStorage(sessionId: string): void {
+    const result: LedgerClearResult = WorkspaceLedger.clearSession(sessionId);
+    this.toast(result.files > 0
+      ? t('已删除 ') + result.files.toString() + t(' 个工作区文件')
+      : t('该会话没有可清理的工作区文件。'));
+  }
+
   private memoryClock(at: number): string {
     const date: Date = new Date(at);
     const hour: number = date.getHours();
@@ -3050,7 +3109,8 @@ struct Index {
         this.browserTool,
         settings.imageGenEnabled ? new SettingsImageGen(settings) : null,
         new DeviceTools(getContext(this) as common.UIAbilityContext, settings),
-        shell
+        shell,
+        new SessionWriteRecorder(sessionId)
       );
     }
     const meta: StoredSession | null = this.findSession(sessionId);
@@ -4973,6 +5033,9 @@ struct Index {
         SettingsSheet({
           settings: this.settings,
           mcpIncludeDisabled: this.hasMcpForceEnabled(),
+          loadSessionStorage: () => this.sessionStorageRows(),
+          sessionTitle: (id: string) => this.sessionTitleById(id),
+          onClearSessionStorage: (id: string) => this.clearSessionStorage(id),
           auditEntries: this.configAudit.slice(0, 30),
           onRestoreAudit: (id: string) => this.restoreConfigAudit(id),
           onClearAudit: () => this.clearConfigAudit(),

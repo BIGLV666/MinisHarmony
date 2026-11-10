@@ -12,7 +12,8 @@ import {
   SubagentRequest,
   ToolDefinition,
   ToolResult,
-  ToolRuntime
+  ToolRuntime,
+  WorkspaceWriteHandler
 } from '../core/ToolTypes';
 import { builtinToolDefinitions, isToolDisabled } from '../core/ToolCatalog';
 import {
@@ -181,6 +182,7 @@ export class LocalToolRuntime implements ToolRuntime {
   private imageGen: ImageGenHandler | null;
   private device: DeviceToolsHandler | null;
   private shell: ShellHandler | null;
+  private writes: WorkspaceWriteHandler | null;
   private imageCache: Map<string, string> = new Map();
 
   constructor(
@@ -194,7 +196,8 @@ export class LocalToolRuntime implements ToolRuntime {
     browser: BrowserHandler | null = null,
     imageGen: ImageGenHandler | null = null,
     device: DeviceToolsHandler | null = null,
-    shell: ShellHandler | null = null
+    shell: ShellHandler | null = null,
+    writes: WorkspaceWriteHandler | null = null
   ) {
     this.root = workspaceRoot;
     this.allowWrite = allowWrite;
@@ -207,6 +210,7 @@ export class LocalToolRuntime implements ToolRuntime {
     this.imageGen = imageGen;
     this.device = device;
     this.shell = shell;
+    this.writes = writes;
     try {
       if (!fs.accessSync(this.root)) {
         fs.mkdirSync(this.root, true);
@@ -470,6 +474,17 @@ export class LocalToolRuntime implements ToolRuntime {
     return resolveWorkspacePath(this.root, relative);
   }
 
+  /** Tell the session ledger about a successful write, if anyone listens. */
+  private noteWrite(raw: string, bytes: number): void {
+    if (this.writes === null) {
+      return;
+    }
+    const relative: string | null = normalizeRelativePath(raw);
+    if (relative !== null && relative.length > 0) {
+      this.writes.record(relative, bytes);
+    }
+  }
+
   private assertNoSymlink(relative: string): void {
     if (relative.length === 0) {
       return;
@@ -623,6 +638,7 @@ export class LocalToolRuntime implements ToolRuntime {
     );
     try {
       const written: number = fs.writeSync(file.fd, content);
+      this.noteWrite(raw, written);
       return {
         ok: true,
         content: t('已写入 ') + written.toString() + t(' 字符到 ') + raw
@@ -672,6 +688,11 @@ export class LocalToolRuntime implements ToolRuntime {
       fs.writeSync(file.fd, outcome.content);
     } finally {
       fs.closeSync(file);
+    }
+    try {
+      this.noteWrite(raw, fs.statSync(absolute).size);
+    } catch (e) {
+      this.noteWrite(raw, outcome.content.length);
     }
     return {
       ok: true,

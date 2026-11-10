@@ -68,6 +68,7 @@ import {
 } from '../core/UsageStats';
 import { UsageStore } from '../service/UsageStore';
 import { DirUsage, clearDirectory, directoryUsage } from '../service/StorageUsage';
+import { SessionStorageTotal } from '../core/SessionStorage';
 import { formatBytes } from '../core/BrowserHistory';
 import { ConfigAuditEntry, auditValueLabel } from '../core/ConfigAudit';
 import { formatTokens } from '../service/Format';
@@ -182,6 +183,12 @@ export struct SettingsSheet {
     (url: string, user: string, password: string) => {
     };
   /** Recent settings changes, newest first; host owns persistence. */
+  @Prop loadSessionStorage: () => SessionStorageTotal[] =
+    (): SessionStorageTotal[] => [];
+  @Prop sessionTitle: (sessionId: string) => string =
+    (sessionId: string): string => '';
+  onClearSessionStorage: (sessionId: string) => void = (sessionId: string) => {
+  };
   @Prop auditEntries: ConfigAuditEntry[] = [];
   onRestoreAudit: (id: string) => void = (id: string) => {
   };
@@ -261,6 +268,7 @@ export struct SettingsSheet {
   @State usageProviderLines: string[] = [];
   @State usageDayLines: string[] = [];
   @State storageLines: string[] = [];
+  @State sessionStorageRows: SessionStorageTotal[] = [];
   /** Which cleanup needs a second tap: attachments / workspace / downloads. */
   @State storageClear: string = '';
   @State showMemory: boolean = false;
@@ -1280,6 +1288,20 @@ export struct SettingsSheet {
       t('浏览器下载：') + downloads.files.toString() + t(' 个 · ') +
         formatBytes(downloads.bytes)
     ];
+    this.sessionStorageRows = this.loadSessionStorage();
+  }
+
+  /** Two-tap cleanup for one session's recorded workspace files. */
+  private clearSessionStorage(sessionId: string): void {
+    const key: string = 'session:' + sessionId;
+    if (this.storageClear !== key) {
+      this.storageClear = key;
+      this.onToast(t('再点一次确认清理；此操作不可撤销'));
+      return;
+    }
+    this.storageClear = '';
+    this.onClearSessionStorage(sessionId);
+    this.refreshStorage();
   }
 
   /** Two-tap cleanup; the second tap removes the bucket's contents. */
@@ -3403,6 +3425,59 @@ export struct SettingsSheet {
               }
               .width('100%')
               Text(t('清理会删除文件且不可撤销；会话历史与消息记录不受影响，但引用的图片/视频将无法再打开。'))
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+                .lineHeight(14)
+              Divider()
+                .color($r('app.color.border'))
+                .margin({ top: 4, bottom: 2 })
+              Text(t('按会话统计'))
+                .fontSize(11)
+                .fontColor($r('app.color.text_tertiary'))
+                .width('100%')
+              if (this.sessionStorageRows.length === 0) {
+                Text(t('还没有按会话记录的工作区文件。'))
+                  .fontSize(10)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .width('100%')
+              } else {
+                ForEach(this.sessionStorageRows, (row: SessionStorageTotal) => {
+                  Column({ space: 3 }) {
+                    Row({ space: 8 }) {
+                      Text(this.sessionTitle(row.sessionId))
+                        .fontSize(11)
+                        .fontColor($r('app.color.text_primary'))
+                        .layoutWeight(1)
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      Text(this.storageClear === 'session:' + row.sessionId
+                        ? t('再点一次确认') : t('清理该会话文件'))
+                        .fontSize(10)
+                        .fontColor(row.workspaceFiles > 0
+                          ? $r('app.color.danger')
+                          : $r('app.color.text_tertiary'))
+                        .enabled(row.workspaceFiles > 0)
+                        .onClick(() => this.clearSessionStorage(row.sessionId))
+                    }
+                    .width('100%')
+                    Text(t('工作区：') + row.workspaceFiles.toString() + t(' 个 · ') +
+                      formatBytes(row.workspaceBytes) + '    ' +
+                      t('附件：') + row.attachmentFiles.toString() + t(' 个 · ') +
+                      formatBytes(row.attachmentBytes))
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_secondary'))
+                      .width('100%')
+                  }
+                  .width('100%')
+                  .padding({ left: 8, right: 8, top: 5, bottom: 5 })
+                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(8)
+                }, (row: SessionStorageTotal) => row.sessionId + ':' +
+                  row.workspaceFiles.toString() + ':' + row.workspaceBytes.toString() +
+                  ':' + row.attachmentFiles.toString() + ':' +
+                  row.attachmentBytes.toString())
+              }
+              Text(t('清理只删除该会话通过写入工具生成的工作区文件；附件只统计不删除，shell/Python 写入不归属本会话。'))
                 .fontSize(10)
                 .fontColor($r('app.color.text_tertiary'))
                 .lineHeight(14)

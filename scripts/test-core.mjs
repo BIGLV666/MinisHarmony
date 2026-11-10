@@ -82,6 +82,7 @@ copyCore('EditPatch');
 copyCore('Memory');
 copyCore('MediaTime');
 copyCore('MediaType');
+copyCore('SessionStorage');
 copyCore('ContextBudget', ['Types']);
 copyCore('MarkdownExport', ['Types']);
 copyCore('ShareCard', ['MarkdownExport']);
@@ -229,6 +230,7 @@ const catalog = await import(pathToFileURL(join(tmp, 'ToolCatalog.mts')).href);
 const memory = await import(pathToFileURL(join(tmp, 'Memory.mts')).href);
 const mediaTime = await import(pathToFileURL(join(tmp, 'MediaTime.mts')).href);
 const mediaType = await import(pathToFileURL(join(tmp, 'MediaType.mts')).href);
+const sessionStorage = await import(pathToFileURL(join(tmp, 'SessionStorage.mts')).href);
 const budget = await import(pathToFileURL(join(tmp, 'ContextBudget.mts')).href);
 const exporter = await import(pathToFileURL(join(tmp, 'MarkdownExport.mts')).href);
 const toolArgs = await import(pathToFileURL(join(tmp, 'ToolArgs.mts')).href);
@@ -1226,6 +1228,51 @@ test('media preview kind follows the file extension', () => {
   assert.equal(mediaType.mediaKindOf('README.md'), '');
   assert.equal(mediaType.mediaKindOf('no-extension'), '');
   assert.equal(mediaType.mediaKindOf('trailing.'), '');
+});
+
+test('session storage ledger validates paths and totals by session', () => {
+  const raw = JSON.stringify([
+    { sessionId: 'a', path: 'notes/a.md', bytes: 10, at: 1 },
+    { sessionId: 'a', path: 'notes/a.md', bytes: 20, at: 2 },
+    { sessionId: 'b', path: '../escape', bytes: 5, at: 3 },
+    { sessionId: 'b', path: '/abs', bytes: 5, at: 3 },
+    { sessionId: 'b', path: 'a\\b', bytes: 5, at: 3 },
+    { sessionId: 'b', path: 'ok.txt', bytes: -1, at: 3 },
+    { sessionId: 'b', path: 'ok.txt', bytes: 3, at: 0 },
+    { sessionId: '', path: 'x', bytes: 1, at: 1 },
+    { sessionId: 'b', path: 'ok.txt', bytes: 7, at: 4 }
+  ]);
+  const entries = sessionStorage.parseStorageEntries(raw);
+  assert.deepEqual(entries, [
+    { sessionId: 'a', path: 'notes/a.md', bytes: 20, at: 2 },
+    { sessionId: 'b', path: 'ok.txt', bytes: 7, at: 4 }
+  ]);
+  assert.deepEqual(sessionStorage.parseStorageEntries('nope'), []);
+  assert.deepEqual(sessionStorage.storagePaths(entries, 'a'), ['notes/a.md']);
+
+  let merged = sessionStorage.mergeStorageEntry(entries, {
+    sessionId: 'a', path: 'notes/a.md', bytes: 30, at: 5
+  }, 10);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[1].bytes, 30);
+  merged = sessionStorage.mergeStorageEntry(merged, {
+    sessionId: 'c', path: 'c.txt', bytes: 1, at: 6
+  }, 2);
+  assert.deepEqual(merged.map((row) => row.path), ['notes/a.md', 'c.txt']);
+
+  const totals = sessionStorage.storageTotals(entries, [
+    { sessionId: 'a', uri: 'att.png', bytes: 100 },
+    { sessionId: 'a', uri: 'att.png', bytes: 100 },
+    { sessionId: 'c', uri: 'voice.mp3', bytes: 5 }
+  ]);
+  assert.equal(totals[0].sessionId, 'a');
+  assert.equal(totals[0].workspaceFiles, 1);
+  assert.equal(totals[0].workspaceBytes, 20);
+  assert.equal(totals[0].attachmentFiles, 1);
+  assert.equal(totals[0].attachmentBytes, 100);
+  const c = totals.find((row) => row.sessionId === 'c');
+  assert.equal(c.attachmentFiles, 1);
+  assert.equal(c.workspaceBytes, 0);
 });
 
 test('tool catalogue exposes file_edit with a safe schema', () => {

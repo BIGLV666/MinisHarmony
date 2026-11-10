@@ -91,6 +91,14 @@ export default class EntryAbility extends UIAbility {
       'print(\'dns\', socket.gethostbyname(\'example.com\')); ' +
       's = socket.create_connection((\'1.1.1.1\', 443), 15); ' +
       'print(\'tcp\', s.getpeername()); s.close()"; echo net_exit=$?';
+    // The tool set OpenMinis promises the model (bash, curl, jq, pip, ssh,
+    // rsync, unzip) is unpacked offline; run each one so a missing shared
+    // library shows up as a non-zero exit rather than a silent gap.
+    const sixth: string = 'for c in bash curl jq ssh scp rsync unzip pip3; do ' +
+      'command -v $c >/dev/null || { echo missing=$c; exit 1; }; done; ' +
+      'bash --version | head -1; curl --version | head -1; jq --version; ' +
+      'ssh -V 2>&1; rsync --version | head -1; python3 -m pip --version; ' +
+      'echo tools_exit=$?';
     SandboxIsh.run(this.context, first, 180000, options).then((one: SandboxRunResult) => {
       this.logIsh('ISH1', one.output, one.exitCode, Date.now() - began);
       return SandboxIsh.run(this.context, second, 60000, options);
@@ -105,6 +113,9 @@ export default class EntryAbility extends UIAbility {
       return SandboxIsh.run(this.context, fifth, 120000, options);
     }).then((five: SandboxRunResult) => {
       this.logIsh('ISH5', five.output, five.exitCode, Date.now() - began);
+      return SandboxIsh.run(this.context, sixth, 120000, options);
+    }).then((six: SandboxRunResult) => {
+      this.logIsh('ISH6', six.output, six.exitCode, Date.now() - began);
       hilog.info(DOMAIN, TAG, 'ISH END total=%{public}dms',
         Date.now() - began);
     }).catch((error: Error) => {

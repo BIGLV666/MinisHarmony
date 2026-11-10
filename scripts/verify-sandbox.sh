@@ -4,12 +4,13 @@
 #   scripts/verify-sandbox.sh             # app must already be installed
 #   scripts/verify-sandbox.sh --install   # build, sign and install first
 #
-# The app's ISH smoke runs five commands through the persistent daemon:
+# The app's ISH smoke runs six commands through the persistent daemon:
 #   ISH1  kernel boot, fakefs, /bin/sh          (hello-from-ish, uname, id)
 #   ISH2  same shell: cd and exported variable   (pwd=/tmp, smoke=kept)
 #   ISH3  preinstalled Python with C extensions  (python 3.12, ssl, sqlite3)
 #   ISH4  preinstalled Node.js, npm and git      (node/npm/git_exit=0)
 #   ISH5  guest network via host sockets         (DNS + TCP, net_exit=0)
+#   ISH6  everyday tools: bash/curl/jq/pip/ssh   (tools_exit=0)
 # ISH2 only passes if the shell survived between calls; ISH END carries the
 # total wall time.
 #
@@ -97,13 +98,14 @@ check 'ISH4|node_exit=0'
 check 'ISH4|npm_exit=0'
 check 'ISH4|git_exit=0'
 check 'ISH5|net_exit=0'
+check 'ISH6|tools_exit=0'
 check 'ISH END'
 
 total="$(grep -o 'total=[0-9]*ms' "$LOG" | tail -1)"
 echo
 echo "冒烟总耗时约 ${elapsed}s（应用内计时 ${total:-未知}）。"
 if [ "$fail" -eq 0 ]; then
-  echo "全部通过：内核启动、命令间 shell 状态保留、Python 可用。"
+  echo "全部通过：内核启动、shell 状态保留、Python/Node/git/联网与常用工具可用。"
   exit 0
 fi
 echo "$fail 项未通过。上面的 ISH 日志是应用回传的原始输出。" >&2

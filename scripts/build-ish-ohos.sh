@@ -23,13 +23,14 @@
 #   scripts/build-ish-ohos.sh --no-python     # build a rootfs without Python 3
 #   scripts/build-ish-ohos.sh --no-node       # build a rootfs without Node.js / npm
 #   scripts/build-ish-ohos.sh --no-git        # build a rootfs without git
+#   scripts/build-ish-ohos.sh --no-tools      # build a rootfs without bash/curl/pip/ssh
 #   scripts/build-ish-ohos.sh --clean         # remove the build directory first
 #
 # The rootfs includes Python 3, Node.js 22 + npm, git (with libcurl for
-# https remotes), a CA bundle, DNS/hosts files and /dev/shm by default: the
-# guest cannot rely on `apk add` reaching a mirror, so `--rootfs` unpacks
-# pinned Alpine package sets from scripts/ish-rootfs-{python,node,git}.py
-# before rebuilding meta.db. `--rootfs-only` skips the native library build, so it
+# https remotes), bash/curl/jq/pip/ssh/rsync/unzip, a CA bundle, DNS/hosts
+# files and /dev/shm by default: the guest cannot rely on `apk add` reaching
+# a mirror, so `--rootfs` unpacks pinned Alpine package sets from
+# scripts/ish-rootfs-{python,node,git,tools}.py before rebuilding meta.db. `--rootfs-only` skips the native library build, so it
 # only needs curl, zip, python3 and sha256sum on the host.
 #
 # Environment overrides:
@@ -71,6 +72,7 @@ DO_PUSH=0
 DO_BUNDLE=0
 DO_NODE=1
 DO_GIT=1
+DO_TOOLS=1
 DO_NATIVE=1
 DO_CLEAN=0
 DO_PYTHON=1
@@ -89,6 +91,7 @@ while [ $# -gt 0 ]; do
         --no-python) DO_PYTHON=0 ;;
         --no-node) DO_NODE=0 ;;
         --no-git) DO_GIT=0 ;;
+        --no-tools) DO_TOOLS=0 ;;
         --clean) DO_CLEAN=1 ;;
         -h|--help) usage 0 ;;
         *) echo "unknown argument: $1" >&2; usage 1 ;;
@@ -279,6 +282,14 @@ prepare_rootfs() {
         log "Adding git and libcurl to the rootfs"
         python3 -I "$ROOT/scripts/ish-rootfs-git.py" \
             --data "$root/data" --cache "$CACHE/git-apks"
+    fi
+
+    # bash, curl, jq, pip, ssh, rsync and unzip reuse the libraries unpacked
+    # above (libcurl, openssl, readline, libidn2, zstd), so this runs last.
+    if [ "$DO_TOOLS" = 1 ]; then
+        log "Adding bash, curl, jq, pip, ssh, rsync and unzip to the rootfs"
+        python3 -I "$ROOT/scripts/ish-rootfs-tools.py" \
+            --data "$root/data" --cache "$CACHE/tool-apks"
     fi
 
     # iSH's Node support injects `--require=/lib/*.js` only when the shim

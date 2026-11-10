@@ -119,7 +119,13 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   8.14.1-r3`、`pcre2`、`libidn2`、`libpsl`、`libunistring` 与
   `ca-certificates-bundle` 的 SHA-256，解包进 rootfs；`git-remote-https`
   随包提供，https 克隆与推送走上面同一条宿主 socket 通道并校验证书。
-  rootfs 现为 4707 个文件、zip 43 MB、展开后约 123 MB。
+- **预装常用命令**：`scripts/ish-rootfs-tools.py` 再固定 `bash`、`curl`、
+  `jq`（含 oniguruma）、`py3-pip` / `py3-setuptools` / `packaging` /
+  `parsing`、`openssh-client`（ssh/scp/sftp/ssh-keygen）、`rsync`（含 ACL、
+  lz4、popt、xxhash）与 `unzip` 的 SHA-256。它们复用前面已解包的
+  libcurl/openssl/readline/libidn2/zstd，不重复占空间；`pip install` 直接
+  可用（rootfs 没有 `EXTERNALLY-MANAGED` 标记）。rootfs 现为 5747 个文件、
+  zip 49 MB、展开后约 144 MB。
 - **网络**：iSH 构建没有 slirp 网卡，但 `fs/sock.c` 把 guest 的
   AF_INET/AF_LOCAL socket 调用转发给**宿主**的 `socket()`，因此 guest 直接
   使用 App 的网络连接（`ohos.permission.INTERNET` 已声明）。构建时写入
@@ -213,7 +219,7 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
 | `mmap` 固定地址/大地址空间被拒 | M2 | 调整 iSH 内存布局参数 |
 | pthread / futex / signal 行为差异 | M2/M4 | 打平台补丁（`platform/linux.c` 已有 Linux 宿主层） |
 | SQLite 在应用沙箱的锁/WAL | M2 | 改 journal 模式或只读 rootfs + 可写 overlay |
-| Alpine rootfs 体积（含 Python/Node/git 约 43 MB 压缩、123 MB 展开） | M1/M4 | 已离线预装 Python、Node 与 git；如需减重可再拆出独立 zip，首次使用时解包 |
+| Alpine rootfs 体积（含 Python/Node/git/常用工具约 49 MB 压缩、144 MB 展开） | M1/M4 | 已离线预装 Python、Node、git 与常用命令；如需减重可再拆出独立 zip，首次使用时解包 |
 | GPLv2 合规 | 发布前 | 附源码与许可，提供获取方式 |
 
 ## 5. 构建与复现
@@ -267,7 +273,7 @@ $HDC shell aa start -a EntryAbility -b app.minis.client --ps sandboxProbe true
 sleep 10
 $HDC shell hilog -x -T MinisHarmony | grep PROBE
 
-# 启动 iSH 并跑冒烟命令（内核/连续两条命令/Python/Node+git/联网 五组）
+# 启动 iSH 并跑冒烟命令（内核/连续两条命令/Python/Node+git/联网/常用工具 六组）
 $HDC shell aa start -a EntryAbility -b app.minis.client --ps sandboxIsh true
 sleep 15
 $HDC shell hilog -x -T MinisHarmony | grep ISH
@@ -281,7 +287,8 @@ scripts/verify-sandbox.sh --install   # 已安装时去掉 --install
 
 脚本检查 `ISH1|hello-from-ish`、`ISH1|3.21.3`、`ISH2|pwd=/tmp`、
 `ISH2|smoke=kept`、`ISH3|python 3.12`、`ISH4|node_exit=0`、
-`ISH4|npm_exit=0`、`ISH4|git_exit=0`、`ISH5|net_exit=0` 与 `ISH END`，失败时打印应用回传的
+`ISH4|npm_exit=0`、`ISH4|git_exit=0`、`ISH5|net_exit=0`、
+`ISH6|tools_exit=0` 与 `ISH END`，失败时打印应用回传的
 原始日志；需要平板已连接（`hdc list targets` 非空）。
 
 也可以直接在平板上点：设置 → 工具与沙箱 → 启动 Linux 沙箱；输出面板

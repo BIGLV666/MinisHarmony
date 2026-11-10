@@ -101,12 +101,41 @@ git 为 GPLv2，分发包含 git 二进制的 HAP 时同样需要提供对应源
 <https://git.kernel.org/pub/scm/git/git.git>（标签 `v2.47.3`），或从 Alpine
 `main/aarch64` 的 `git-2.47.3-r0.apk` 重新解包核对。
 
-## 6. 平台库
+## 6. 离线预装的常用命令
+
+`scripts/ish-rootfs-tools.py` 固定版本与 SHA-256，解包下列 Alpine 3.21 包
+（py3-pip 来自 `community/aarch64`，其余来自 `main/aarch64`）：
+
+| 包 | 许可证 |
+| --- | --- |
+| bash 5.2.37 | GPL-3.0-or-later |
+| curl 8.14.1 | curl |
+| jq 1.7.1 | MIT |
+| oniguruma 6.9.9 | BSD-2-Clause |
+| py3-pip 24.3.1 / py3-setuptools 70.3.0 | MIT |
+| py3-packaging 24.2 | Apache-2.0 OR BSD-2-Clause |
+| py3-parsing 3.1.4 | MIT |
+| openssh-client 9.9_p2 | ISC |
+| libedit 20240808 | BSD-3-Clause |
+| rsync 3.5.2 | GPL-3.0-or-later |
+| acl-libs 2.3.2 | LGPL-2.1-or-later |
+| lz4-libs 1.10.0 | BSD-2-Clause |
+| popt 1.19 | MIT |
+| libxxhash 0.8.2 | BSD-2-Clause |
+| unzip 6.0 | Info-ZIP |
+
+bash 与 rsync 为 GPL，分发时同样需提供对应源码：
+<https://git.savannah.gnu.org/cgit/bash.git>（标签 `bash-5.2`）、
+<https://download.samba.org/pub/rsync/> 的 `rsync-3.5.2` 源码包，或从
+Alpine `main/aarch64` 对应 `.apk` 重新解包核对。各包完整许可证文本随上游
+`.apk` 提供。
+
+## 7. 平台库
 
 `libishsandbox.so` 与 ArkTS 侧代码在运行时链接 HarmonyOS / OpenHarmony 系统库
 （`libc++`、`libhilog`、`libace_napi` 等），这些库随系统提供，本项目不分发。
 
-## 7. 参考实现
+## 8. 参考实现
 
 OpenMinis（GPLv3）与 dsh-Go（AGPL-3.0）仅用于参考公开行为与产品设计，本仓库
 没有复制它们的源代码；如需合并请自行评估许可证兼容性。

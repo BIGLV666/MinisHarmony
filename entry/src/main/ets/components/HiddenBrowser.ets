@@ -33,6 +33,9 @@ struct HiddenTab {
       .domStorageAccess(true)
       // Local workspace/attachment HTML is opened through file:// URLs.
       .fileAccess(true)
+      .onControllerAttached(() => {
+        BrowserHost.installSchemeHandler(this.controller);
+      })
       .onPageEnd(() => {
         BrowserHost.notifyPageEnd(this.tabId);
       })

@@ -7,6 +7,7 @@ import { handleDeepLinkWant } from '../service/DeepLinkRouter';
 import { I18nService } from '../service/I18n';
 import { SandboxProbe } from '../service/SandboxProbe';
 import { SandboxIsh, SandboxOptions, SandboxRunResult } from '../service/SandboxIsh';
+import { registerMinisScheme } from '../service/BrowserTool';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MinisHarmony';
@@ -15,6 +16,8 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
     I18nService.init(this.context);
+    // Must run before the first Web component exists.
+    registerMinisScheme();
     this.routeWant(want);
   }
 

@@ -1,4 +1,4 @@
-import { webview } from '@kit.ArkWeb';
+import { webview, WebNetErrorList } from '@kit.ArkWeb';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
@@ -18,6 +18,93 @@ const DEFAULT_MAX_CHARS: number = 8000;
 const MAX_CHARS: number = 20000;
 const MAX_ELEMENTS: number = 50;
 const MAX_TABS: number = 4;
+const MAX_RESOURCE_BYTES: number = 64 * 1024 * 1024;
+
+/**
+ * Register the `minis` scheme before any Web component is created. Local HTML
+ * opened through file:// can then load absolute `minis://workspace/...`
+ * subresources (scripts, styles, images) through the scheme handler installed
+ * on each hidden tab.
+ */
+export function registerMinisScheme(): void {
+  try {
+    const schemes: webview.WebCustomScheme[] = [{
+      schemeName: 'minis',
+      isSupportCORS: true,
+      isSupportFetch: true,
+      isStandard: true,
+      isLocal: true
+    }];
+    webview.WebviewController.customizeSchemes(schemes);
+  } catch (error) {
+    // Another Web component already initialized the engine; file:// pages and
+    // relative subresources still work, only absolute minis:// subresources
+    // are affected.
+  }
+}
+
+/** MIME type by file extension for scheme-handler responses. */
+function mimeForPath(path: string): string {
+  const dot: number = path.lastIndexOf('.');
+  const ext: string = dot >= 0 ? path.substring(dot + 1).toLowerCase() : '';
+  switch (ext) {
+    case 'html':
+    case 'htm':
+      return 'text/html';
+    case 'js':
+    case 'mjs':
+      return 'text/javascript';
+    case 'css':
+      return 'text/css';
+    case 'json':
+    case 'map':
+      return 'application/json';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'bmp':
+      return 'image/bmp';
+    case 'ico':
+      return 'image/x-icon';
+    case 'woff':
+      return 'font/woff';
+    case 'woff2':
+      return 'font/woff2';
+    case 'ttf':
+      return 'font/ttf';
+    case 'otf':
+      return 'font/otf';
+    case 'xml':
+      return 'application/xml';
+    case 'pdf':
+      return 'application/pdf';
+    case 'wasm':
+      return 'application/wasm';
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'wav':
+      return 'audio/wav';
+    case 'ogg':
+      return 'audio/ogg';
+    case 'mp4':
+      return 'video/mp4';
+    case 'webm':
+      return 'video/webm';
+    case 'md':
+    case 'txt':
+      return 'text/plain';
+    default:
+      return 'application/octet-stream';
+  }
+}
 
 /**
  * The hidden ArkWeb tabs register their controllers here. Keeping the binding
@@ -219,6 +306,16 @@ export class BrowserHostRegistry {
    * scopes or before the roots are known.
    */
   resolveResource(url: string): string {
+    const full: string = this.resourcePath(url);
+    if (full.length === 0) {
+      return '';
+    }
+    return 'file://' + full.split('/').map((segment: string): string =>
+      encodeURIComponent(segment)).join('/');
+  }
+
+  /** Absolute filesystem path for a `minis://` URL, or '' when unknown. */
+  resourcePath(url: string): string {
     const resource: MinisResource | null = parseMinisResource(url);
     if (resource === null) {
       return '';
@@ -232,9 +329,77 @@ export class BrowserHostRegistry {
     if (base.length === 0) {
       return '';
     }
-    const full: string = base + '/' + resource.path;
-    return 'file://' + full.split('/').map((segment: string): string =>
-      encodeURIComponent(segment)).join('/');
+    return base + '/' + resource.path;
+  }
+
+  /**
+   * Install the `minis` scheme handler on one hidden tab. Custom-scheme
+   * subresources bypass file:// origin rules, so local HTML can reference
+   * workspace assets with absolute `minis://` URLs.
+   */
+  installSchemeHandler(controller: webview.WebviewController): void {
+    const handler: webview.WebSchemeHandler = new webview.WebSchemeHandler();
+    handler.onRequestStart((request: webview.WebSchemeHandlerRequest,
+      resource: webview.WebResourceHandler): boolean => {
+      const path: string = this.resourcePath(request.getRequestUrl());
+      if (path.length === 0) {
+        return false;
+      }
+      this.serveResource(path, resource);
+      return true;
+    });
+    try {
+      controller.setWebSchemeHandler('minis', handler);
+    } catch (error) {
+      // Controller not attached yet or scheme rejected; relative file://
+      // assets keep working.
+    }
+  }
+
+  private serveResource(path: string, handler: webview.WebResourceHandler): void {
+    let fd: number = -1;
+    try {
+      const stat = fs.statSync(path);
+      if (!stat.isFile() || stat.size > MAX_RESOURCE_BYTES) {
+        handler.didFail(WebNetErrorList.ERR_FILE_NOT_FOUND);
+        return;
+      }
+      const size: number = stat.size;
+      let body: ArrayBuffer = new ArrayBuffer(0);
+      if (size > 0) {
+        const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+        fd = file.fd;
+        const allocated: ArrayBuffer = new ArrayBuffer(size);
+        const read: number = fs.readSync(fd, allocated);
+        body = read === size ? allocated : allocated.slice(0, read);
+      }
+      const mime: string = mimeForPath(path);
+      const response = new webview.WebSchemeHandlerResponse();
+      response.setStatus(200);
+      response.setStatusText('OK');
+      response.setMimeType(mime);
+      response.setEncoding('utf-8');
+      response.setHeaderByName('Content-Type', mime, true);
+      response.setHeaderByName('Access-Control-Allow-Origin', '*', true);
+      response.setHeaderByName('Cache-Control', 'no-cache', true);
+      handler.didReceiveResponse(response);
+      if (body.byteLength > 0) {
+        handler.didReceiveResponseBody(body);
+      }
+      handler.didFinish();
+    } catch (error) {
+      try {
+        handler.didFail(WebNetErrorList.ERR_FILE_NOT_FOUND);
+      } catch (ignored) {
+      }
+    } finally {
+      if (fd >= 0) {
+        try {
+          fs.closeSync(fd);
+        } catch (ignored) {
+        }
+      }
+    }
   }
 
   /**

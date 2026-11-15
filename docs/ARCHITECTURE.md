@@ -724,6 +724,12 @@ mp3/m4a/wav/ogg/aac/flac，大小上限按类型分为视频 100 MB、音频 20 
 时 `release()`。输入栏预览仍用 ▶/♪ 占位块。编辑消息时保留非文本 part，媒体不会
 丢失。
 
+本地文件必须用 `fdSrc` 交给 `AVPlayer`：`url` 属性只对网络源生效，设成本地
+`file://` 路径不会报错，但播放器停在 idle、不进入 `initialized`，界面表现就是
+点播放后直接「无法播放」。组件用 `fileIo.openSync(path, READ_ONLY)` 取 fd，再把
+`fdSrc = { fd, offset: 0, length: stat.size }` 传给播放器；fd 在
+`aboutToDisappear` 与错误分支里关闭。失败后允许再点一次重试（重建播放器）。
+
 工作区面板用 `core/MediaType` 的扩展名判断把图片、视频与音频改为内联预览；其余
 文件继续走 HTML（ArkWeb）、只读文本或二进制说明，头部「导出」对所有类型一致。
 

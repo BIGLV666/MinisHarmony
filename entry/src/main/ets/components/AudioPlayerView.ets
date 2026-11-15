@@ -1,5 +1,6 @@
 import { media } from '@kit.MediaKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
 import { mediaClock } from '../core/MediaTime';
 import { t } from '../core/I18n';
 
@@ -24,6 +25,8 @@ export struct AudioPlayerView {
   private pendingPlay: boolean = false;
   private completed: boolean = false;
   private released: boolean = false;
+  /** Open descriptor for the audio file; AVPlayer needs fdSrc for local files. */
+  private fd: number = -1;
 
   aboutToDisappear(): void {
     this.released = true;
@@ -31,6 +34,18 @@ export struct AudioPlayerView {
     this.player = undefined;
     if (player !== undefined) {
       player.release();
+    }
+    this.closeFd();
+  }
+
+  private closeFd(): void {
+    const fd: number = this.fd;
+    this.fd = -1;
+    if (fd >= 0) {
+      try {
+        fs.closeSync(fd);
+      } catch (e) {
+      }
     }
   }
 
@@ -43,9 +58,29 @@ export struct AudioPlayerView {
         player.release();
         return;
       }
+      // AVPlayer's `url` is documented for network sources; local files must
+      // be handed over as a descriptor, otherwise setting url silently does
+      // nothing and no state ever changes.
+      let fd: number = -1;
+      let length: number = 0;
+      try {
+        fd = fs.openSync(this.path, fs.OpenMode.READ_ONLY).fd;
+        length = fs.statSync(this.path).size;
+      } catch (e) {
+        if (fd >= 0) {
+          try {
+            fs.closeSync(fd);
+          } catch (closeError) {
+          }
+        }
+        this.failed = true;
+        player.release();
+        return;
+      }
+      this.fd = fd;
       this.player = player;
       this.bind(player);
-      player.url = 'file://' + this.path;
+      player.fdSrc = { fd: fd, offset: 0, length: length };
     }).catch((error: BusinessError) => {
       this.failed = true;
     });
@@ -74,6 +109,9 @@ export struct AudioPlayerView {
       } else if (state === 'error') {
         this.playing = false;
         this.failed = true;
+        player.release();
+        this.player = undefined;
+        this.closeFd();
       }
     });
     player.on('timeUpdate', (time: number) => {
@@ -87,11 +125,22 @@ export struct AudioPlayerView {
     player.on('error', (error: BusinessError) => {
       this.playing = false;
       this.failed = true;
+      player.release();
+      this.player = undefined;
+      this.closeFd();
     });
   }
 
   private togglePlay(): void {
     if (this.failed) {
+      // A second tap retries: most failures here are transient (file still
+      // being written, decoder busy), and the old player is already released.
+      this.failed = false;
+      this.prepared = false;
+      this.currentMs = 0;
+      this.duration = 0;
+      this.pendingPlay = true;
+      this.ensurePlayer();
       return;
     }
     if (this.player === undefined) {

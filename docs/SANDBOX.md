@@ -88,12 +88,15 @@ ArkTS  ── tool call ──►  LocalToolRuntime（本机模式）
   workspace、memory、attachments、skills 都已映射进 guest 的 `/var/minis/*`
   （skills 是导入的 `.md` 文件，脚本可以直接读取）。
 
-  > **实机注意（2026-11-15）**：平板上观察到 `/var/minis/workspace` 是 rootfs 里
-  > 一个 root 所有的普通目录，看不到宿主工作区的 `demo/` 等文件，guest 里写出的
-  > 文件也不出现在宿主侧。`mountGuestDir()` 挂载失败只向 stdout 打
-  > `[sandbox warn] mount_realfs failed: <errno>`，而挂载只在内核启动时执行，
-  > 这行警告随首条命令的输出滚过去后无法再看到。排查时先重置沙箱，再抓第一条
-  > 命令的输出（或用 `dmesg`/`mount` 在 guest 里确认挂载点是否存在）。
+  > **挂载只在启动时做一次**：`warm()` 曾经用默认的空目录启动内核，随后第一次
+  > 真正执行命令时 `ensureDaemon()` 因为 `started` 已为真直接返回，整个进程
+  > 都复用一个没有挂载的 daemon——guest 的 `/var/minis/*` 变成 rootfs 里的
+  > 普通目录（文件 root 所有），读不到宿主工作区，写出的文件宿主也看不到。
+  > 修复：`warm()` 先 `SandboxIsh.options = standardOptions(context)` 再启动，
+  > 并在 `execute()` 里比较「已启动时的挂载目录」与本次请求，不一致就重启
+  > daemon。挂载失败时 `mountGuestDir()` 只向 stdout 打
+  > `[sandbox warn] mount_realfs failed: <errno>`，这行出现在内核启动后第一条
+  > 命令的输出里；排查时先重置沙箱再跑一条命令看输出。
 - **预装 Python 3**：minirootfs 只有 busybox + apk。虽然现在 guest 可以联网、
   理论上能 `apk add`，但离线或镜像不可达时运行期装不了包，所以
   `scripts/ish-rootfs-python.py` 在构建时按固定

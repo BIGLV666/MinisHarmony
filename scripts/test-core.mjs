@@ -4421,3 +4421,19 @@ test('state decorators never wrap function-typed members', () => {
   }
   assert.deepEqual(bad, []);
 });
+
+/**
+ * Mounts are applied once, when the daemon boots. `warm()` used to start the
+ * kernel without any directories, so the whole app process reused a guest
+ * whose /var/minis/* were plain rootfs dirs and shell/Python silently read and
+ * wrote the wrong files.
+ */
+test('sandbox warm-up boots with the mount directories', () => {
+  const source = readFileSync(
+    join(root, 'entry/src/main/ets/service/SandboxIsh.ets'), 'utf8');
+  const start = source.indexOf('static warm(');
+  const warm = source.slice(start, source.indexOf('static warmSoon('));
+  assert.ok(start > 0, 'warm() not found');
+  assert.ok(warm.includes('standardOptions(context)'),
+    'warm() must assign SandboxIsh.options before ensureDaemon');
+});

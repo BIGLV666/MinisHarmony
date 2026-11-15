@@ -101,6 +101,8 @@ export class SandboxIsh {
   private static commandPath: string = '';
   private static requestPath: string = '';
   private static options: SandboxOptions = { workspace: '', memory: '', attachments: '', skills: '' };
+  /** Options the running daemon actually booted with; null while stopped. */
+  private static applied: SandboxOptions | null = null;
   /** Commands share one shell, so they also share one queue. */
   private static queue: Promise<void> = Promise.resolve();
   private static busy: number = 0;
@@ -191,6 +193,10 @@ export class SandboxIsh {
       return;
     }
     SandboxIsh.lastContext = context;
+    // A warm-up boots the daemon for the whole app process, and mounts are
+    // only applied at boot. Without the directories here the first real
+    // command would reuse a daemon whose /var/minis/* are plain rootfs dirs.
+    SandboxIsh.options = SandboxIsh.standardOptions(context);
     SandboxIsh.warming = (async (): Promise<void> => {
       try {
         await SandboxIsh.ensureDaemon(context, local, SandboxIsh.cancelToken);
@@ -200,6 +206,21 @@ export class SandboxIsh {
         SandboxIsh.warming = null;
       }
     })();
+  }
+
+  /** Mount directories every caller maps into the guest, derived from context. */
+  static standardOptions(context: common.UIAbilityContext): SandboxOptions {
+    return {
+      workspace: context.filesDir + '/workspace',
+      memory: context.filesDir + '/memory',
+      attachments: context.filesDir + '/attachments',
+      skills: context.filesDir + '/skills'
+    };
+  }
+
+  private static sameOptions(a: SandboxOptions, b: SandboxOptions): boolean {
+    return a.workspace === b.workspace && a.memory === b.memory &&
+      a.attachments === b.attachments && a.skills === b.skills;
   }
 
   /** Schedule a warm-up once a stopped daemon has had time to exit. */
@@ -291,8 +312,16 @@ export class SandboxIsh {
       // Never race a warm-up into a second daemon.
       await warming;
     }
-    if (SandboxIsh.options.workspace.length === 0) {
+    if (options.workspace.length > 0) {
       SandboxIsh.options = options;
+    }
+    // Mounts are fixed at boot. If the live daemon was started with other
+    // directories (typically a warm-up from an older call), restart it before
+    // running so the guest is not left with unmounted /var/minis paths.
+    if (SandboxIsh.started && SandboxIsh.applied !== null &&
+      !SandboxIsh.sameOptions(SandboxIsh.applied, SandboxIsh.options)) {
+      SandboxIsh.stopDaemon();
+      await SandboxIsh.sleep(300);
     }
     let rootfs: string = '';
     try {
@@ -472,6 +501,12 @@ export class SandboxIsh {
       if (ready >= 0) {
         SandboxIsh.consumed = ready + SandboxIsh.READY.length;
         SandboxIsh.started = true;
+        SandboxIsh.applied = {
+          workspace: SandboxIsh.options.workspace,
+          memory: SandboxIsh.options.memory,
+          attachments: SandboxIsh.options.attachments,
+          skills: SandboxIsh.options.skills
+        };
         SandboxIsh.generation++;
         return '';
       }
@@ -517,6 +552,7 @@ export class SandboxIsh {
 
   private static stopDaemon(): void {
     SandboxIsh.started = false;
+    SandboxIsh.applied = null;
     SandboxIsh.generation++;
     SandboxIsh.consumed = 0;
     if (SandboxIsh.commandPath.length > 0) {

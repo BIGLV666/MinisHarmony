@@ -77,6 +77,15 @@ export struct AudioPlayerView {
         player.release();
         return;
       }
+      if (this.released) {
+        // The component went away while createAVPlayer/openSync resolved.
+        try {
+          fs.closeSync(fd);
+        } catch (closeError) {
+        }
+        player.release();
+        return;
+      }
       this.fd = fd;
       this.player = player;
       this.bind(player);

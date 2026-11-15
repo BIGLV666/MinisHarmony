@@ -35,15 +35,11 @@ export class ShellTool implements ShellHandler, PythonHandler {
 
   constructor(context: common.UIAbilityContext) {
     this.context = context;
-    this.options = {
-      workspace: context.filesDir + '/workspace',
-      memory: context.filesDir + '/memory',
-      // Attachments are where read_image and the chat picker store media, so
-      // the shell can process the same files (Python, file, identify, ...).
-      attachments: context.filesDir + '/attachments',
-      // Imported skills are plain markdown; scripts can read the same files.
-      skills: context.filesDir + '/skills'
-    };
+    // Attachments are where read_image and the chat picker store media, so the
+    // shell can process the same files; imported skills are plain markdown.
+    // standardOptions keeps these paths identical to the warm-up boot, since
+    // mounts are only applied when the kernel starts.
+    this.options = SandboxIsh.standardOptions(context);
   }
 
   async execute(argumentsJson: string,

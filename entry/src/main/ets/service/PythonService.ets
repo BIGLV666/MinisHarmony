@@ -243,12 +243,7 @@ export class PythonService {
       return t('无法写入 Python 服务脚本：') + error.message;
     }
 
-    const options: SandboxOptions = {
-      workspace: context.filesDir + '/workspace',
-      memory: context.filesDir + '/memory',
-      attachments: context.filesDir + '/attachments',
-      skills: context.filesDir + '/skills'
-    };
+    const options: SandboxOptions = SandboxIsh.standardOptions(context);
     const boot = await SandboxIsh.run(context, PythonService.START_COMMAND,
       BOOT_TIMEOUT_MS, options);
     if (boot.error.length > 0) {
@@ -274,12 +269,7 @@ export class PythonService {
   }
 
   private static async kill(context: common.UIAbilityContext): Promise<void> {
-    const options: SandboxOptions = {
-      workspace: context.filesDir + '/workspace',
-      memory: context.filesDir + '/memory',
-      attachments: context.filesDir + '/attachments',
-      skills: context.filesDir + '/skills'
-    };
+    const options: SandboxOptions = SandboxIsh.standardOptions(context);
     const command: string = 'd=/var/minis/workspace/.minis-py; ' +
       'p=$(cat $d/ready.txt 2>/dev/null); ' +
       'if [ -n "$p" ]; then kill -9 $p 2>/dev/null; fi; ' +

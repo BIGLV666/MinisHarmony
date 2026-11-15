@@ -1596,12 +1596,7 @@ export struct SettingsSheet {
       this.ishReport = status.ready
         ? t('正在启动 iSH 内核…')
         : t('首次使用：正在解压 rootfs（约 50 MB），可能需要几十秒…');
-      const options: SandboxOptions = {
-        workspace: context.filesDir + '/workspace',
-        memory: context.filesDir + '/memory',
-        attachments: context.filesDir + '/attachments',
-        skills: context.filesDir + '/skills'
-      };
+      const options: SandboxOptions = SandboxIsh.standardOptions(context);
       const result: SandboxRunResult = await SandboxIsh.run(context,
         'echo hello-from-ish; uname -a; id; cat /etc/alpine-release', 180000, options);
       const exit: string = '[exit=' + result.exitCode.toString() + ']';

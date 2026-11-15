@@ -68,12 +68,7 @@ export default class EntryAbility extends UIAbility {
       return;
     }
     const began: number = Date.now();
-    const options: SandboxOptions = {
-      workspace: this.context.filesDir + '/workspace',
-      memory: this.context.filesDir + '/memory',
-      attachments: this.context.filesDir + '/attachments',
-      skills: this.context.filesDir + '/skills'
-    };
+    const options: SandboxOptions = SandboxIsh.standardOptions(this.context);
     const first: string = 'cd /tmp; export MINIS_SMOKE=kept; ' +
       'echo hello-from-ish; uname -a; id; cat /etc/alpine-release';
     const second: string = 'echo pwd=$(pwd); echo smoke=$MINIS_SMOKE; ' +
